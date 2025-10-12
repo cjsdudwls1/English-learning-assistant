@@ -3,9 +3,9 @@ import { GoogleGenAI } from "@google/genai";
 import type { AnalysisResult, AnalysisResults } from '../types';
 import { classificationData } from '../constants';
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
-if (!API_KEY) {
-  throw new Error("VITE_GEMINI_API_KEY environment variable is not set");
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY || 'temp_key_for_build';
+if (!API_KEY || API_KEY === 'temp_key_for_build') {
+  console.warn("VITE_GEMINI_API_KEY environment variable is not set - using temporary key");
 }
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
