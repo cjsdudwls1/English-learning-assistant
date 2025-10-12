@@ -1,11 +1,11 @@
 
 import { GoogleGenAI } from "@google/genai";
-import type { AnalysisResult } from '../types';
+import type { AnalysisResult, AnalysisResults } from '../types';
 import { classificationData } from '../constants';
 
-const API_KEY = process.env.API_KEY;
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
 if (!API_KEY) {
-  throw new Error("API_KEY environment variable is not set");
+  throw new Error("VITE_GEMINI_API_KEY environment variable is not set");
 }
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
@@ -54,36 +54,32 @@ ${classificationData}
 - 추출 및 분석된 각 데이터 항목(문제내용, 사용자 답안 등)에 대해 개별적인 인식 신뢰도(Confidence Score)를 백분율로 평가합니다.
 
 ### 5. 출력 명세 (Output Specification) ###
-**반드시, 그리고 예외 없이** 아래 명시된 JSON 구조와 키(key) 이름을 정확히 준수하여 응답해야 합니다. 다른 설명이나 부가적인 텍스트 없이 오직 JSON 객체 하나만 출력하세요.
+이미지 한 장에 여러 문항이 있을 수 있으므로, 반드시 아래 구조의 JSON 객체 하나만 출력하세요.
 
 \`\`\`json
 {
-  "사용자가_직접_채점한_정오답": "O 또는 X 또는 △ 또는 ✓ (인식된 마킹)",
-  "문제내용": {
-    "text": "추출된 영어 문제 본문",
-    "confidence_score": 0.98
-  },
-  "문제_보기": [
-    { "text": "① 선택지1", "confidence_score": 0.99 },
-    { "text": "② 선택지2", "confidence_score": 0.99 },
-    { "text": "③ 선택지3", "confidence_score": 0.98 },
-    { "text": "④ 선택지4", "confidence_score": 0.99 },
-    { "text": "⑤ 선택지5", "confidence_score": 0.97 }
-  ],
-  "사용자가_기술한_정답": {
-    "text": "사용자가 선택하거나 작성한 답",
-    "confidence_score": 0.85,
-    "auto_corrected": false,
-    "alternate_interpretations": ["대체 해석1", "대체 해석2"]
-  },
-  "문제_유형_분류": {
-    "1Depth": "대분류 카테고리",
-    "2Depth": "중분류 카테고리",
-    "3Depth": "소분류 카테고리",
-    "4Depth": "세분류 카테고리",
-    "분류_신뢰도": "높음"
-  },
-  "분류_근거": "해당 분류로 판단한 구체적 이유(예: 'to부정사의 명사적 용법을 묻는 문제이므로')"
+  "items": [
+    {
+      "index": 0,
+      "사용자가_직접_채점한_정오답": "O | X | △ | ✓",
+      "문제내용": { "text": "...", "confidence_score": 0.98 },
+      "문제_보기": [ { "text": "① ...", "confidence_score": 0.99 } ],
+      "사용자가_기술한_정답": {
+        "text": "...",
+        "confidence_score": 0.85,
+        "auto_corrected": false,
+        "alternate_interpretations": ["..."]
+      },
+      "문제_유형_분류": {
+        "1Depth": "...",
+        "2Depth": "...",
+        "3Depth": "...",
+        "4Depth": "...",
+        "분류_신뢰도": "높음"
+      },
+      "분류_근거": "..."
+    }
+  ]
 }
 \`\`\`
 
@@ -94,7 +90,7 @@ ${classificationData}
 - **불필요한 정보**: 프롬프트에 명시되지 않은 어떠한 정보도 추가로 생성하거나 출력하지 마세요.
 `;
 
-export const analyzeEnglishProblemImage = async (imageBase64: string, mimeType: string): Promise<AnalysisResult> => {
+export const analyzeEnglishProblemImage = async (imageBase64: string, mimeType: string): Promise<AnalysisResults> => {
   try {
     const imagePart = {
       inlineData: {
@@ -118,7 +114,11 @@ export const analyzeEnglishProblemImage = async (imageBase64: string, mimeType: 
     const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     
     const result = JSON.parse(jsonString);
-    return result as AnalysisResult;
+    // 간단 검증: items 배열 형태 보장
+    if (!result || !Array.isArray(result.items)) {
+      throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
+    }
+    return result as AnalysisResults;
 
   } catch (error) {
     console.error("Error analyzing image:", error);

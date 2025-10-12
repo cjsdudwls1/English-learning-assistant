@@ -25,3 +25,18 @@ export interface AnalysisResult {
   문제_유형_분류: ProblemClassification;
   분류_근거: string;
 }
+
+// 멀티 문항 결과 타입 (신규)
+export interface ProblemItem {
+  index: number;
+  사용자가_직접_채점한_정오답: 'O' | 'X' | '△' | '✓' | string;
+  문제내용: TextWithConfidence;
+  문제_보기: TextWithConfidence[];
+  사용자가_기술한_정답: UserAnswer;
+  문제_유형_분류: ProblemClassification;
+  분류_근거: string;
+}
+
+export interface AnalysisResults {
+  items: ProblemItem[];
+}
