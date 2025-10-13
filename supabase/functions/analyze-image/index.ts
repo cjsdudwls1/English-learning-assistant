@@ -176,9 +176,22 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Edge Function called with:', { 
+      method: req.method, 
+      url: req.url,
+      hasBody: !!req.body 
+    });
+
     const { imageBase64, mimeType, userId, fileName } = await req.json();
+    console.log('Request data:', { 
+      hasImageBase64: !!imageBase64, 
+      mimeType, 
+      userId, 
+      fileName 
+    });
 
     if (!imageBase64 || !userId) {
+      console.log('Missing required fields');
       return new Response(JSON.stringify({ error: 'Missing required fields' }), { 
         status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -186,8 +199,20 @@ serve(async (req) => {
     }
 
     // Supabase 클라이언트 생성
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    
+    console.log('Environment variables:', {
+      hasSupabaseUrl: !!supabaseUrl,
+      hasSupabaseServiceKey: !!supabaseServiceKey,
+      hasGeminiApiKey: !!geminiApiKey
+    });
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // 1. 이미지를 Storage에 업로드
