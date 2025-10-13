@@ -249,7 +249,10 @@ serve(async (req) => {
     const sessionId = sessionData.id;
 
     // 3. Gemini 분석
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API_KEY environment variable is not set');
+    }
+    
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
     const imagePart = { inlineData: { data: imageBase64, mimeType } };
