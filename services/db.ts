@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import type { ProblemItem, SessionWithProblems } from '../types';
+import { isCorrectFromMark, normalizeMark } from './marks';
 
 export async function getCurrentUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser();
@@ -69,12 +70,8 @@ export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
     problems.forEach((problem: any) => {
       const labels = problem.labels || [];
       if (labels.length > 0) {
-        const mark = labels[0].user_mark;
-        if (mark === '정답' || mark === 'O' || mark === '✓') {
-          correct_count++;
-        } else if (mark === '오답' || mark === 'X') {
-          incorrect_count++;
-        }
+        const mark = normalizeMark(labels[0].user_mark);
+        if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
       }
     });
     
@@ -119,7 +116,7 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
     
     return {
       index: p.index_in_image,
-      사용자가_직접_채점한_정오답: label.user_mark || '',
+      사용자가_직접_채점한_정오답: normalizeMark(label.user_mark),
       문제내용: {
         text: p.stem || '',
         confidence_score: 1.0,
@@ -184,8 +181,8 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
       .from('labels')
       .update({
         user_answer: item.사용자가_기술한_정답.text,
-        user_mark: item.사용자가_직접_채점한_정오답,
-        is_correct: item.사용자가_직접_채점한_정오답 === '정답',
+        user_mark: normalizeMark(item.사용자가_직접_채점한_정오답),
+        is_correct: isCorrectFromMark(item.사용자가_직접_채점한_정오답),
         classification: item.문제_유형_분류,
       })
       .eq('problem_id', problemId);
