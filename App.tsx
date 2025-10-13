@@ -62,13 +62,34 @@ const App: React.FC = () => {
       const { base64, mimeType } = await fileToBase64(imageFile);
 
       // Supabase Edge Function에 전송 (백그라운드 처리)
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`;
       console.log('Starting background analysis...', {
-        url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`,
+        url: functionUrl,
         userId: userData.user.id,
-        fileName: imageFile.name
+        fileName: imageFile.name,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
       });
       
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`, {
+      // 환경 변수 확인
+      console.log('Environment variables check:', {
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 20) + '...',
+        hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+        hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+      });
+      
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        console.error('Missing environment variables:', {
+          hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+          hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+        });
+        setError('환경 변수가 설정되지 않았습니다.');
+        setIsLoading(false);
+        return;
+      }
+      
+      fetch(functionUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
