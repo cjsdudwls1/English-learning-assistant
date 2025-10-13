@@ -61,22 +61,41 @@ const App: React.FC = () => {
       // 이미지를 base64로 변환
       const { base64, mimeType } = await fileToBase64(imageFile);
 
-      // 백그라운드에서 분석 및 저장 (클라이언트 사이드)
-      const analysisPromise = (async () => {
-        try {
-          // Gemini 분석
-          const { analyzeEnglishProblemImage } = await import('./services/geminiService');
-          const result = await analyzeEnglishProblemImage(base64, mimeType);
-          
-          // 저장
-          const { saveFinalLabels } = await import('./services/saveFlow');
-          await saveFinalLabels(imageFile, result.items);
-          
-          console.log('Analysis and save completed');
-        } catch (err) {
-          console.error('Background analysis error:', err);
+      // Supabase Edge Function에 전송 (백그라운드 처리)
+      console.log('Starting background analysis...', {
+        url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`,
+        userId: userData.user.id,
+        fileName: imageFile.name
+      });
+      
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          imageBase64: base64,
+          mimeType,
+          userId: userData.user.id,
+          fileName: imageFile.name,
+        }),
+        keepalive: true, // 페이지 나가도 요청 유지
+      })
+      .then(response => {
+        console.log('Edge Function response:', response.status, response.statusText);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-      })();
+        return response.json();
+      })
+      .then(data => {
+        console.log('Edge Function success:', data);
+      })
+      .catch(err => {
+        console.error('Background analysis error:', err);
+        // 에러를 사용자에게 알리지 않고 조용히 로그만
+      });
 
       // 즉시 성공 메시지 표시하고 통계 페이지로 이동
       setIsLoading(false);
