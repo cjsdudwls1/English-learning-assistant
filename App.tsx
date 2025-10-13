@@ -4,11 +4,12 @@ import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
 import { analyzeEnglishProblemImage } from './services/geminiService';
+import { saveFinalLabels } from './services/saveFlow';
 import type { AnalysisResults } from './types';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { AuthGate } from './components/AuthGate';
 import { LogoutButton } from './components/LoginButton';
-import { ReviewPage } from './pages/ReviewPage';
+import { EditPage } from './pages/EditPage';
 import { StatsPage } from './pages/StatsPage';
 
 const App: React.FC = () => {
@@ -52,15 +53,19 @@ const App: React.FC = () => {
     setAnalysisResult(null);
 
     try {
-      // Gemini 분석만 수행 (이미지 저장은 최종 저장 시점으로 지연)
+      // Gemini 분석 수행
       const { base64, mimeType } = await fileToBase64(imageFile);
       const result = await analyzeEnglishProblemImage(base64, mimeType);
       setAnalysisResult(result);
-      // 검수 화면으로 이동 (이미지 파일과 결과를 state로 전달)
-      navigate('/review', { state: { imageFile, results: result } });
+      
+      // 자동 저장
+      await saveFinalLabels(imageFile, result.items);
+      
+      // 통계 페이지로 이동
+      navigate('/stats');
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : '분석 중 오류가 발생했습니다. 다시 시도해주세요.');
+      setError(err instanceof Error ? err.message : '분석 또는 저장 중 오류가 발생했습니다. 다시 시도해주세요.');
     } finally {
       setIsLoading(false);
     }
@@ -79,6 +84,12 @@ const App: React.FC = () => {
           <Route path="/upload" element={
             <AuthGate>
               <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    📸 문제 이미지를 업로드하면 AI가 자동으로 분석하고 저장합니다. 
+                    저장 후 통계 페이지에서 결과를 확인하고 필요 시 수정할 수 있습니다.
+                  </p>
+                </div>
                 <ImageUploader onImageSelect={handleImageSelect} />
                 <div className="mt-6 text-center">
                   <button
@@ -86,7 +97,7 @@ const App: React.FC = () => {
                     disabled={!imageFile || isLoading}
                     className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                   >
-                    {isLoading ? '분석 중...' : 'AI 분석 시작하기'}
+                    {isLoading ? '분석 및 저장 중...' : 'AI 분석 및 자동 저장'}
                   </button>
                 </div>
                 {isLoading && <Loader />}
@@ -99,7 +110,7 @@ const App: React.FC = () => {
               </div>
             </AuthGate>
           } />
-          <Route path="/review" element={<AuthGate><ReviewPage /></AuthGate>} />
+          <Route path="/edit/:sessionId" element={<AuthGate><EditPage /></AuthGate>} />
           <Route path="/stats" element={<AuthGate><StatsPage /></AuthGate>} />
           <Route path="*" element={<AuthGate><div className="text-center text-slate-500">/upload로 이동해주세요.</div></AuthGate>} />
         </Routes>

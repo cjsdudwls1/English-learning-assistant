@@ -40,3 +40,13 @@ export interface ProblemItem {
 export interface AnalysisResults {
   items: ProblemItem[];
 }
+
+// 세션 및 문제 조회용 타입
+export interface SessionWithProblems {
+  id: string;
+  created_at: string;
+  image_url: string;
+  problem_count: number;
+  correct_count: number;
+  incorrect_count: number;
+}
