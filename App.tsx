@@ -61,11 +61,14 @@ const App: React.FC = () => {
       // 이미지를 base64로 변환
       const { base64, mimeType } = await fileToBase64(imageFile);
 
-      // Netlify Function에 전송 (백그라운드 처리)
+      // Supabase Edge Function에 전송 (백그라운드 처리)
       // fetch with keepalive로 페이지 이탈 시에도 요청 유지
-      fetch('/.netlify/functions/analyze-image', {
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
         body: JSON.stringify({
           imageBase64: base64,
           mimeType,

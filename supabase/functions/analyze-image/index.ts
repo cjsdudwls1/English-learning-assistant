@@ -1,14 +1,72 @@
-import { Handler, HandlerEvent } from '@netlify/functions';
-import { GoogleGenAI } from '@google/genai';
-import { createClient } from '@supabase/supabase-js';
-import { classificationData } from '../../constants';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 
-const GEMINI_API_KEY = process.env.VITE_GEMINI_API_KEY || '';
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
-const SUPABASE_SERVICE_KEY = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const classificationData = `
+문장 유형
+  시제와 동사 활용
+    현재시제
+      현재진행
+      현재완료
+      현재완료진행
+    과거시제
+      과거진행
+      과거완료
+      과거완료진행
+    미래시제
+      will, be going to
+      미래진행
+      미래완료
+  능동태와 수동태
+    능동태
+    수동태
+  조동사
+    can, could
+    may, might
+    must, have to
+    should, ought to
+    would, used to
+문장 내 구조 및 구문
+  일치와 병치
+    주어-동사 일치
+      수일치
+      시제일치
+    병치구조
+  비교구문
+    원급비교
+    비교급
+    최상급
+  관계사절
+    관계대명사
+    관계부사
+  명사절
+    that절
+    의문사절
+    if/whether절
+  부사절
+    시간
+    이유
+    조건
+    양보
+    목적
+    결과
+  가정법
+    현재가정법
+    과거가정법
+    과거완료가정법
+어휘
+  동사구
+    구동사
+    동사+전치사
+    동사+부사
+  명사구
+    관용표현
+    숙어
+  형용사구
+    형용사+전치사
+  부사구
+    부사+전치사
+`;
 
 const prompt = `
 ### 1. 페르소나 (Persona) ###
@@ -97,29 +155,40 @@ function normalizeMark(raw: unknown): 'O' | 'X' {
   return 'X';
 }
 
-export const handler: Handler = async (event: HandlerEvent) => {
+serve(async (req) => {
   // CORS 헤더
-  const headers = {
+  const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   };
 
   // OPTIONS 요청 처리
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { 
+      status: 405, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   }
 
   try {
-    const { imageBase64, mimeType, userId, fileName } = JSON.parse(event.body || '{}');
+    const { imageBase64, mimeType, userId, fileName } = await req.json();
 
     if (!imageBase64 || !userId) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing required fields' }) };
+      return new Response(JSON.stringify({ error: 'Missing required fields' }), { 
+        status: 400, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
     }
+
+    // Supabase 클라이언트 생성
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // 1. 이미지를 Storage에 업로드
     const timestamp = Date.now();
@@ -130,7 +199,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
     const emailLocal = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
     const path = `${emailLocal}/${timestamp}_${safeName}`;
     
-    const buffer = Buffer.from(imageBase64, 'base64');
+    const buffer = new Uint8Array(atob(imageBase64).split('').map(c => c.charCodeAt(0)));
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('problem-images')
       .upload(path, buffer, {
@@ -155,6 +224,9 @@ export const handler: Handler = async (event: HandlerEvent) => {
     const sessionId = sessionData.id;
 
     // 3. Gemini 분석
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
     const imagePart = { inlineData: { data: imageBase64, mimeType } };
     const textPart = { text: prompt };
 
@@ -212,18 +284,15 @@ export const handler: Handler = async (event: HandlerEvent) => {
     const { error: labelsError } = await supabase.from('labels').insert(labelsPayload);
     if (labelsError) throw labelsError;
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ success: true, sessionId }),
-    };
+    return new Response(JSON.stringify({ success: true, sessionId }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (error: any) {
     console.error('Error in analyze-image function:', error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: error.message || 'Internal server error' }),
-    };
+    return new Response(JSON.stringify({ error: error.message || 'Internal server error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
-};
-
+});
