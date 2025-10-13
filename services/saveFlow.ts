@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { uploadProblemImage, createSession } from './db';
 import type { ProblemItem } from '../types';
+import { isCorrectFromMark, normalizeMark } from './marks';
 
 export async function saveFinalLabels(imageFile: File, items: ProblemItem[]) {
   // 1) 이미지 Storage 업로드 (최종 저장 시점)
@@ -26,8 +27,8 @@ export async function saveFinalLabels(imageFile: File, items: ProblemItem[]) {
   const labelsPayload = items.map((it, idx) => ({
     problem_id: idByIndex.get(it.index ?? idx)!,
     user_answer: it.사용자가_기술한_정답.text,
-    user_mark: it.사용자가_직접_채점한_정오답,
-    is_correct: it.사용자가_직접_채점한_정오답 === '정답',
+    user_mark: normalizeMark(it.사용자가_직접_채점한_정오답),
+    is_correct: isCorrectFromMark(it.사용자가_직접_채점한_정오답),
     classification: it.문제_유형_분류,
     confidence: {
       stem: it.문제내용.confidence_score,
