@@ -24,6 +24,7 @@
     "react-router-dom": "^7.0.2"
   },
   "devDependencies": {
+    "@netlify/functions": "^2.8.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
