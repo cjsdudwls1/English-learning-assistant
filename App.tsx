@@ -62,7 +62,7 @@ const App: React.FC = () => {
       const { base64, mimeType } = await fileToBase64(imageFile);
 
       // Supabase Edge Function에 전송 (백그라운드 처리)
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`;
+      const functionUrl = `https://vkoegxohahpptdyipmkr.supabase.co/functions/v1/analyze-image`;
       console.log('Starting background analysis...', {
         url: functionUrl,
         userId: userData.user.id,
@@ -93,7 +93,7 @@ const App: React.FC = () => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrb2VneG9oYWhwcHRkeWlwbWtyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0NTg0MzAsImV4cCI6MjA3NTAzNDQzMH0.wUugYOSqJ63LA34dPNiAQ5H77zaNPtsp6GT8VQsGgEU'
         },
         body: JSON.stringify({
           imageBase64: base64,
