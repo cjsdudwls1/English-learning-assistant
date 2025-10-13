@@ -37,12 +37,12 @@ ${classificationData}
 - **손글씨 답안 인식**:
     - **컨텍스트 활용**: 주변 인쇄 텍스트(문제 내용)의 맥락과 일반적인 영어 문법 규칙을 활용하여 사용자가 작성한 답안을 추론합니다.
     - **특징 분석**: 획의 시작점, 끝점, 글자 간 간격, 크기 비율을 분석하여 유사 문자(예: 1/l, 0/O, 5/S)를 정밀하게 구분합니다.
-    - **다중 해석 처리**: 만약 손글씨가 불명확하여 여러 가지로 해석될 수 있다면(예: '3'인지 '5'인지 모호한 경우), 가장 가능성 높은 답을 기본값으로 하되, 가능한 모든 대체 해석을 수집해 둡니다.
+    - **다중 해석 처리**: 만약 손글씨가 불명확하여 여러 가지로 해석될 수 있다면(예: '3'인지 '5'인지 모호한 경우), 가장 가능성이 높은 답을 기본값으로 하되, 가능한 모든 대체 해석을 수집해 둡니다.
 - **채점 마킹 인식**: 이미지에 표시된 채점 마크를 인식하되, 최종 출력에서는 반드시 다음 규칙을 따릅니다.
-    - 최종 값은 오직 \`"O"\` 또는 \`"X"\` 둘 중 하나만 사용합니다.
-    - 원형/체크/정답 표식은 모두 \`"O"\`로 통일합니다.
-    - 교차선/오답 표식은 모두 \`"X"\`로 통일합니다.
-    - 그 외 표식(△, 취소선 등)이 보이더라도 상황 판단하여 \`"O"\` 또는 \`"X"\` 중 하나로 결정합니다.
+    - 최종 값은 오직 "O" 또는 "X" 둘 중 하나만 사용합니다.
+    - 원형/체크/정답 표식은 모두 "O"로 통일합니다.
+    - 교차선/오답 표식은 모두 "X"로 통일합니다.
+    - 그 외 표식(△, 취소선 등)이 보이더라도 상황 판단하여 "O" 또는 "X" 중 하나로 결정합니다.
 
 **[3단계: 문제 유형 분류]**
 - [2단계]에서 추출한 문제 텍스트를 기반으로, 주어진 분류 기준표를 참조하여 문제의 유형을 "1Depth"부터 "4Depth"까지 분류합니다.
@@ -80,4 +80,50 @@ ${classificationData}
     }
   ]
 }
-\`
+\`\`\`
+
+### 6. 제약 및 예외 처리 (Constraints & Error Handling) ###
+- **이미지 품질 저하**: 이미지가 너무 흐릿하거나 빛 반사가 심해 내용을 판독할 수 없는 경우, JSON의 모든 값을 "인식불가"로 채우세요.
+- **비영어 문제**: 분석 결과, 내용이 영어가 아니라고 판단되면 JSON의 모든 값을 "영어 문제 아님"으로 채우세요.
+- **분류 모호성**: 문제 유형 분류가 애매하여 두 개 이상의 카테고리에 걸쳐 있다고 판단될 경우, 가장 가능성이 높은 하나를 선택하되, "분류_신뢰도"를 "낮음"으로 설정하세요.
+- **불필요한 정보**: 프롬프트에 명시되지 않은 어떠한 정보도 추가로 생성하거나 출력하지 마세요.
+`;
+
+export const analyzeEnglishProblemImage = async (imageBase64: string, mimeType: string): Promise<AnalysisResults> => {
+  try {
+    const imagePart = {
+      inlineData: {
+        data: imageBase64,
+        mimeType: mimeType,
+      },
+    };
+
+    const textPart = {
+      text: prompt,
+    };
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [textPart, imagePart] },
+    });
+    
+    const responseText = response.text;
+    
+    // Clean up the response text to ensure it's valid JSON
+    const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    const result = JSON.parse(jsonString);
+    // 간단 검증: items 배열 형태 보장
+    if (!result || !Array.isArray(result.items)) {
+      throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
+    }
+    return result as AnalysisResults;
+
+  } catch (error) {
+    console.error("Error analyzing image:", error);
+    if (error instanceof SyntaxError) {
+      throw new Error("AI 응답을 파싱하는 데 실패했습니다. 응답 형식이 올바르지 않을 수 있습니다.");
+    }
+    throw new Error("Gemini API 호출 중 오류가 발생했습니다.");
+  }
+};
