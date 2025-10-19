@@ -182,16 +182,17 @@ serve(async (req) => {
       hasBody: !!req.body 
     });
 
-    const { sessionId, imageBase64, mimeType } = await req.json();
+    const { imageBase64, mimeType, userId, fileName } = await req.json();
     console.log('Request data:', { 
-      sessionId,
       hasImageBase64: !!imageBase64, 
-      mimeType
+      mimeType,
+      userId,
+      fileName
     });
 
-    if (!sessionId || !imageBase64 || !mimeType) {
+    if (!imageBase64 || !userId) {
       console.log('Missing required fields');
-      return new Response(JSON.stringify({ error: 'Missing required fields: sessionId, imageBase64, mimeType' }), { 
+      return new Response(JSON.stringify({ error: 'Missing required fields: imageBase64, userId' }), { 
         status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
@@ -218,22 +219,47 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1. 세션 확인 (이미 클라이언트에서 생성됨)
-    console.log('1. Verifying session:', sessionId);
-    const { data: session, error: sessionError } = await supabase
+    // 1. 이미지를 Storage에 업로드
+    console.log('Step 1: Upload image to storage...');
+    const timestamp = Date.now();
+    const safeName = (fileName || 'image.jpg').replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const { data: userData } = await supabase.auth.admin.getUserById(userId);
+    const email = userData.user?.email || userId;
+    const emailLocal = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
+    const path = `${emailLocal}/${timestamp}_${safeName}`;
+    
+    const buffer = new Uint8Array(atob(imageBase64).split('').map(c => c.charCodeAt(0)));
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('problem-images')
+      .upload(path, buffer, {
+        contentType: mimeType,
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) throw uploadError;
+    
+    const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(uploadData.path);
+    const imageUrl = urlData.publicUrl;
+    console.log('Step 1 completed: Image uploaded to', imageUrl);
+
+    // 2. 세션 생성
+    console.log('Step 2: Create session...');
+    const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
-      .select('id, user_id, image_url')
-      .eq('id', sessionId)
+      .insert({
+        user_id: userId,
+        image_url: imageUrl
+      })
+      .select('id')
       .single();
 
-    if (sessionError || !session) {
-      throw new Error(`Session not found: ${sessionId}`);
-    }
+    if (sessionError) throw sessionError;
+    const createdSessionId = sessionData.id;
+    console.log('Step 2 completed: Session created with ID', createdSessionId);
 
-    console.log('Session verified:', session);
-
-    // 2. Gemini API로 분석
-    console.log('2. Analyzing image with Gemini...');
+    // 3. Gemini API로 분석
+    console.log('Step 3: Analyzing image with Gemini...');
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
     const imagePart = { inlineData: { data: imageBase64, mimeType } };
@@ -245,7 +271,7 @@ serve(async (req) => {
     });
 
     const responseText = response.text;
-    console.log('Gemini response received, length:', responseText.length);
+    console.log('Step 3 completed: Gemini response received, length:', responseText.length);
     
     // JSON 파싱
     const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -255,31 +281,32 @@ serve(async (req) => {
       throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
     }
 
-    console.log(`3. Parsed ${result.items.length} items from analysis`);
+    console.log(`Step 3 completed: Parsed ${result.items.length} items from analysis`);
 
-    // 3. 문제 저장
+    // 4. 문제 저장
+    console.log('Step 4: Save problems to database...');
     const items = result.items;
     const problemsPayload = items.map((it: any, idx: number) => ({
-      session_id: sessionId,
+      session_id: createdSessionId,
       index_in_image: it.index ?? idx,
       stem: it.문제내용?.text || '',
       choices: (it.문제_보기 || []).map((c: any) => ({ text: c.text, confidence: c.confidence_score })),
     }));
 
-    console.log('4. Inserting problems...');
     const { data: problems, error: problemsError } = await supabase
       .from('problems')
       .insert(problemsPayload)
       .select('id, index_in_image');
 
     if (problemsError) {
-      console.error('Problems insert error:', problemsError);
+      console.error('Step 4 error: Problems insert error:', problemsError);
       throw problemsError;
     }
 
-    console.log(`Inserted ${problems?.length || 0} problems`);
+    console.log(`Step 4 completed: Inserted ${problems?.length || 0} problems`);
 
-    // 4. 라벨 저장
+    // 5. 라벨 저장
+    console.log('Step 5: Save labels to database...');
     const idByIndex = new Map<number, string>();
     for (const row of problems || []) {
       idByIndex.set(row.index_in_image, row.id);
@@ -301,18 +328,17 @@ serve(async (req) => {
       };
     });
 
-    console.log('5. Inserting labels...');
     const { error: labelsError } = await supabase.from('labels').insert(labelsPayload);
     if (labelsError) {
-      console.error('Labels insert error:', labelsError);
+      console.error('Step 5 error: Labels insert error:', labelsError);
       throw labelsError;
     }
 
-    console.log('Analysis completed successfully!');
+    console.log('Step 5 completed: Analysis completed successfully!');
 
     return new Response(JSON.stringify({ 
       success: true, 
-      sessionId,
+      sessionId: createdSessionId,
       itemsProcessed: items.length 
     }), {
       status: 200,
