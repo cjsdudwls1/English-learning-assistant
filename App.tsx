@@ -66,88 +66,59 @@ const App: React.FC = () => {
         return;
       }
 
-      // 1. 이미지를 Storage에 업로드
-      console.log('1. Uploading image to storage...');
-      const userId = userData.user.id;
-      const timestamp = Date.now();
-      const safeName = imageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const email = userData.user.email || userId;
-      const emailLocal = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
-      const path = `${emailLocal}/${timestamp}_${safeName}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('problem-images')
-        .upload(path, imageFile, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        setError(`이미지 업로드 실패: ${uploadError.message}`);
-        setIsLoading(false);
-        return;
-      }
-
-      const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(uploadData.path);
-      const imageUrl = urlData.publicUrl;
-      console.log('Image uploaded:', imageUrl);
-
-      // 2. 세션 생성
-      console.log('2. Creating session...');
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('sessions')
-        .insert({ user_id: userId, image_url: imageUrl })
-        .select('id')
-        .single();
-
-      if (sessionError) {
-        console.error('Session creation error:', sessionError);
-        setError(`세션 생성 실패: ${sessionError.message}`);
-        setIsLoading(false);
-        return;
-      }
-
-      const sessionId = sessionData.id;
-      console.log('Session created:', sessionId);
-
-      // 3. Edge Function 호출 (백그라운드에서 분석)
-      console.log('3. Starting background analysis...');
+      // 1. Edge Function 호출 (이미지 업로드, 세션 생성, 분석을 모두 처리)
+      console.log('1. Starting image upload and analysis...');
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`;
       
       // 이미지를 base64로 변환
       const { base64, mimeType } = await fileToBase64(imageFile);
       
-      // 백그라운드로 분석 시작 (응답을 기다리지 않음)
-      fetch(functionUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          sessionId,
-          imageBase64: base64,
-          mimeType,
-        }),
-        keepalive: true, // 페이지 나가도 요청 유지
-      })
-      .then(response => {
-        console.log('Edge Function response:', response.status, response.statusText);
-        return response.json();
-      })
-      .then(data => {
-        console.log('Edge Function success:', data);
-      })
-      .catch(err => {
-        console.error('Background analysis error:', err);
-        // 백그라운드 에러는 조용히 로그만 (세션은 이미 생성됨)
-      });
+      // Edge Function 호출 (타임아웃 10초)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
+      
+      try {
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            imageBase64: base64,
+            mimeType,
+            userId: userData.user.id,
+            fileName: imageFile.name,
+          }),
+          signal: controller.signal,
+        });
 
-      // 즉시 성공 메시지 표시하고 통계 페이지로 이동
-      setIsLoading(false);
-      alert('이미지가 업로드되었습니다! AI 분석이 백그라운드에서 진행 중입니다. 통계 페이지에서 분석 결과를 확인하세요.');
-      navigate('/stats');
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`분석 실패: ${response.status} ${response.statusText}`);
+        }
+
+        const analysisResult = await response.json();
+        console.log('Analysis completed:', analysisResult);
+
+        // 성공 메시지 표시하고 통계 페이지로 이동
+        setIsLoading(false);
+        alert(`분석이 완료되었습니다! 세션 ID: ${analysisResult.sessionId}`);
+        navigate('/stats');
+      } catch (error) {
+        clearTimeout(timeoutId);
+        
+        if (error.name === 'AbortError') {
+          console.log('Analysis timeout - continuing in background');
+          // 타임아웃이 발생해도 분석은 계속 진행될 수 있음
+          setIsLoading(false);
+          alert('이미지 업로드가 시작되었습니다! AI 분석이 진행 중입니다. 잠시 후 통계 페이지에서 결과를 확인하세요.');
+          navigate('/stats');
+        } else {
+          throw error; // 다른 에러는 상위로 전파
+        }
+      }
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다. 다시 시도해주세요.');
