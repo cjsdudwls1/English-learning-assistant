@@ -176,23 +176,22 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Edge Function called with:', { 
+    console.log('Edge Function called:', { 
       method: req.method, 
       url: req.url,
       hasBody: !!req.body 
     });
 
-    const { imageBase64, mimeType, userId, fileName } = await req.json();
+    const { sessionId, imageBase64, mimeType } = await req.json();
     console.log('Request data:', { 
+      sessionId,
       hasImageBase64: !!imageBase64, 
-      mimeType, 
-      userId, 
-      fileName 
+      mimeType
     });
 
-    if (!imageBase64 || !userId) {
+    if (!sessionId || !imageBase64 || !mimeType) {
       console.log('Missing required fields');
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), { 
+      return new Response(JSON.stringify({ error: 'Missing required fields: sessionId, imageBase64, mimeType' }), { 
         status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
@@ -213,46 +212,28 @@ serve(async (req) => {
       throw new Error('Missing Supabase environment variables');
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // 1. 이미지를 Storage에 업로드
-    const timestamp = Date.now();
-    const safeName = (fileName || 'image.jpg').replace(/[^a-zA-Z0-9_.-]/g, '_');
-    
-    const { data: userData } = await supabase.auth.admin.getUserById(userId);
-    const email = userData.user?.email || userId;
-    const emailLocal = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
-    const path = `${emailLocal}/${timestamp}_${safeName}`;
-    
-    const buffer = new Uint8Array(atob(imageBase64).split('').map(c => c.charCodeAt(0)));
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('problem-images')
-      .upload(path, buffer, {
-        contentType: mimeType,
-        cacheControl: '3600',
-        upsert: false,
-      });
-
-    if (uploadError) throw uploadError;
-
-    const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(uploadData.path);
-    const imageUrl = urlData.publicUrl;
-
-    // 2. 세션 생성
-    const { data: sessionData, error: sessionError } = await supabase
-      .from('sessions')
-      .insert({ user_id: userId, image_url: imageUrl })
-      .select('id')
-      .single();
-
-    if (sessionError) throw sessionError;
-    const sessionId = sessionData.id;
-
-    // 3. Gemini 분석
     if (!geminiApiKey) {
       throw new Error('GEMINI_API_KEY environment variable is not set');
     }
-    
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // 1. 세션 확인 (이미 클라이언트에서 생성됨)
+    console.log('1. Verifying session:', sessionId);
+    const { data: session, error: sessionError } = await supabase
+      .from('sessions')
+      .select('id, user_id, image_url')
+      .eq('id', sessionId)
+      .single();
+
+    if (sessionError || !session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    console.log('Session verified:', session);
+
+    // 2. Gemini API로 분석
+    console.log('2. Analyzing image with Gemini...');
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
     const imagePart = { inlineData: { data: imageBase64, mimeType } };
@@ -264,14 +245,19 @@ serve(async (req) => {
     });
 
     const responseText = response.text;
+    console.log('Gemini response received, length:', responseText.length);
+    
+    // JSON 파싱
     const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     const result = JSON.parse(jsonString);
 
     if (!result || !Array.isArray(result.items)) {
-      throw new Error('AI 응답 형식 오류');
+      throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
     }
 
-    // 4. 문제 저장
+    console.log(`3. Parsed ${result.items.length} items from analysis`);
+
+    // 3. 문제 저장
     const items = result.items;
     const problemsPayload = items.map((it: any, idx: number) => ({
       session_id: sessionId,
@@ -280,14 +266,20 @@ serve(async (req) => {
       choices: (it.문제_보기 || []).map((c: any) => ({ text: c.text, confidence: c.confidence_score })),
     }));
 
+    console.log('4. Inserting problems...');
     const { data: problems, error: problemsError } = await supabase
       .from('problems')
       .insert(problemsPayload)
       .select('id, index_in_image');
 
-    if (problemsError) throw problemsError;
+    if (problemsError) {
+      console.error('Problems insert error:', problemsError);
+      throw problemsError;
+    }
 
-    // 5. 라벨 저장
+    console.log(`Inserted ${problems?.length || 0} problems`);
+
+    // 4. 라벨 저장
     const idByIndex = new Map<number, string>();
     for (const row of problems || []) {
       idByIndex.set(row.index_in_image, row.id);
@@ -309,16 +301,29 @@ serve(async (req) => {
       };
     });
 
+    console.log('5. Inserting labels...');
     const { error: labelsError } = await supabase.from('labels').insert(labelsPayload);
-    if (labelsError) throw labelsError;
+    if (labelsError) {
+      console.error('Labels insert error:', labelsError);
+      throw labelsError;
+    }
 
-    return new Response(JSON.stringify({ success: true, sessionId }), {
+    console.log('Analysis completed successfully!');
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      sessionId,
+      itemsProcessed: items.length 
+    }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
     console.error('Error in analyze-image function:', error);
-    return new Response(JSON.stringify({ error: error.message || 'Internal server error' }), {
+    return new Response(JSON.stringify({ 
+      error: error.message || 'Internal server error',
+      details: error.toString()
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

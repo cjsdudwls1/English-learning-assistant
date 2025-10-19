@@ -60,7 +60,15 @@ export const StatsPage: React.FC = () => {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* 최근 업로드한 문제 목록 */}
       <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
-        <h2 className="text-2xl font-bold mb-4">최근 업로드한 문제</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold">최근 업로드한 문제</h2>
+          <button
+            onClick={loadData}
+            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+          >
+            새로고침
+          </button>
+        </div>
         {sessions.length === 0 ? (
           <p className="text-slate-500 text-center py-4">아직 업로드한 문제가 없습니다.</p>
         ) : (
@@ -77,13 +85,22 @@ export const StatsPage: React.FC = () => {
                     {new Date(session.created_at).toLocaleString('ko-KR')}
                   </p>
                   <p className="text-slate-700 mt-1">
-                    문제 {session.problem_count}개 | 정답 {session.correct_count}개 | 오답 {session.incorrect_count}개
+                    {session.problem_count === 0 ? (
+                      <span className="text-orange-600 font-medium">🔍 AI 분석 중... 잠시 후 새로고침해주세요</span>
+                    ) : (
+                      `문제 ${session.problem_count}개 | 정답 ${session.correct_count}개 | 오답 ${session.incorrect_count}개`
+                    )}
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => navigate(`/edit/${session.id}`)}
-                    className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
+                    disabled={session.problem_count === 0}
+                    className={`px-4 py-2 text-white text-sm rounded-lg ${
+                      session.problem_count === 0 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-indigo-600 hover:bg-indigo-700'
+                    }`}
                   >
                     수정
                   </button>
