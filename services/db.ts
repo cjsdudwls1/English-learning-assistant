@@ -90,6 +90,20 @@ export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
 
 // 특정 세션의 문제 조회
 export async function fetchSessionProblems(sessionId: string): Promise<ProblemItem[]> {
+  const userId = await getCurrentUserId();
+  
+  // 세션 소유권 검증
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .select('user_id')
+    .eq('id', sessionId)
+    .single();
+  
+  if (sessionError) throw sessionError;
+  if (session.user_id !== userId) {
+    throw new Error('이 세션에 접근할 권한이 없습니다.');
+  }
+  
   // problems와 labels 조회
   const { data: problems, error: problemsError } = await supabase
     .from('problems')
@@ -193,11 +207,14 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
 
 // 세션 삭제
 export async function deleteSession(sessionId: string): Promise<void> {
-  // Supabase에서 cascade delete가 설정되어 있다면 세션만 삭제하면 됨
+  const userId = await getCurrentUserId();
+  
+  // 세션 소유권 검증 후 삭제
   const { error } = await supabase
     .from('sessions')
     .delete()
-    .eq('id', sessionId);
+    .eq('id', sessionId)
+    .eq('user_id', userId);
   
   if (error) throw error;
 }
