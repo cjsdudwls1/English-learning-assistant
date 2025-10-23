@@ -1,5 +1,6 @@
 
 import React, { useState, useCallback, useRef } from 'react';
+import { ImageRotator } from './ImageRotator';
 
 interface ImageUploaderProps {
   onImageSelect: (file: File) => void;
@@ -7,18 +8,39 @@ interface ImageUploaderProps {
 
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      onImageSelect(file);
+      setCurrentFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreviewUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
-  }, [onImageSelect]);
+  }, []);
+
+  const handleRotate = useCallback((rotatedBlob: Blob) => {
+    if (!currentFile) return;
+    
+    // Blob을 File로 변환
+    const rotatedFile = new File([rotatedBlob], currentFile.name, {
+      type: rotatedBlob.type,
+      lastModified: Date.now(),
+    });
+    
+    setCurrentFile(rotatedFile);
+    onImageSelect(rotatedFile);
+    
+    // 미리보기 업데이트
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(rotatedBlob);
+  }, [currentFile, onImageSelect]);
 
   return (
     <div>
@@ -31,7 +53,16 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
           className="mb-4"
         />
         {previewUrl && (
-          <img src={previewUrl} alt="문제 미리보기" className="max-h-80 mx-auto rounded-md shadow-md mt-4" />
+          <div className="mt-4">
+            <ImageRotator
+              imageUrl={previewUrl}
+              onRotate={handleRotate}
+              className="max-h-80 mx-auto rounded-md shadow-md"
+            />
+            <p className="text-sm text-slate-500 mt-2">
+              회전 버튼을 사용하여 이미지 방향을 조정할 수 있습니다
+            </p>
+          </div>
         )}
       </div>
     </div>
