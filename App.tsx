@@ -75,8 +75,8 @@ const App: React.FC = () => {
       // 이미지를 base64로 변환
       const { base64, mimeType } = await fileToBase64(imageFile);
       
-      // Edge Function 호출 (비동기로 시작하고 즉시 analyzing 페이지로 이동)
-      const responsePromise = fetch(functionUrl, {
+      // Edge Function 호출 (세션 생성까지 기다린 후 analyzing 페이지로 이동)
+      const response = await fetch(functionUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -90,20 +90,16 @@ const App: React.FC = () => {
         }),
       });
 
-      // 즉시 analyzing 페이지로 이동 (Edge Function 완료를 기다리지 않음)
+      if (!response.ok) {
+        throw new Error(`서버 오류: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Edge Function response:', result);
+
+      // 분석중 페이지로 이동 (실제 sessionId 사용)
       setIsLoading(false);
-      navigate(`/analyzing/${userData.user.id}_${Date.now()}`); // 임시 sessionId 생성
-      
-      // 백그라운드에서 Edge Function 완료 대기 (선택사항)
-      responsePromise.then(async (response) => {
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Edge Function completed:', result);
-          // 실제 sessionId로 리다이렉트 (AnalyzingPage에서 처리)
-        }
-      }).catch((error) => {
-        console.error('Edge Function error:', error);
-      });
+      navigate(`/analyzing/${result.sessionId}`);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다. 다시 시도해주세요.');

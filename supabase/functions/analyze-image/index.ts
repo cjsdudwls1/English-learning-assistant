@@ -259,9 +259,22 @@ serve(async (req) => {
     const createdSessionId = sessionData.id;
     console.log('Step 2 completed: Session created with ID', createdSessionId);
 
-    // 3. Gemini API로 분석
-    console.log('Step 3: Analyzing image with Gemini...');
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    // 세션 생성 후 즉시 sessionId 반환 (분석은 백그라운드에서 계속)
+    const response = new Response(JSON.stringify({ 
+      success: true, 
+      sessionId: createdSessionId,
+      message: 'Session created, analysis in progress'
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+    // 백그라운드에서 분석 계속 진행
+    (async () => {
+      try {
+        // 3. Gemini API로 분석
+        console.log('Step 3: Analyzing image with Gemini...');
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
     const imagePart = { inlineData: { data: imageBase64, mimeType } };
     const textPart = { text: prompt };
@@ -337,28 +350,39 @@ serve(async (req) => {
 
     console.log('Step 5 completed: Analysis completed successfully!');
 
-    // 6. 세션 상태를 completed로 업데이트
-    console.log('Step 6: Update session status to completed...');
-    const { error: statusUpdateError } = await supabase
-      .from('sessions')
-      .update({ status: 'completed' })
-      .eq('id', createdSessionId);
-    
-    if (statusUpdateError) {
-      console.error('Step 6 error: Status update error:', statusUpdateError);
-      // 상태 업데이트 실패해도 분석은 완료되었으므로 계속 진행
-    } else {
-      console.log('Step 6 completed: Session status updated to completed');
-    }
+        // 6. 세션 상태를 completed로 업데이트
+        console.log('Step 6: Update session status to completed...');
+        const { error: statusUpdateError } = await supabase
+          .from('sessions')
+          .update({ status: 'completed' })
+          .eq('id', createdSessionId);
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      sessionId: createdSessionId,
-      itemsProcessed: items.length 
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+        if (statusUpdateError) {
+          console.error('Step 6 error: Status update error:', statusUpdateError);
+          // 상태 업데이트 실패해도 분석은 완료되었으므로 계속 진행
+        } else {
+          console.log('Step 6 completed: Session status updated to completed');
+        }
+
+        console.log('Background analysis completed for session:', createdSessionId);
+      } catch (bgError) {
+        console.error('Background analysis error:', bgError);
+        
+        // 백그라운드 분석 실패 시 세션 상태를 failed로 업데이트
+        try {
+          await supabase
+            .from('sessions')
+            .update({ status: 'failed' })
+            .eq('id', createdSessionId);
+          console.log('Session status updated to failed due to background error');
+        } catch (statusError) {
+          console.error('Failed to update session status to failed:', statusError);
+        }
+      }
+    })();
+
+    // 세션 생성 후 즉시 응답 반환
+    return response;
   } catch (error: any) {
     console.error('Error in analyze-image function:', error);
     
