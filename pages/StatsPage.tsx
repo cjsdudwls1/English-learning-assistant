@@ -1,29 +1,34 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchStatsByType, TypeStatsRow } from '../services/stats';
-import { makeCoachingMessage } from '../services/coaching';
+import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { fetchUserSessions, deleteSession } from '../services/db';
+import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
+import { ImageModal } from '../components/ImageModal';
 import type { SessionWithProblems } from '../types';
 
 export const StatsPage: React.FC = () => {
   const navigate = useNavigate();
   const [rows, setRows] = useState<TypeStatsRow[]>([]);
+  const [hierarchicalData, setHierarchicalData] = useState<StatsNode[]>([]);
   const [sessions, setSessions] = useState<SessionWithProblems[]>([]);
   const [loading, setLoading] = useState(true);
-  const [coach, setCoach] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [showAllSessions, setShowAllSessions] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalImageUrl, setModalImageUrl] = useState<string>('');
+  const [modalSessionId, setModalSessionId] = useState<string>('');
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [statsData, sessionsData] = await Promise.all([
+      const [statsData, hierarchicalStatsData, sessionsData] = await Promise.all([
         fetchStatsByType(),
+        fetchHierarchicalStats(),
         fetchUserSessions(),
       ]);
       setRows(statsData);
+      setHierarchicalData(hierarchicalStatsData);
       setSessions(sessionsData);
-      const msg = await makeCoachingMessage(statsData);
-      setCoach(msg);
     } catch (e) {
       setError(e instanceof Error ? e.message : '통계 조회 실패');
     } finally {
@@ -53,6 +58,28 @@ export const StatsPage: React.FC = () => {
     return { correct, incorrect, total };
   }, [rows]);
 
+  const displayedSessions = useMemo(() => {
+    return showAllSessions ? sessions : sessions.slice(0, 5);
+  }, [sessions, showAllSessions]);
+
+  const handleImageClick = (sessionIds: string[]) => {
+    if (sessionIds.length > 0) {
+      // 첫 번째 세션의 이미지를 모달로 표시
+      const session = sessions.find(s => sessionIds.includes(s.id));
+      if (session) {
+        setModalImageUrl(session.image_url);
+        setModalSessionId(session.id);
+        setIsModalOpen(true);
+      }
+    }
+  };
+
+  const handleSessionImageClick = (sessionId: string, imageUrl: string) => {
+    setModalImageUrl(imageUrl);
+    setModalSessionId(sessionId);
+    setIsModalOpen(true);
+  };
+
   if (loading) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
 
@@ -73,12 +100,13 @@ export const StatsPage: React.FC = () => {
           <p className="text-slate-500 text-center py-4">아직 업로드한 문제가 없습니다.</p>
         ) : (
           <div className="space-y-3">
-            {sessions.map((session) => (
+            {displayedSessions.map((session) => (
               <div key={session.id} className="border border-slate-200 rounded-lg p-4 flex items-center gap-4">
                 <img 
                   src={session.image_url} 
                   alt="문제 이미지" 
-                  className="w-20 h-20 object-cover rounded border"
+                  className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80"
+                  onClick={() => handleSessionImageClick(session.id, session.image_url)}
                 />
                 <div className="flex-1">
                   <p className="text-sm text-slate-500">
@@ -94,7 +122,7 @@ export const StatsPage: React.FC = () => {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => navigate(`/edit/${session.id}`)}
+                    onClick={() => navigate(`/session/${session.id}`)}
                     disabled={session.problem_count === 0}
                     className={`px-4 py-2 text-white text-sm rounded-lg ${
                       session.problem_count === 0 
@@ -102,7 +130,7 @@ export const StatsPage: React.FC = () => {
                         : 'bg-indigo-600 hover:bg-indigo-700'
                     }`}
                   >
-                    수정
+                    상세보기
                   </button>
                   <button
                     onClick={() => handleDelete(session.id)}
@@ -113,6 +141,16 @@ export const StatsPage: React.FC = () => {
                 </div>
               </div>
             ))}
+            {sessions.length > 5 && (
+              <div className="text-center pt-4">
+                <button
+                  onClick={() => setShowAllSessions(!showAllSessions)}
+                  className="px-4 py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
+                >
+                  {showAllSessions ? '접기' : `전체 보기 (${sessions.length}개)`}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -121,40 +159,20 @@ export const StatsPage: React.FC = () => {
       <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
         <h2 className="text-2xl font-bold mb-4">유형별 정오답 통계</h2>
         <div className="mb-4 text-slate-700">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-100">
-                <th className="p-2">1Depth</th>
-                <th className="p-2">2Depth</th>
-                <th className="p-2">3Depth</th>
-                <th className="p-2">4Depth</th>
-                <th className="p-2">정답</th>
-                <th className="p-2">오답</th>
-                <th className="p-2">총합</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} className="border-b">
-                  <td className="p-2">{r.depth1 ?? '-'}</td>
-                  <td className="p-2">{r.depth2 ?? '-'}</td>
-                  <td className="p-2">{r.depth3 ?? '-'}</td>
-                  <td className="p-2">{r.depth4 ?? '-'}</td>
-                  <td className="p-2">{r.correct_count}</td>
-                  <td className="p-2">{r.incorrect_count}</td>
-                  <td className="p-2">{r.total_count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-8 p-4 bg-indigo-50 border border-indigo-200 rounded">
-          <h3 className="text-lg font-bold text-indigo-700 mb-2">개인화 코칭</h3>
-          <p className="whitespace-pre-wrap text-slate-800">{coach}</p>
-        </div>
+        
+        <HierarchicalStatsTable 
+          data={hierarchicalData} 
+          onImageClick={handleImageClick}
+        />
       </div>
+      
+      {/* 이미지 모달 */}
+      <ImageModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        imageUrl={modalImageUrl}
+        sessionId={modalSessionId}
+      />
     </div>
   );
 };

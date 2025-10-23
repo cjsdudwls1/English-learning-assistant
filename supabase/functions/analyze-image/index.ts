@@ -249,7 +249,8 @@ serve(async (req) => {
       .from('sessions')
       .insert({
         user_id: userId,
-        image_url: imageUrl
+        image_url: imageUrl,
+        status: 'processing'
       })
       .select('id')
       .single();
@@ -336,6 +337,20 @@ serve(async (req) => {
 
     console.log('Step 5 completed: Analysis completed successfully!');
 
+    // 6. 세션 상태를 completed로 업데이트
+    console.log('Step 6: Update session status to completed...');
+    const { error: statusUpdateError } = await supabase
+      .from('sessions')
+      .update({ status: 'completed' })
+      .eq('id', createdSessionId);
+    
+    if (statusUpdateError) {
+      console.error('Step 6 error: Status update error:', statusUpdateError);
+      // 상태 업데이트 실패해도 분석은 완료되었으므로 계속 진행
+    } else {
+      console.log('Step 6 completed: Session status updated to completed');
+    }
+
     return new Response(JSON.stringify({ 
       success: true, 
       sessionId: createdSessionId,
@@ -346,6 +361,21 @@ serve(async (req) => {
     });
   } catch (error: any) {
     console.error('Error in analyze-image function:', error);
+    
+    // 에러 발생 시 세션 상태를 failed로 업데이트 (세션이 생성된 경우에만)
+    if (typeof createdSessionId !== 'undefined') {
+      try {
+        console.log('Updating session status to failed...');
+        await supabase
+          .from('sessions')
+          .update({ status: 'failed' })
+          .eq('id', createdSessionId);
+        console.log('Session status updated to failed');
+      } catch (statusError) {
+        console.error('Failed to update session status to failed:', statusError);
+      }
+    }
+    
     return new Response(JSON.stringify({ 
       error: error.message || 'Internal server error',
       details: error.toString()
