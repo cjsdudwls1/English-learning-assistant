@@ -168,14 +168,12 @@ export const SessionDetailPage: React.FC = () => {
         {/* 좌측: 이미지 영역 */}
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">업로드된 이미지</h3>
-          <div className="border border-slate-200 rounded-lg p-4">
-            <div onClick={handleImageClick} className="cursor-pointer">
-              <ImageRotator
-                imageUrl={imageUrl || '/placeholder-image.jpg'}
-                onRotate={handleRotate}
-                className="w-full"
-              />
-            </div>
+          <div className="border border-slate-200 rounded-lg p-4 max-h-[600px] overflow-auto">
+            <ImageRotator
+              imageUrl={imageUrl || '/placeholder-image.jpg'}
+              onRotate={handleRotate}
+              className="max-w-full max-h-[500px] object-contain"
+            />
             <p className="text-sm text-slate-500 mt-2">
               회전 버튼을 사용하여 이미지 방향을 조정할 수 있습니다
             </p>

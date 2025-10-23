@@ -71,7 +71,8 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           <div className="mt-3">
             <label className="text-sm text-slate-600">문제 본문</label>
             <textarea
-              className="w-full border rounded px-3 py-2 mt-1"
+              className="w-full border rounded px-3 py-2 mt-1 min-h-[100px] max-h-[300px] overflow-auto"
+              rows={5}
               value={it.문제내용.text}
               onChange={(e) => updateItem(i, { 문제내용: { ...it.문제내용, text: e.target.value } })}
             />
