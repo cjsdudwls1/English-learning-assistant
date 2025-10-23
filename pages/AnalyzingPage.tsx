@@ -118,10 +118,21 @@ export const AnalyzingPage: React.FC = () => {
         <p className="text-slate-600 mb-8 text-lg">
           AI가 이미지를 분석하고 있습니다
         </p>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <p className="text-blue-800 text-sm">
-            💡 웹에서 나가셔도 분석이 자동으로 수행됩니다
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+          <p className="text-green-800 text-sm font-medium">
+            ✅ 분석이 백그라운드에서 진행 중입니다
           </p>
+          <p className="text-green-700 text-xs mt-1">
+            💡 웹에서 나가셔도 분석이 자동으로 완료됩니다. 통계 페이지에서 결과를 확인하세요.
+          </p>
+        </div>
+        <div className="flex gap-4 justify-center">
+          <button
+            onClick={() => navigate('/stats')}
+            className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
+          >
+            통계 페이지로 이동
+          </button>
         </div>
         <div className="flex justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>

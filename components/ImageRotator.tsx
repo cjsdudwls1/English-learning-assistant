@@ -12,17 +12,26 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
   className = '' 
 }) => {
   const [rotation, setRotation] = useState(0);
+  const [isRotating, setIsRotating] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
   const rotateImage = (degrees: number) => {
+    // 중복 클릭 방지
+    if (isRotating) return;
+    
     const canvas = canvasRef.current;
     const img = imgRef.current;
     
     if (!canvas || !img) return;
 
+    setIsRotating(true);
+
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      setIsRotating(false);
+      return;
+    }
 
     // 정규화된 회전 각도 계산 (0, 90, 180, 270도만 허용)
     const newRotation = ((rotation + degrees) % 360 + 360) % 360;
@@ -48,6 +57,7 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
       if (blob) {
         onRotate(blob);
       }
+      setIsRotating(false);
     }, 'image/jpeg', 0.9);
   };
 
@@ -81,14 +91,20 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
       <div className="absolute top-2 right-2 flex gap-2">
         <button
           onClick={handleRotateLeft}
-          className="px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm hover:bg-opacity-100 shadow-md"
+          disabled={isRotating}
+          className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md ${
+            isRotating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-100'
+          }`}
           title="좌회전"
         >
           ↶
         </button>
         <button
           onClick={handleRotateRight}
-          className="px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm hover:bg-opacity-100 shadow-md"
+          disabled={isRotating}
+          className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md ${
+            isRotating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-100'
+          }`}
           title="우회전"
         >
           ↷
