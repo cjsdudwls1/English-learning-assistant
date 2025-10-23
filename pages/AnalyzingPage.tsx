@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getSessionStatus } from '../services/db';
+import { supabase } from '../services/supabaseClient';
 
 export const AnalyzingPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -35,7 +36,32 @@ export const AnalyzingPage: React.FC = () => {
         }
       } catch (err) {
         console.error('Status check error:', err);
-        setError('상태 확인 중 오류가 발생했습니다.');
+        // 임시 sessionId인 경우 실제 세션을 찾아보기
+        if (sessionId.includes('_')) {
+          // 임시 sessionId인 경우, 최근 세션을 찾아서 상태 확인
+          try {
+            const { data: sessions } = await supabase
+              .from('sessions')
+              .select('id, status')
+              .eq('user_id', sessionId.split('_')[0])
+              .order('created_at', { ascending: false })
+              .limit(1);
+            
+            if (sessions && sessions.length > 0) {
+              const recentSession = sessions[0];
+              if (recentSession.status === 'completed') {
+                navigate(`/session/${recentSession.id}`);
+              } else if (recentSession.status === 'failed') {
+                setError('분석 중 오류가 발생했습니다. 다시 시도해주세요.');
+              }
+            }
+          } catch (findError) {
+            console.error('Find recent session error:', findError);
+            setError('상태 확인 중 오류가 발생했습니다.');
+          }
+        } else {
+          setError('상태 확인 중 오류가 발생했습니다.');
+        }
       }
     };
 
