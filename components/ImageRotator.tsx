@@ -24,15 +24,19 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const newRotation = (rotation + degrees) % 360;
+    // 정규화된 회전 각도 계산 (0, 90, 180, 270도만 허용)
+    const newRotation = ((rotation + degrees) % 360 + 360) % 360;
     setRotation(newRotation);
 
-    // Canvas 크기 설정
+    // Canvas 크기 설정 - 90도/270도일 때만 가로세로 교체
     const isRotated90or270 = newRotation === 90 || newRotation === 270;
     canvas.width = isRotated90or270 ? img.naturalHeight : img.naturalWidth;
     canvas.height = isRotated90or270 ? img.naturalWidth : img.naturalHeight;
 
-    // 회전 변환 적용
+    // Canvas 초기화
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 회전 변환 적용 - 원본 이미지를 newRotation 각도로 회전
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((newRotation * Math.PI) / 180);

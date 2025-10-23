@@ -14,13 +14,14 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
       setCurrentFile(file);
+      onImageSelect(file); // 즉시 호출하여 업로드 버튼 활성화
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreviewUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
-  }, []);
+  }, [onImageSelect]);
 
   const handleRotate = useCallback((rotatedBlob: Blob) => {
     if (!currentFile) return;
@@ -57,7 +58,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
             <ImageRotator
               imageUrl={previewUrl}
               onRotate={handleRotate}
-              className="max-h-80 mx-auto rounded-md shadow-md"
+              className="max-w-full max-h-80 mx-auto rounded-md shadow-md"
             />
             <p className="text-sm text-slate-500 mt-2">
               회전 버튼을 사용하여 이미지 방향을 조정할 수 있습니다
