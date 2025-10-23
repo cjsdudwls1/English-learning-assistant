@@ -10,6 +10,8 @@ import { AuthGate } from './components/AuthGate';
 import { LogoutButton } from './components/LoginButton';
 import { EditPage } from './pages/EditPage';
 import { StatsPage } from './pages/StatsPage';
+import { AnalyzingPage } from './pages/AnalyzingPage';
+import { SessionDetailPage } from './pages/SessionDetailPage';
 
 const App: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -73,53 +75,31 @@ const App: React.FC = () => {
       // 이미지를 base64로 변환
       const { base64, mimeType } = await fileToBase64(imageFile);
       
-      // Edge Function 호출 (타임아웃 처리)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5초 타임아웃
+      // Edge Function 호출 (타임아웃 없음)
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          imageBase64: base64,
+          mimeType,
+          userId: userData.user.id,
+          fileName: imageFile.name,
+        }),
+      });
 
-      try {
-        const response = await fetch(functionUrl, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({
-            imageBase64: base64,
-            mimeType,
-            userId: userData.user.id,
-            fileName: imageFile.name,
-          }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`서버 오류: ${response.status}`);
-        }
-
-        const result = await response.json();
-        console.log('Edge Function response:', result);
-
-        // 성공 메시지 표시하고 통계 페이지로 이동
-        setIsLoading(false);
-        alert('이미지가 업로드되었습니다! AI 분석이 진행 중입니다. 잠시 후 통계 페이지에서 결과를 확인하세요.');
-        navigate('/stats');
-      } catch (error) {
-        clearTimeout(timeoutId);
-        
-        if (error.name === 'AbortError') {
-          // 타임아웃 - 세션은 생성되었을 것으로 간주
-          console.log('Timeout - analysis continuing in background');
-          setIsLoading(false);
-          alert('이미지가 업로드되었습니다! AI 분석이 진행 중입니다.');
-          navigate('/stats');
-        } else {
-          // 실제 에러
-          throw error;
-        }
+      if (!response.ok) {
+        throw new Error(`서버 오류: ${response.status}`);
       }
+
+      const result = await response.json();
+      console.log('Edge Function response:', result);
+
+      // 분석중 페이지로 이동
+      setIsLoading(false);
+      navigate(`/analyzing/${result.sessionId}`);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다. 다시 시도해주세요.');
@@ -167,6 +147,8 @@ const App: React.FC = () => {
             </AuthGate>
           } />
           <Route path="/edit/:sessionId" element={<AuthGate><EditPage /></AuthGate>} />
+          <Route path="/analyzing/:sessionId" element={<AuthGate><AnalyzingPage /></AuthGate>} />
+          <Route path="/session/:sessionId" element={<AuthGate><SessionDetailPage /></AuthGate>} />
           <Route path="/stats" element={<AuthGate><StatsPage /></AuthGate>} />
           <Route path="/" element={<AuthGate><div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
                 <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">

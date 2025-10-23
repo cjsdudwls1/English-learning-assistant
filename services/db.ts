@@ -219,4 +219,76 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (error) throw error;
 }
 
+// 세션 상태 조회
+export async function getSessionStatus(sessionId: string): Promise<string> {
+  const userId = await getCurrentUserId();
+  
+  // 세션 소유권 검증
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .select('status, user_id')
+    .eq('id', sessionId)
+    .single();
+  
+  if (sessionError) throw sessionError;
+  if (session.user_id !== userId) {
+    throw new Error('이 세션에 접근할 권한이 없습니다.');
+  }
+  
+  return session.status || 'pending';
+}
+
+// 사용자의 특정 상태의 세션 조회
+export async function fetchSessionsByStatus(status: string): Promise<SessionWithProblems[]> {
+  const userId = await getCurrentUserId();
+  
+  // sessions와 problems, labels를 조인하여 통계 계산
+  const { data, error } = await supabase
+    .from('sessions')
+    .select(`
+      id,
+      created_at,
+      image_url,
+      status,
+      problems (
+        id,
+        labels (
+          user_mark
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .eq('status', status)
+    .order('created_at', { ascending: false });
+  
+  if (error) throw error;
+  
+  // 통계 계산
+  const sessions: SessionWithProblems[] = (data || []).map((session: any) => {
+    const problems = session.problems || [];
+    const problem_count = problems.length;
+    let correct_count = 0;
+    let incorrect_count = 0;
+    
+    problems.forEach((problem: any) => {
+      const labels = problem.labels || [];
+      if (labels.length > 0) {
+        const mark = normalizeMark(labels[0].user_mark);
+        if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+      }
+    });
+    
+    return {
+      id: session.id,
+      created_at: session.created_at,
+      image_url: session.image_url,
+      problem_count,
+      correct_count,
+      incorrect_count,
+    };
+  });
+  
+  return sessions;
+}
+
 
