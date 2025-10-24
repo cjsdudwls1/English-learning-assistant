@@ -85,6 +85,17 @@ export const StatsPage: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* 유형별 통계 */}
+      <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+        <h2 className="text-2xl font-bold mb-4">유형별 정오답 통계</h2>
+        <div className="mb-4 text-slate-700">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
+        
+        <HierarchicalStatsTable 
+          data={hierarchicalData} 
+          onImageClick={handleImageClick}
+        />
+      </div>
+
       {/* 최근 업로드한 문제 목록 */}
       <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
         <div className="flex justify-between items-center mb-4">
@@ -153,17 +164,6 @@ export const StatsPage: React.FC = () => {
             )}
           </div>
         )}
-      </div>
-
-      {/* 유형별 통계 */}
-      <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
-        <h2 className="text-2xl font-bold mb-4">유형별 정오답 통계</h2>
-        <div className="mb-4 text-slate-700">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
-        
-        <HierarchicalStatsTable 
-          data={hierarchicalData} 
-          onImageClick={handleImageClick}
-        />
       </div>
       
       {/* 이미지 모달 */}
