@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import type { AnalysisResults, ProblemItem, ProblemClassification } from '../types';
 
 interface MultiProblemEditorProps {
@@ -9,6 +9,11 @@ interface MultiProblemEditorProps {
 
 export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial, onChange, onSubmit }) => {
   const [items, setItems] = useState<ProblemItem[]>(initial.items);
+
+  // initial prop이 변경될 때 내부 state를 동기화
+  useEffect(() => {
+    setItems(initial.items);
+  }, [initial.items]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

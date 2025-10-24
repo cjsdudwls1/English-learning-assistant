@@ -17,6 +17,10 @@ export const EditPage: React.FC = () => {
       return;
     }
 
+    // sessionId 변경 시 이전 데이터 초기화
+    setData(null);
+    setError(null);
+
     (async () => {
       try {
         setLoading(true);
