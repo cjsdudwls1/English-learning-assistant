@@ -23,6 +23,11 @@ export const SessionDetailPage: React.FC = () => {
       return;
     }
 
+    // sessionId 변경 시 이전 데이터 초기화
+    setData(null);
+    setError(null);
+    setImageUrl('');
+
     (async () => {
       try {
         setLoading(true);
