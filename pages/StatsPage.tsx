@@ -1,16 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
+import { fetchProblemsByClassification } from '../services/db';
 
 export const StatsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<TypeStatsRow[]>([]);
   const [hierarchicalData, setHierarchicalData] = useState<StatsNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const [selectedProblems, setSelectedProblems] = useState<any[]>([]);
+  const [selectedFilter, setSelectedFilter] = useState<{node: StatsNode, isCorrect: boolean} | null>(null);
 
   const loadData = async () => {
     try {
@@ -43,6 +48,25 @@ export const StatsPage: React.FC = () => {
   const handleClearFilter = () => {
     setStartDate(null);
     setEndDate(null);
+  };
+
+  const handleNodeClick = async (node: StatsNode, isCorrect: boolean) => {
+    try {
+      setLoading(true);
+      const problems = await fetchProblemsByClassification(
+        node.depth1,
+        node.depth2 || '',
+        node.depth3 || '',
+        node.depth4 || '',
+        isCorrect
+      );
+      setSelectedProblems(problems);
+      setSelectedFilter({ node, isCorrect });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '문제 조회 실패');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const totals = useMemo(() => {
@@ -132,8 +156,56 @@ export const StatsPage: React.FC = () => {
         <HierarchicalStatsTable 
           data={hierarchicalData} 
           onImageClick={() => {}}
+          onNumberClick={handleNodeClick}
         />
       </div>
+
+      {/* 선택된 문제 리스트 */}
+      {selectedProblems.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+          <h3 className="text-xl font-bold mb-4">
+            {selectedFilter?.node.depth1} - {selectedFilter?.isCorrect ? '정답' : '오답'} 문제 ({selectedProblems.length}개)
+          </h3>
+          <div className="space-y-3 max-h-[600px] overflow-auto">
+            {selectedProblems.map((item, idx) => (
+              <div key={idx} className="border border-slate-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <img 
+                    src={item.problem.session.image_url} 
+                    alt="문제 이미지"
+                    className="w-24 h-24 object-cover rounded border cursor-pointer"
+                    onClick={() => navigate(`/session/${item.problem.session_id}`)}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm text-slate-500">
+                      {new Date(item.problem.session.created_at).toLocaleDateString('ko-KR')}
+                    </p>
+                    <p className="text-slate-700 font-medium mt-1">
+                      문제 #{item.problem.index_in_image + 1}
+                    </p>
+                    <p className="text-slate-600 text-sm mt-1 line-clamp-2">
+                      {item.problem.stem}
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => navigate(`/session/${item.problem.session_id}`)}
+                        className="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                      >
+                        상세보기
+                      </button>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-1 text-xs rounded ${
+                    item.is_correct ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {item.is_correct ? '정답' : '오답'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

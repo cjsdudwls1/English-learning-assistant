@@ -57,11 +57,11 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
         </div>
         {previewUrl && (
           <div className="bg-slate-50 rounded-lg p-4">
-            <div className="max-h-96 overflow-hidden rounded-md border">
+            <div className="max-h-[800px] overflow-auto rounded-md border bg-white flex items-center justify-center p-4">
               <ImageRotator
                 imageUrl={previewUrl}
                 onRotate={handleRotate}
-                className="w-full h-auto object-contain max-h-96"
+                className="max-w-full max-h-[800px] object-contain"
               />
             </div>
             <p className="text-sm text-slate-500 mt-2 text-center">

@@ -4,15 +4,17 @@ import type { StatsNode } from '../services/stats';
 interface HierarchicalStatsTableProps {
   data: StatsNode[];
   onImageClick?: (sessionIds: string[]) => void;
+  onNumberClick?: (node: StatsNode, isCorrect: boolean) => void;
 }
 
 interface StatsRowProps {
   node: StatsNode;
   level: number;
   onImageClick?: (sessionIds: string[]) => void;
+  onNumberClick?: (node: StatsNode, isCorrect: boolean) => void;
 }
 
-const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick }) => {
+const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumberClick }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const indent = level * 20;
@@ -52,7 +54,11 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick }) => {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              handleCountClick(node.sessionIds || []);
+              if (onNumberClick) {
+                onNumberClick(node, true);
+              } else {
+                handleCountClick(node.sessionIds || []);
+              }
             }}
             className="text-blue-600 hover:text-blue-800 hover:underline"
             disabled={!node.sessionIds || node.sessionIds.length === 0}
@@ -64,7 +70,11 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick }) => {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              handleCountClick(node.sessionIds || []);
+              if (onNumberClick) {
+                onNumberClick(node, false);
+              } else {
+                handleCountClick(node.sessionIds || []);
+              }
             }}
             className="text-red-600 hover:text-red-800 hover:underline"
             disabled={!node.sessionIds || node.sessionIds.length === 0}
@@ -88,6 +98,7 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick }) => {
           node={child}
           level={level + 1}
           onImageClick={onImageClick}
+          onNumberClick={onNumberClick}
         />
       ))}
     </>
@@ -96,7 +107,8 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick }) => {
 
 export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({ 
   data, 
-  onImageClick 
+  onImageClick,
+  onNumberClick 
 }) => {
   return (
     <div className="overflow-x-auto">
@@ -116,6 +128,7 @@ export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({
               node={node}
               level={0}
               onImageClick={onImageClick}
+              onNumberClick={onNumberClick}
             />
           ))}
         </tbody>

@@ -54,7 +54,18 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
       {items.map((it, i) => (
         <div key={i} className="border border-slate-200 rounded-lg p-4 bg-white">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold">문항 #{i + 1}</h3>
+            <div>
+              <h3 className="text-lg font-bold">문항 #{i + 1}</h3>
+              {it.AI가_판단한_정오답 && (
+                <span className={`text-sm px-2 py-1 rounded ${
+                  it.AI가_판단한_정오답 === '정답' 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-red-100 text-red-700'
+                }`}>
+                  AI: {it.AI가_판단한_정오답}
+                </span>
+              )}
+            </div>
             <div className="flex gap-2">
               {marks.map(m => (
                 <button
@@ -77,6 +88,15 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
             <label className="text-sm text-slate-600">문제 본문</label>
             <div className="w-full border rounded px-3 py-2 mt-1 min-h-[100px] max-h-[300px] overflow-auto bg-slate-50 text-slate-700">
               {it.문제내용.text}
+              {it.문제_보기 && it.문제_보기.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {it.문제_보기.map((choice, idx) => (
+                    <div key={idx} className="text-sm">
+                      {idx + 1}차: {choice.text}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
