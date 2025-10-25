@@ -115,6 +115,7 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
       labels (
         user_answer,
         user_mark,
+        is_correct,
         classification
       )
     `)
@@ -131,6 +132,9 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
     return {
       index: p.index_in_image,
       사용자가_직접_채점한_정오답: normalizeMark(label.user_mark),
+      AI가_판단한_정오답: label.is_correct !== undefined && label.is_correct !== null
+        ? (label.is_correct ? '정답' : '오답')
+        : undefined,
       문제내용: {
         text: p.stem || '',
         confidence_score: 1.0,
@@ -323,16 +327,16 @@ export async function fetchProblemsByClassification(
   
   // 분류 필터링
   if (depth1) {
-    query = query.eq('classification->1Depth', depth1);
+    query = query.eq('classification->>1Depth', depth1);
   }
   if (depth2) {
-    query = query.eq('classification->2Depth', depth2);
+    query = query.eq('classification->>2Depth', depth2);
   }
   if (depth3) {
-    query = query.eq('classification->3Depth', depth3);
+    query = query.eq('classification->>3Depth', depth3);
   }
   if (depth4) {
-    query = query.eq('classification->4Depth', depth4);
+    query = query.eq('classification->>4Depth', depth4);
   }
   
   // 정답/오답 필터링
