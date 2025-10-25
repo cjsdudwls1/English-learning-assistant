@@ -15,4 +15,37 @@ export async function makeCoachingMessage(stats: TypeStatsRow[]): Promise<string
   return response.text.trim();
 }
 
+export async function generateProblemAnalysisReport(problems: any[]): Promise<string> {
+  const problemData = problems.map(p => ({
+    stem: p.problem.stem,
+    classification: p.problem.labels?.[0]?.classification || {},
+    isCorrect: p.is_correct,
+    userAnswer: p.problem.labels?.[0]?.user_answer || ''
+  }));
+
+  const text = `당신은 영어 교육 전문가입니다. 다음은 사용자가 틀린 영어 문제들입니다:
+
+${problemData.map((p, i) => `
+문제 ${i + 1}:
+- 내용: ${p.stem}
+- 분류: ${JSON.stringify(p.classification)}
+- 정답 여부: ${p.isCorrect ? '정답' : '오답'}
+- 사용자 답안: ${p.userAnswer}
+`).join('\n')}
+
+이 문제들을 분석하여 다음 내용을 포함한 학습 리포트를 작성해주세요:
+
+1. **공통 오류 패턴**: 이 문제들에서 나타나는 공통적인 실수 패턴
+2. **취약한 영역**: 사용자가 특히 약한 문법/어휘 영역
+3. **학습 권장사항**: 구체적인 개선 방안과 학습 방법
+
+한국어로 작성해주세요.`;
+
+  const response = await ai.models.generateContent({ 
+    model: 'gemini-2.5-flash', 
+    contents: { parts: [{ text }] } 
+  });
+  return response.text.trim();
+}
+
 

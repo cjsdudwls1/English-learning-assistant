@@ -5,6 +5,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { fetchProblemsByClassification } from '../services/db';
+import { generateProblemAnalysisReport } from '../services/coaching';
 
 export const StatsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -16,6 +17,8 @@ export const StatsPage: React.FC = () => {
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [selectedProblems, setSelectedProblems] = useState<any[]>([]);
   const [selectedFilter, setSelectedFilter] = useState<{node: StatsNode, isCorrect: boolean} | null>(null);
+  const [aiAnalysisReport, setAiAnalysisReport] = useState<string | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const loadData = async () => {
     try {
@@ -62,10 +65,25 @@ export const StatsPage: React.FC = () => {
       );
       setSelectedProblems(problems);
       setSelectedFilter({ node, isCorrect });
+      setAiAnalysisReport(null); // 새로운 문제 선택 시 리포트 초기화
     } catch (e) {
       setError(e instanceof Error ? e.message : '문제 조회 실패');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAiAnalysis = async () => {
+    if (selectedProblems.length === 0) return;
+    
+    try {
+      setIsGeneratingReport(true);
+      const report = await generateProblemAnalysisReport(selectedProblems);
+      setAiAnalysisReport(report);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'AI 분석 리포트 생성 실패');
+    } finally {
+      setIsGeneratingReport(false);
     }
   };
 
@@ -163,9 +181,18 @@ export const StatsPage: React.FC = () => {
       {/* 선택된 문제 리스트 */}
       {selectedProblems.length > 0 && (
         <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
-          <h3 className="text-xl font-bold mb-4">
-            {selectedFilter?.node.depth1} - {selectedFilter?.isCorrect ? '정답' : '오답'} 문제 ({selectedProblems.length}개)
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold">
+              {selectedFilter?.node.depth1} - {selectedFilter?.isCorrect ? '정답' : '오답'} 문제 ({selectedProblems.length}개)
+            </h3>
+            <button
+              onClick={handleAiAnalysis}
+              disabled={isGeneratingReport}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {isGeneratingReport ? 'AI 분석 중...' : 'AI 분석'}
+            </button>
+          </div>
           <div className="space-y-3 max-h-[600px] overflow-auto">
             {selectedProblems.map((item, idx) => (
               <div key={idx} className="border border-slate-200 rounded-lg p-4">
@@ -204,6 +231,16 @@ export const StatsPage: React.FC = () => {
               </div>
             ))}
           </div>
+          
+          {/* AI 분석 리포트 */}
+          {aiAnalysisReport && (
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-lg font-semibold text-blue-800 mb-3">AI 분석 리포트</h4>
+              <div className="text-blue-700 whitespace-pre-wrap">
+                {aiAnalysisReport}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
