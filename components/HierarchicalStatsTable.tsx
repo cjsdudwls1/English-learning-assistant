@@ -73,16 +73,13 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick }) => {
           </button>
         </td>
         <td className="p-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCountClick(node.sessionIds || []);
-            }}
-            className="text-slate-600 hover:text-slate-800 hover:underline"
-            disabled={!node.sessionIds || node.sessionIds.length === 0}
-          >
-            {node.total_count}
-          </button>
+          {node.total_count > 0 ? (
+            <span className="text-slate-600">
+              {((node.incorrect_count / node.total_count) * 100).toFixed(1)}%
+            </span>
+          ) : (
+            <span className="text-slate-400">-</span>
+          )}
         </td>
       </tr>
       {isExpanded && hasChildren && node.children?.map((child, index) => (
@@ -109,7 +106,7 @@ export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({
             <th className="p-2">카테고리</th>
             <th className="p-2">정답</th>
             <th className="p-2">오답</th>
-            <th className="p-2">총합</th>
+            <th className="p-2">오답률</th>
           </tr>
         </thead>
         <tbody>

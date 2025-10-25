@@ -75,21 +75,9 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
 
           <div className="mt-3">
             <label className="text-sm text-slate-600">문제 본문</label>
-            <textarea
-              className="w-full border rounded px-3 py-2 mt-1 min-h-[100px] max-h-[300px] overflow-auto"
-              rows={5}
-              value={it.문제내용.text}
-              onChange={(e) => updateItem(i, { 문제내용: { ...it.문제내용, text: e.target.value } })}
-            />
-          </div>
-
-          <div className="mt-3">
-            <label className="text-sm text-slate-600">사용자 답안</label>
-            <input
-              className="w-full border rounded px-3 py-2 mt-1"
-              value={it.사용자가_기술한_정답.text}
-              onChange={(e) => updateItem(i, { 사용자가_기술한_정답: { ...it.사용자가_기술한_정답, text: e.target.value } })}
-            />
+            <div className="w-full border rounded px-3 py-2 mt-1 min-h-[100px] max-h-[300px] overflow-auto bg-slate-50 text-slate-700">
+              {it.문제내용.text}
+            </div>
           </div>
 
           <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -120,7 +108,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
       {error && <div className="p-3 bg-red-100 border text-red-800 rounded">{error}</div>}
       <div className="text-right">
         <button disabled={saving} onClick={handleSubmit} className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold disabled:bg-slate-400">
-          {saving ? '저장 중...' : '최종 저장'}
+          {saving ? '저장 중...' : '저장'}
         </button>
       </div>
     </div>

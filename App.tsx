@@ -10,6 +10,7 @@ import { AuthGate } from './components/AuthGate';
 import { LogoutButton } from './components/LoginButton';
 import { EditPage } from './pages/EditPage';
 import { StatsPage } from './pages/StatsPage';
+import { RecentProblemsPage } from './pages/RecentProblemsPage';
 import { AnalyzingPage } from './pages/AnalyzingPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 
@@ -116,7 +117,8 @@ const App: React.FC = () => {
       <Header />
       <nav className="container mx-auto px-4 md:px-8 py-3 flex gap-3 items-center text-sm text-slate-600">
         <Link to="/upload" className="hover:text-indigo-600">풀이한 문제 올리기</Link>
-        <Link to="/stats" className="hover:text-indigo-600">내 풀이 결과 한눈에 보기</Link>
+        <Link to="/recent" className="hover:text-indigo-600">최근 업로드된 문제</Link>
+        <Link to="/stats" className="hover:text-indigo-600">통계</Link>
         <div className="ml-auto"><LogoutButton /></div>
       </nav>
       <main className="container mx-auto p-4 md:p-8">
@@ -153,6 +155,7 @@ const App: React.FC = () => {
           <Route path="/edit/:sessionId" element={<AuthGate><EditPage /></AuthGate>} />
           <Route path="/analyzing/:sessionId" element={<AuthGate><AnalyzingPage /></AuthGate>} />
           <Route path="/session/:sessionId" element={<AuthGate><SessionDetailPage /></AuthGate>} />
+          <Route path="/recent" element={<AuthGate><RecentProblemsPage /></AuthGate>} />
           <Route path="/stats" element={<AuthGate><StatsPage /></AuthGate>} />
           <Route path="/" element={<AuthGate><div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
                 <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
