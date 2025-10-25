@@ -57,7 +57,10 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
       if (blob) {
         onRotate(blob);
       }
-      setIsRotating(false);
+      // 회전 완료 후 상태 해제
+      setTimeout(() => {
+        setIsRotating(false);
+      }, 100);
     }, 'image/jpeg', 0.9);
   };
 

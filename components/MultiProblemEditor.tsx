@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import type { AnalysisResults, ProblemItem, ProblemClassification } from '../types';
+import { ReportModal } from './ReportModal';
 
 interface MultiProblemEditorProps {
   initial: AnalysisResults;
@@ -16,6 +17,8 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
   }, [initial.items]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportingProblemIndex, setReportingProblemIndex] = useState<number | null>(null);
 
   const marks = ['정답', '오답'];
 
@@ -49,6 +52,17 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
     }
   };
 
+  const handleReportClick = (problemIndex: number) => {
+    setReportingProblemIndex(problemIndex);
+    setReportModalOpen(true);
+  };
+
+  const handleReportSubmit = (reason: string) => {
+    console.log(`Problem ${reportingProblemIndex} reported:`, reason);
+    // 실제 데이터 저장은 하지 않음 (개발용)
+    alert('신고가 접수되었습니다. 감사합니다.');
+  };
+
   return (
     <div className="space-y-6">
       {items.map((it, i) => (
@@ -56,31 +70,36 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-bold">문항 #{i + 1}</h3>
-              {it.AI가_판단한_정오답 && (
-                <span className={`text-sm px-2 py-1 rounded ${
-                  it.AI가_판단한_정오답 === '정답' 
-                    ? 'bg-green-100 text-green-700' 
-                    : 'bg-red-100 text-red-700'
-                }`}>
-                  AI: {it.AI가_판단한_정오답}
-                </span>
-              )}
             </div>
             <div className="flex gap-2">
-              {marks.map(m => (
-                <button
-                  key={m}
-                  type="button"
-                  className={`px-4 py-2 rounded font-medium transition-colors ${
-                    it.사용자가_직접_채점한_정오답 === m
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                  onClick={() => updateMark(i, m)}
-                >
-                  {m}
-                </button>
-              ))}
+              {marks.map(m => {
+                const isUserSelected = it.사용자가_직접_채점한_정오답 === m;
+                const isAISelected = it.AI가_판단한_정오답 === m;
+                
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`px-4 py-2 rounded font-medium transition-colors ${
+                      isUserSelected
+                        ? 'bg-blue-600 text-white'
+                        : isAISelected
+                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 ring-2 ring-blue-500'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                    onClick={() => updateMark(i, m)}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => handleReportClick(i)}
+                className="px-3 py-2 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                title="AI 분석이 잘못되었다고 생각되시나요?"
+              >
+                신고
+              </button>
             </div>
           </div>
 
@@ -131,6 +150,12 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           {saving ? '저장 중...' : '저장'}
         </button>
       </div>
+      
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        onSubmit={handleReportSubmit}
+      />
     </div>
   );
 };
