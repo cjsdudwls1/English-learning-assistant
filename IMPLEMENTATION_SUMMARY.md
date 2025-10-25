@@ -1,202 +1,115 @@
-# 구현 완료 요약
+# 구현 완료 요약 (최종) - Plan.md 대조
 
-## ✅ 완료된 작업
+## Plan.md 대비 구현 상태
 
-### 1. 클라이언트 로직 개선 (App.tsx)
+### 1. 페이지 분리 및 라우팅 재구성 ✅ 완료
+- ✅ RecentProblemsPage.tsx 생성 (최근 업로드된 문제 리스트만)
+- ✅ StatsPage.tsx 수정 (통계만 표시)
+- ✅ App.tsx 라우팅 업데이트
+- ✅ 네비게이션 메뉴: [풀이한 문제 올리기], [최근 업로드된 문제], [통계]
 
-**변경 내용**:
-- 이미지 업로드와 세션 생성을 클라이언트에서 먼저 완료
-- Edge Function은 분석만 담당하도록 역할 분리
-- 사용자는 업로드 완료 후 즉시 다른 작업 가능
+### 2. 이미지 업로드 UI 개선 ⏳ 부분 완료
+- ✅ ImageModal 컴포넌트 구현 (모달 크기 자동 조정)
+- ⏳ 큰 이미지 모달 크기 개선 (추가 작업 필요)
 
-**처리 흐름**:
-1. 이미지를 Supabase Storage에 업로드
-2. 세션 레코드를 DB에 생성
-3. Edge Function 호출 (백그라운드, 응답 대기 안 함)
-4. 사용자에게 "저장되었습니다!" 메시지 표시
-5. 통계 페이지로 즉시 이동
+### 3. 최근 업로드된 문제 리스트 UI 개선 ✅ 완료
+- ✅ AI 분석 중 상태 표시
+- ✅ 체크박스 선택 UI로 일괄 삭제 구현
+- ✅ 페이징 구현 (기본 5개, 전체 보기)
 
-**장점**:
-- ✅ 세션이 먼저 생성되므로 통계 페이지에 즉시 표시
-- ✅ Edge Function 실패해도 이미지는 저장됨
-- ✅ 사용자가 페이지를 닫아도 Edge Function은 계속 실행
+### 4. 저장 로직 변경 ⏳ 부분 완료 (중요!)
+- ✅ ProblemQuickEdit 컴포넌트 생성 (인라인 정답/오답 표시)
+- ✅ SessionDetailPage에 간편 편집 모드 추가
+- ✅ updateProblemMark 함수 구현
+- ❌ 저장되지 않은 항목 별도 표시 (미구현)
+- ❌ sessions 테이블 is_saved 필드 추가 (미구현)
+- ❌ fetchUnsavedSessions, fetchSavedSessions 함수 (미구현)
 
-### 2. Edge Function 리팩토링 (index.ts)
+### 5. 문제 상세 페이지 개선 ✅ 완료
+- ✅ 문제 본문 Read-only (textarea → div)
+- ✅ "사용자 답안" 필드 삭제
+- ✅ "최종 저장" → "저장" 버튼
 
-**변경 내용**:
-- 입력: `sessionId`, `imageBase64`, `mimeType`
-- 더 이상 이미지 업로드나 세션 생성을 하지 않음
-- 순수하게 분석과 결과 저장만 담당
+### 6. 통계 페이지 기능 추가 ✅ 완료
+- ✅ react-datepicker 설치 및 적용
+- ✅ 기간 설정 UI (1개월, 3개월, 6개월, 올 한 해, Date Picker)
+- ✅ fetchStatsByType, fetchHierarchicalStats에 기간 파라미터 추가
+- ✅ "총합" → "오답률" 변경
+- ✅ 카테고리 숫자 클릭 시 문제 리스트 표시
+- ✅ fetchProblemsByClassification 함수 구현
 
-**처리 흐름**:
-1. sessionId로 세션 정보 확인
-2. Gemini API로 이미지 분석
-3. 분석 결과를 problems/labels 테이블에 저장
-4. 성공/실패 응답 반환
+### 7. AI 분석 연동 ✅ 완료
+- ✅ analyze-problems Edge Function 생성
+- ✅ StatsPage에 "AI 분석" 버튼 추가
+- ✅ 분석 결과 표시 UI 구현 (강점, 약점, 권장사항)
+- ✅ Edge Function 배포 완료 (Supabase)
 
-**개선사항**:
-- ✅ 로깅 강화 (각 단계별 상세 로그)
-- ✅ 에러 처리 개선 (에러 메시지 + 상세 정보)
-- ✅ 환경 변수 체크 강화
+### 8. "해당 없음" 처리 ✅ 완료
+- ✅ Edge Function 프롬프트 강화
+- ✅ ensureValidClassification 함수 추가
+- ✅ 기본값 할당 로직 (기타, 보통)
 
-### 3. 문서화
+### 9. 신규 기능 ⏳ 미구현
+- ❌ 신고 버튼 추가
+- ❌ problems 테이블 explanation, llm_analysis 필드 추가
+- ❌ 문제 해설 및 LLM 분석 결과 표시
 
-생성된 문서:
-- **SUPABASE_ENV_SETUP.md**: 환경 변수 설정 가이드
-- **EDGE_FUNCTION_DEPLOY.md**: Edge Function 배포 가이드  
-- **IMPLEMENTATION_SUMMARY.md**: 이 문서
-- **README.md**: 업데이트됨
+### 10. 푸터에 고객지원 이메일 ✅ 완료
+- ✅ mearidj@gmail.com 표시
 
-## 🔧 필요한 다음 단계
+### 11. 번호 인식 로직 개선 ⏳ 미구현
+- ❌ Q1, Q2, Q3 형식 표시
+- ❌ display_number 필드 추가
 
-### 1단계: Supabase Edge Function 환경 변수 설정 ⚠️ 중요!
+## 완료된 작업 요약
 
-**방법 A: Supabase Dashboard (권장)**
-1. https://supabase.com/dashboard 접속
-2. 프로젝트 선택: `vkoegxohahpptdyipmkr`
-3. Edge Functions → Settings → Add new secret
-4. Name: `GEMINI_API_KEY`
-5. Value: `AIzaSyA2w5PqQOn98wHaZy2MtiRkbxeHqrEYbTo`
+### 핵심 기능 (완료)
+1. ✅ 페이지 분리 (RecentProblemsPage, StatsPage)
+2. ✅ 기간 필터링 (Date Picker, 버튼)
+3. ✅ 문제 필터링 (카테고리별 조회)
+4. ✅ 인라인 저장 (간편 편집 모드)
+5. ✅ AI 분석 통합 (Edge Function 배포 완료)
+6. ✅ UI/UX 개선 (오답률, 이메일 등)
 
-자세한 내용: [SUPABASE_ENV_SETUP.md](./SUPABASE_ENV_SETUP.md)
+### 부분 완료
+1. ⏳ 저장 로직: 인라인 저장은 구현되었으나 미저장/저장 분리는 미구현
+2. ⏳ 이미지 업로드: 기본 모달은 구현되었으나 크기 자동 조정 미완료
 
-### 2단계: Edge Function 배포
+### 미구현 기능
+1. ❌ 신고 기능
+2. ❌ 문제 해설 및 LLM 분석
+3. ❌ 번호 인식 로직 개선 (Q1, Q2 형식)
 
-**방법 A: Supabase Dashboard (가장 쉬움)**
-1. Edge Functions → analyze-image (또는 Create new)
-2. 코드 에디터에 `supabase/functions/analyze-image/index.ts` 내용 붙여넣기
-3. Deploy 클릭
+## 배포 상태
+- ✅ 빌드 성공
+- ✅ Edge Function (analyze-problems) 배포 완료
+- ✅ Git 커밋 및 푸시 완료
 
-**방법 B: Supabase CLI**
-```bash
-# Scoop으로 CLI 설치 (처음만)
-scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
-scoop install supabase
+## 주요 차이점
 
-# 배포
-cd English-learning-assistant
-supabase login
-supabase link --project-ref vkoegxohahpptdyipmkr
-supabase functions deploy analyze-image
-```
+### Plan.md에서 계획했으나 미구현된 부분
+1. **저장 로직의 핵심 기능**: 
+   - Plan: 미저장 항목 별도 섹션 표시
+   - 실제: 모든 문제가 한 리스트에 표시됨
 
-자세한 내용: [EDGE_FUNCTION_DEPLOY.md](./EDGE_FUNCTION_DEPLOY.md)
+2. **신고 기능**: 
+   - Plan: 신고 버튼 및 모달
+   - 실제: 미구현
 
-### 3단계: 테스트
+3. **문제 해설**: 
+   - Plan: explanation, llm_analysis 필드
+   - 실제: 미구현
 
-1. 개발 서버 실행:
-   ```bash
-   cd English-learning-assistant
-   npm run dev
-   ```
+### Plan.md를 초과하여 구현한 부분
+1. ✅ 간편 편집/전체 편집 모드 전환
+2. ✅ AI 분석 결과 UI (강점, 약점, 권장사항)
+3. ✅ Edge Function 배포 (supabase-mcp 사용)
 
-2. 브라우저에서 앱 열기
+## 다음 단계 (선택사항)
 
-3. 로그인 후 이미지 업로드
-
-4. 예상 동작:
-   - "저장되었습니다! AI 분석이 백그라운드에서 진행 중입니다." 메시지
-   - 즉시 통계 페이지로 이동
-   - 세션이 목록에 표시됨 (문제 개수는 0개)
-   - 몇 초 후 새로고침하면 분석 결과가 표시됨
-
-5. 로그 확인:
-   - 브라우저 콘솔: 클라이언트 로그
-   - Supabase Dashboard → Edge Functions → analyze-image → Logs: 서버 로그
-
-## 🔍 트러블슈팅
-
-### 문제 1: "환경 변수가 설정되지 않았습니다"
-**원인**: `.env` 파일 없음  
-**해결**: `env.txt`를 `.env`로 복사
-```bash
-cp env.txt .env
-```
-
-### 문제 2: Edge Function이 실행되지 않음
-**원인**: 환경 변수 미설정 또는 배포 안 됨  
-**해결**: 
-1. Supabase Dashboard에서 `GEMINI_API_KEY` 확인
-2. Edge Function 재배포
-
-### 문제 3: 분석 결과가 표시되지 않음
-**원인**: Edge Function 에러  
-**해결**:
-1. Supabase Dashboard → Edge Functions → Logs 확인
-2. 에러 메시지 확인 후 수정
-
-### 문제 4: "Session not found" 에러
-**원인**: sessionId가 잘못 전달됨  
-**해결**: 브라우저 콘솔에서 sessionId 확인
-
-## 📊 아키텍처 개요
-
-```
-┌─────────────┐
-│   사용자    │
-└──────┬──────┘
-       │ 1. 이미지 선택
-       ▼
-┌─────────────────────────────────────┐
-│  App.tsx (클라이언트)                │
-│                                     │
-│  1. 이미지 → Storage 업로드         │
-│  2. 세션 생성 → DB                  │
-│  3. Edge Function 호출 (비동기)     │
-│  4. 즉시 /stats로 이동              │
-└─────────────┬───────────────────────┘
-              │ 3. POST /functions/v1/analyze-image
-              │    { sessionId, imageBase64, mimeType }
-              │    (keepalive: true)
-              ▼
-┌─────────────────────────────────────┐
-│  Edge Function (백그라운드)          │
-│                                     │
-│  1. 세션 확인                        │
-│  2. Gemini AI 분석                   │
-│  3. 결과 → problems + labels 테이블  │
-└─────────────────────────────────────┘
-```
-
-## 🎯 핵심 개선사항
-
-### Before (문제점)
-- ❌ 클라이언트가 Edge Function 응답을 기다림
-- ❌ Edge Function에서 모든 작업 (업로드 + 분석 + 저장)
-- ❌ 에러 발생 시 사용자에게 알리지 않음
-- ❌ 페이지를 닫으면 작업이 중단될 수 있음
-
-### After (개선)
-- ✅ 업로드와 분석을 분리
-- ✅ 클라이언트는 업로드만 완료하고 즉시 응답
-- ✅ Edge Function은 독립적으로 분석 수행
-- ✅ 에러 처리 강화 및 로깅 개선
-- ✅ `keepalive: true`로 페이지를 닫아도 요청 유지
-
-## 📝 파일 변경 목록
-
-### 수정된 파일
-1. `App.tsx` - 클라이언트 로직 개선
-2. `supabase/functions/analyze-image/index.ts` - Edge Function 리팩토링
-3. `README.md` - 문서 업데이트
-
-### 새로 생성된 파일
-1. `SUPABASE_ENV_SETUP.md` - 환경 변수 설정 가이드
-2. `EDGE_FUNCTION_DEPLOY.md` - 배포 가이드
-3. `IMPLEMENTATION_SUMMARY.md` - 이 문서
-
-## ✅ 체크리스트
-
-배포 전 확인사항:
-
-- [ ] Supabase에 `GEMINI_API_KEY` 환경 변수 설정
-- [ ] Edge Function 배포 완료
-- [ ] 로컬에서 `.env` 파일 생성 (env.txt 복사)
-- [ ] `npm run dev`로 로컬 테스트
-- [ ] 실제 이미지로 업로드 테스트
-- [ ] Edge Function Logs에서 성공 확인
-- [ ] 통계 페이지에서 결과 확인
-
-모든 체크가 완료되면 배포 완료! 🎉
+1. 저장 로직 완성 (미저장/저장 분리)
+2. 신고 기능 추가
+3. 문제 해설 및 분석 결과 추가
+4. 번호 인식 개선
 
 
