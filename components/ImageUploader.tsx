@@ -46,21 +46,25 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4 text-slate-700">1. 문제 이미지 업로드</h2>
-      <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-          className="mb-4"
-        />
+      <div className="space-y-4">
+        <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="mb-4"
+          />
+        </div>
         {previewUrl && (
-          <div className="mt-4">
-            <ImageRotator
-              imageUrl={previewUrl}
-              onRotate={handleRotate}
-              className="max-w-full max-h-80 mx-auto rounded-md shadow-md"
-            />
-            <p className="text-sm text-slate-500 mt-2">
+          <div className="bg-slate-50 rounded-lg p-4">
+            <div className="max-h-96 overflow-hidden rounded-md border">
+              <ImageRotator
+                imageUrl={previewUrl}
+                onRotate={handleRotate}
+                className="w-full h-auto object-contain max-h-96"
+              />
+            </div>
+            <p className="text-sm text-slate-500 mt-2 text-center">
               회전 버튼을 사용하여 이미지 방향을 조정할 수 있습니다
             </p>
           </div>
