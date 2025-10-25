@@ -291,4 +291,76 @@ export async function fetchSessionsByStatus(status: string): Promise<SessionWith
   return sessions;
 }
 
+// 분류별 문제 조회 (정답/오답 필터링 포함)
+export async function fetchProblemsByClassification(
+  depth1: string,
+  depth2: string,
+  depth3: string,
+  depth4: string,
+  isCorrect: boolean | null
+): Promise<any[]> {
+  const userId = await getCurrentUserId();
+  
+  let query = supabase
+    .from('labels')
+    .select(`
+      problem_id,
+      is_correct,
+      problems!inner (
+        id,
+        session_id,
+        index_in_image,
+        stem,
+        choices,
+        sessions!inner (
+          user_id,
+          created_at,
+          image_url
+        )
+      )
+    `)
+    .eq('problems.sessions.user_id', userId);
+  
+  // 분류 필터링
+  if (depth1) {
+    query = query.eq('classification->1Depth', depth1);
+  }
+  if (depth2) {
+    query = query.eq('classification->2Depth', depth2);
+  }
+  if (depth3) {
+    query = query.eq('classification->3Depth', depth3);
+  }
+  if (depth4) {
+    query = query.eq('classification->4Depth', depth4);
+  }
+  
+  // 정답/오답 필터링
+  if (isCorrect !== null) {
+    query = query.eq('is_correct', isCorrect);
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) throw error;
+  
+  // 데이터 포맷 변환
+  return (data || []).map((item: any) => ({
+    problem_id: item.problem_id,
+    is_correct: item.is_correct,
+    problem: {
+      id: item.problems.id,
+      session_id: item.problems.session_id,
+      index_in_image: item.problems.index_in_image,
+      stem: item.problems.stem,
+      choices: item.problems.choices,
+      session: {
+        id: item.problems.session_id,
+        created_at: item.problems.sessions.created_at,
+        image_url: item.problems.sessions.image_url,
+      },
+    },
+  }));
+}
+
 
