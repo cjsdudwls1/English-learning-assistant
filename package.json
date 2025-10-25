@@ -19,7 +19,9 @@
     "@capacitor/core": "^7.4.3",
     "@google/genai": "^1.21.0",
     "@supabase/supabase-js": "^2.47.10",
+    "@types/react-datepicker": "^6.2.0",
     "react": "^19.1.1",
+    "react-datepicker": "^8.8.0",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.0.2"
   },
