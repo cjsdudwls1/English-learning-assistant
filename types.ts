@@ -30,6 +30,7 @@ export interface AnalysisResult {
 export interface ProblemItem {
   index: number;
   사용자가_직접_채점한_정오답: 'O' | 'X' | '△' | '✓' | string;
+  AI가_판단한_정오답?: '정답' | '오답' | string;
   문제내용: TextWithConfidence;
   문제_보기: TextWithConfidence[];
   사용자가_기술한_정답: UserAnswer;
@@ -39,4 +40,13 @@ export interface ProblemItem {
 
 export interface AnalysisResults {
   items: ProblemItem[];
+}
+
+export interface SessionWithProblems {
+  id: string;
+  created_at: string;
+  image_url: string;
+  problem_count: number;
+  correct_count: number;
+  incorrect_count: number;
 }
