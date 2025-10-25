@@ -23,11 +23,10 @@ export interface StatsNode {
   sessionIds?: string[]; // 해당 카테고리의 세션 ID들
 }
 
-export async function fetchStatsByType(): Promise<TypeStatsRow[]> {
+export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promise<TypeStatsRow[]> {
   const userId = await getCurrentUserId();
   
-  // labels -> problems -> sessions를 조인하여 현재 사용자의 데이터만 조회
-  const { data, error } = await supabase
+  let query = supabase
     .from('labels')
     .select(`
       classification,
@@ -35,11 +34,24 @@ export async function fetchStatsByType(): Promise<TypeStatsRow[]> {
       problems!inner (
         session_id,
         sessions!inner (
-          user_id
+          user_id,
+          created_at
         )
       )
     `)
     .eq('problems.sessions.user_id', userId);
+
+  // 기간 필터링
+  if (startDate) {
+    query = query.gte('problems.sessions.created_at', startDate.toISOString());
+  }
+  if (endDate) {
+    const endDateTime = new Date(endDate);
+    endDateTime.setHours(23, 59, 59, 999);
+    query = query.lte('problems.sessions.created_at', endDateTime.toISOString());
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -75,11 +87,10 @@ export async function fetchStatsByType(): Promise<TypeStatsRow[]> {
 }
 
 // 계층 구조 통계 집계 (모든 depth 레벨)
-export async function fetchHierarchicalStats(): Promise<StatsNode[]> {
+export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): Promise<StatsNode[]> {
   const userId = await getCurrentUserId();
   
-  // labels -> problems -> sessions를 조인하여 현재 사용자의 데이터만 조회
-  const { data, error } = await supabase
+  let query = supabase
     .from('labels')
     .select(`
       classification,
@@ -87,11 +98,24 @@ export async function fetchHierarchicalStats(): Promise<StatsNode[]> {
       problems!inner (
         session_id,
         sessions!inner (
-          user_id
+          user_id,
+          created_at
         )
       )
     `)
     .eq('problems.sessions.user_id', userId);
+
+  // 기간 필터링
+  if (startDate) {
+    query = query.gte('problems.sessions.created_at', startDate.toISOString());
+  }
+  if (endDate) {
+    const endDateTime = new Date(endDate);
+    endDateTime.setHours(23, 59, 59, 999);
+    query = query.lte('problems.sessions.created_at', endDateTime.toISOString());
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
