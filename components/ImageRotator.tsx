@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 interface ImageRotatorProps {
   imageUrl: string;
@@ -15,6 +15,11 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
   const [isRotating, setIsRotating] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+
+  // imageUrl이 변경되면 rotation 초기화
+  useEffect(() => {
+    setRotation(0);
+  }, [imageUrl]);
 
   const rotateImage = (degrees: number) => {
     // 중복 클릭 방지
