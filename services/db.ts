@@ -37,17 +37,18 @@ export async function createSession(imageUrl: string): Promise<string> {
   return data.id as string;
 }
 
-// 사용자의 세션 목록 조회 (최근순) - 라벨링이 완료된 세션만
+// 사용자의 세션 목록 조회 (최근순) - 사용자 라벨링이 완료된 세션만 (status === 'labeled')
 export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
   
-  // sessions와 problems, labels를 조인하여 통계 계산
+  // sessions와 problems, labels를 조인하여 통계 계산 (labeled 상태만)
   const { data, error } = await supabase
     .from('sessions')
     .select(`
       id,
       created_at,
       image_url,
+      status,
       problems (
         id,
         labels (
@@ -56,41 +57,35 @@ export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
       )
     `)
     .eq('user_id', userId)
+    .eq('status', 'labeled')
     .order('created_at', { ascending: false });
   
   if (error) throw error;
   
-  // 통계 계산 및 라벨링 완료된 세션만 필터링
-  const sessions: SessionWithProblems[] = (data || [])
-    .map((session: any) => {
-      const problems = session.problems || [];
-      const problem_count = problems.length;
-      let correct_count = 0;
-      let incorrect_count = 0;
-      
-      problems.forEach((problem: any) => {
-        const labels = problem.labels || [];
-        if (labels.length > 0) {
-          const mark = normalizeMark(labels[0].user_mark);
-          if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
-        }
-      });
-      
-      return {
-        id: session.id,
-        created_at: session.created_at,
-        image_url: session.image_url,
-        problem_count,
-        correct_count,
-        incorrect_count,
-      };
-    })
-    .filter((session) => {
-      // 라벨링이 완료된 세션만: problem_count > 0 AND (correct_count + incorrect_count) === problem_count
-      // 즉, 모든 문제에 대해 정답 또는 오답 라벨링이 완료된 경우
-      return session.problem_count > 0 && 
-             (session.correct_count + session.incorrect_count) === session.problem_count;
+  // 통계 계산
+  const sessions: SessionWithProblems[] = (data || []).map((session: any) => {
+    const problems = session.problems || [];
+    const problem_count = problems.length;
+    let correct_count = 0;
+    let incorrect_count = 0;
+    
+    problems.forEach((problem: any) => {
+      const labels = problem.labels || [];
+      if (labels.length > 0) {
+        const mark = normalizeMark(labels[0].user_mark);
+        if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+      }
     });
+    
+    return {
+      id: session.id,
+      created_at: session.created_at,
+      image_url: session.image_url,
+      problem_count,
+      correct_count,
+      incorrect_count,
+    };
+  });
   
   return sessions;
 }
