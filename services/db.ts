@@ -374,57 +374,50 @@ export async function fetchProblemsByClassification(
   }));
 }
 
-// 분석 중인 세션 조회 (problem_count === 0)
+// 분석 중인 세션 조회 (status === 'processing')
 export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
   
-  // sessions와 problems를 조인하여 problem_count 계산
+  // sessions 조회 (status가 processing인 세션)
   const { data, error } = await supabase
     .from('sessions')
     .select(`
       id,
       created_at,
       image_url,
-      problems (
-        id
-      )
+      status
     `)
     .eq('user_id', userId)
+    .eq('status', 'processing')
     .order('created_at', { ascending: false });
   
   if (error) throw error;
   
-  // problem_count === 0인 세션만 필터링
-  const analyzingSessions: SessionWithProblems[] = (data || [])
-    .map((session: any) => {
-      const problems = session.problems || [];
-      const problem_count = problems.length;
-      
-      return {
-        id: session.id,
-        created_at: session.created_at,
-        image_url: session.image_url,
-        problem_count,
-        correct_count: 0,
-        incorrect_count: 0,
-      };
-    })
-    .filter((session) => session.problem_count === 0);
+  // processing 상태인 세션들을 SessionWithProblems 형식으로 변환
+  const analyzingSessions: SessionWithProblems[] = (data || []).map((session: any) => ({
+    id: session.id,
+    created_at: session.created_at,
+    image_url: session.image_url,
+    problem_count: 0,
+    correct_count: 0,
+    incorrect_count: 0,
+  }));
   
   return analyzingSessions;
 }
 
-// 라벨링이 필요한 세션 조회 (problem_count > 0 AND 모든 문제의 user_mark가 null)
+// 라벨링이 필요한 세션 조회 (status === 'completed' AND 모든 문제의 user_mark가 null)
 export async function fetchPendingLabelingSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
   
-  // sessions와 problems, labels를 조인하여 통계 계산
+  // sessions와 problems, labels를 조인하여 통계 계산 (completed 상태만)
   const { data, error } = await supabase
     .from('sessions')
     .select(`
       id,
       created_at,
       image_url,
+      status,
       problems (
         id,
         labels (
@@ -433,6 +426,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       )
     `)
     .eq('user_id', userId)
+    .eq('status', 'completed')
     .order('created_at', { ascending: false });
   
   if (error) throw error;

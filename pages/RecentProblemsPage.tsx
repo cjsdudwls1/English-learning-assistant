@@ -13,7 +13,7 @@ export const RecentProblemsPage: React.FC = () => {
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAllSessions, setShowAllSessions] = useState(false);
+  const [displayedCount, setDisplayedCount] = useState(5);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalImageUrl, setModalImageUrl] = useState<string>('');
   const [modalSessionId, setModalSessionId] = useState<string>('');
@@ -102,14 +102,24 @@ export const RecentProblemsPage: React.FC = () => {
     setSelectedSessions(newSelected);
   };
 
+  const handleSelectAll = () => {
+    if (selectedSessions.size === displayedSessions.length) {
+      // 모든 항목이 선택되어 있으면 전체 해제
+      setSelectedSessions(new Set());
+    } else {
+      // 모든 항목 선택
+      setSelectedSessions(new Set(displayedSessions.map(session => session.id)));
+    }
+  };
+
   const handleLabelingComplete = async () => {
     // 라벨링 완료 후 데이터 다시 로드
     await loadData();
   };
 
   const displayedSessions = useMemo(() => {
-    return showAllSessions ? sessions : sessions.slice(0, 5);
-  }, [sessions, showAllSessions]);
+    return sessions.slice(0, displayedCount);
+  }, [sessions, displayedCount]);
 
   if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
@@ -139,6 +149,12 @@ export const RecentProblemsPage: React.FC = () => {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">최근 업로드한 문제</h2>
           <div className="flex gap-2">
+            <button
+              onClick={handleSelectAll}
+              className="px-4 py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
+            >
+              {selectedSessions.size === displayedSessions.length ? '전체 해제' : '전체선택'}
+            </button>
             {selectedSessions.size > 0 && (
               <button
                 onClick={handleBulkDelete}
@@ -208,13 +224,13 @@ export const RecentProblemsPage: React.FC = () => {
                 </div>
               </div>
             ))}
-            {sessions.length > 5 && (
+            {displayedCount < sessions.length && (
               <div className="text-center pt-4">
                 <button
-                  onClick={() => setShowAllSessions(!showAllSessions)}
+                  onClick={() => setDisplayedCount(prev => Math.min(prev + 5, sessions.length))}
                   className="px-4 py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
                 >
-                  {showAllSessions ? '접기' : `더보기 (${sessions.length}개)`}
+                  더보기 (5개)
                 </button>
               </div>
             )}
