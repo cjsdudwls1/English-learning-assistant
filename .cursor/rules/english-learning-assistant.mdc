@@ -1,0 +1,154 @@
+---
+alwaysApply: true
+description: English Learning Assistant 프로젝트 핵심 아키텍처 및 보안 규칙
+---
+
+# English Learning Assistant - 핵심 아키텍처
+
+## 프로젝트 목적
+사용자가 손글씨로 푼 영어 문제 이미지를 업로드하면, AI(Gemini)가 OCR 및 분석을 수행하여 문제 내용, 사용자 답안, 채점 결과, 문제 유형을 자동으로 추출하고 DB에 저장하여 학습 통계를 제공하는 앱
+
+## 핵심 데이터 흐름 (절대 변경 금지)
+
+### 1. 이미지 업로드 및 분석 프로세스
+```
+사용자 이미지 업로드 (App.tsx)
+  ↓
+Edge Function 호출 (analyze-image)
+  ↓
+1. 이미지를 Storage에 업로드
+2. Session 생성 (sessions 테이블)
+3. Gemini API로 이미지 분석
+4. Problems 생성 (problems 테이블)
+5. Labels 생성 (labels 테이블)
+  ↓
+DB 저장 완료
+```
+
+### 2. 데이터베이스 스키마
+- **sessions**: user_id, image_url, created_at
+- **problems**: session_id, index_in_image, stem, choices
+- **labels**: problem_id, user_answer, user_mark, is_correct, classification
+
+### 3. 관계
+```
+users (auth.users)
+  ↓ (1:N)
+sessions
+  ↓ (1:N)
+problems
+  ↓ (1:1)
+labels
+```
+
+## 중요한 원칙
+
+### 보안 원칙
+1. **모든 데이터 조회는 user_id로 필터링 필수**
+   - sessions → user_id
+   - problems → sessions.user_id (조인 필요)
+   - labels → problems.sessions.user_id (조인 필요)
+
+2. **세션 접근 권한 검증**
+   - fetchSessionProblems: 세션 소유자만 조회
+   - updateProblemLabels: 세션 소유자만 수정
+   - deleteSession: 세션 소유자만 삭제
+
+### Edge Function 원칙
+1. **Edge Function은 모든 저장 로직을 처리**
+   - 이미지 업로드 (Storage)
+   - 세션 생성
+   - AI 분석
+   - Problems & Labels 저장
+
+2. **클라이언트는 Edge Function만 호출**
+   - 직접 Storage 업로드 금지
+   - 직접 Session 생성 금지
+   - Edge Function이 모든 것을 처리
+
+### 백그라운드 처리 원칙 (절대 변경 금지)
+- AI 분석은 시간이 오래 걸릴 수 있음 (10-60초)
+- **클라이언트**: 5초 타임아웃 설정 (AbortController 사용)
+  - 5초 내 완료: 즉시 성공 메시지
+  - 5초 초과: "분석 진행 중" 메시지 표시 후 페이지 이동
+- **서버**: Edge Function은 타임아웃과 무관하게 완전히 실행됨
+- **중요**: AbortController의 signal은 클라이언트 응답 대기만 중단하며, 서버 실행은 중단하지 않음
+
+### Edge Function 실행 보장
+- Edge Function 내부에서 모든 단계(Step 1-5)를 완료해야 함
+- 클라이언트 타임아웃은 서버 실행에 영향을 주지 않음
+- 로깅을 통해 각 단계 완료 여부 추적 가능
+
+## 파일 구조
+
+### 핵심 파일
+- [App.tsx](mdc:English-learning-assistant/App.tsx) - 이미지 업로드 UI 및 Edge Function 호출
+- [supabase/functions/analyze-image/index.ts](mdc:English-learning-assistant/supabase/functions/analyze-image/index.ts) - Edge Function (전체 프로세스 처리)
+- [services/db.ts](mdc:English-learning-assistant/services/db.ts) - DB 조회 함수 (user_id 필터링 필수)
+- [services/stats.ts](mdc:English-learning-assistant/services/stats.ts) - 통계 조회 (user_id 필터링 필수)
+
+### Edge Function 입력 형식
+```typescript
+{
+  imageBase64: string,
+  mimeType: string,
+  userId: string,
+  fileName: string
+}
+```
+
+## 디버깅 체크리스트
+
+### 이미지 업로드가 안될 때
+1. Edge Function이 호출되는지 확인 (콘솔 로그)
+2. Edge Function 로그 확인 (Supabase 대시보드)
+3. 환경 변수 확인 (GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+4. fetch 요청이 중단되지 않는지 확인 (AbortController 사용 금지)
+
+### 데이터가 공유될 때
+1. 모든 조회 함수에서 user_id 필터링 확인
+2. RLS 정책 확인 (vw_stats_by_type는 사용 금지)
+3. 세션 소유권 검증 확인
+
+## 절대 하지 말아야 할 것 (재발 방지)
+1. ❌ 클라이언트에서 직접 Storage 업로드
+2. ❌ 클라이언트에서 직접 Session 생성
+3. ❌ user_id 필터링 없이 데이터 조회 (데이터 공유 방지)
+4. ❌ vw_stats_by_type 뷰 직접 사용 (RLS 없음)
+5. ❌ fetchUserSessions에서 user_id 필터링 제거
+6. ❌ fetchStatsByType에서 user_id 필터링 제거
+7. ❌ fetchSessionProblems에서 소유권 검증 제거
+8. ❌ deleteSession에서 소유권 검증 제거
+
+## 배포 체크리스트 (필수 - 재발 방지)
+
+### 변경 사항이 있을 때 반드시 수행
+1. **Git 커밋 및 푸시**: 클라이언트 코드 배포 (Netlify 자동 배포)
+2. **Edge Function 배포**: 서버 코드 배포 (수동 필요)
+   ```bash
+   mcp_supabase_deploy_edge_function({
+     name: "analyze-image",
+     files: [...]
+   })
+   ```
+3. **배포 확인**:
+   - Netlify: Git 푸시 후 자동 배포 확인
+   - Supabase: Edge Function 버전 증가 확인
+4. **테스트**:
+   - 브라우저 콘솔 로그 확인
+   - Supabase Edge Function 로그 확인
+   - **중요**: 다른 사용자 계정으로 데이터 격리 테스트
+
+### 재발 방지 검증 절차
+1. **사용자별 데이터 격리 테스트**:
+   - 사용자 A로 로그인하여 데이터 생성
+   - 사용자 B로 로그인하여 사용자 A의 데이터가 보이지 않는지 확인
+   - 통계가 사용자 B의 데이터만 표시되는지 확인
+
+2. **Edge Function 배포 확인**:
+   - Supabase 대시보드에서 최신 버전 확인
+   - Edge Function 로그에서 "Step 1-5" 로그 확인
+
+3. **브라우저 캐시 확인**:
+   - 강제 새로고침 (Ctrl+Shift+R) 후 테스트
+   - 개발자 도구 > Network에서 새로운 JS 파일 로드 확인
