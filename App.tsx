@@ -81,11 +81,18 @@ const App: React.FC = () => {
       alert('업로드 완료. AI 분석이 진행중입니다. 앱에서 나가도 좋습니다.');
       
       // Edge Function 호출 (백그라운드에서 실행)
+      console.log('Attempting to call Edge Function:', functionUrl);
+      console.log('Environment variables:', {
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+      });
+      
       fetch(functionUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY
         },
         body: JSON.stringify({
           imageBase64: base64,
@@ -94,14 +101,20 @@ const App: React.FC = () => {
           fileName: imageFile.name,
         }),
       }).then(async (response) => {
+        console.log('Edge Function response:', response.status, response.statusText);
         if (response.ok) {
           const result = await response.json();
           console.log('Session created:', result.sessionId);
         } else {
-          console.error('Failed to create session:', response.status);
+          console.error('Failed to create session:', response.status, await response.text());
         }
       }).catch((error) => {
         console.error('Fetch error:', error);
+        console.error('Error details:', {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        });
       });
       
       // Edge Function 호출 후 /recent로 이동 (새로고침 포함)
