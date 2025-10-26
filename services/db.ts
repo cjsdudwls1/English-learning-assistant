@@ -37,18 +37,17 @@ export async function createSession(imageUrl: string): Promise<string> {
   return data.id as string;
 }
 
-// 사용자의 세션 목록 조회 (최근순) - 사용자 라벨링이 완료된 세션만 (status === 'labeled')
+// 사용자의 세션 목록 조회 (최근순) - 라벨링이 완료된 세션만
 export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
   
-  // sessions와 problems, labels를 조인하여 통계 계산 (labeled 상태만)
+  // sessions와 problems, labels를 조인하여 통계 계산
   const { data, error } = await supabase
     .from('sessions')
     .select(`
       id,
       created_at,
       image_url,
-      status,
       problems (
         id,
         labels (
@@ -57,35 +56,41 @@ export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
       )
     `)
     .eq('user_id', userId)
-    .eq('status', 'labeled')
     .order('created_at', { ascending: false });
   
   if (error) throw error;
   
-  // 통계 계산
-  const sessions: SessionWithProblems[] = (data || []).map((session: any) => {
-    const problems = session.problems || [];
-    const problem_count = problems.length;
-    let correct_count = 0;
-    let incorrect_count = 0;
-    
-    problems.forEach((problem: any) => {
-      const labels = problem.labels || [];
-      if (labels.length > 0) {
-        const mark = normalizeMark(labels[0].user_mark);
-        if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
-      }
+  // 통계 계산 및 라벨링 완료된 세션만 필터링
+  const sessions: SessionWithProblems[] = (data || [])
+    .map((session: any) => {
+      const problems = session.problems || [];
+      const problem_count = problems.length;
+      let correct_count = 0;
+      let incorrect_count = 0;
+      
+      problems.forEach((problem: any) => {
+        const labels = problem.labels || [];
+        if (labels.length > 0) {
+          const mark = normalizeMark(labels[0].user_mark);
+          if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+        }
+      });
+      
+      return {
+        id: session.id,
+        created_at: session.created_at,
+        image_url: session.image_url,
+        problem_count,
+        correct_count,
+        incorrect_count,
+      };
+    })
+    .filter((session) => {
+      // 라벨링이 완료된 세션만: problem_count > 0 AND (correct_count + incorrect_count) === problem_count
+      // 즉, 모든 문제에 대해 정답 또는 오답 라벨링이 완료된 경우
+      return session.problem_count > 0 && 
+             (session.correct_count + session.incorrect_count) === session.problem_count;
     });
-    
-    return {
-      id: session.id,
-      created_at: session.created_at,
-      image_url: session.image_url,
-      problem_count,
-      correct_count,
-      incorrect_count,
-    };
-  });
   
   return sessions;
 }
@@ -369,50 +374,57 @@ export async function fetchProblemsByClassification(
   }));
 }
 
-// 분석 중인 세션 조회 (status === 'processing')
+// 분석 중인 세션 조회 (problem_count === 0)
 export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
   
-  // sessions 조회 (status가 processing인 세션)
+  // sessions와 problems를 조인하여 problem_count 계산
   const { data, error } = await supabase
     .from('sessions')
     .select(`
       id,
       created_at,
       image_url,
-      status
+      problems (
+        id
+      )
     `)
     .eq('user_id', userId)
-    .eq('status', 'processing')
     .order('created_at', { ascending: false });
   
   if (error) throw error;
   
-  // processing 상태인 세션들을 SessionWithProblems 형식으로 변환
-  const analyzingSessions: SessionWithProblems[] = (data || []).map((session: any) => ({
-    id: session.id,
-    created_at: session.created_at,
-    image_url: session.image_url,
-    problem_count: 0,
-    correct_count: 0,
-    incorrect_count: 0,
-  }));
+  // problem_count === 0인 세션만 필터링
+  const analyzingSessions: SessionWithProblems[] = (data || [])
+    .map((session: any) => {
+      const problems = session.problems || [];
+      const problem_count = problems.length;
+      
+      return {
+        id: session.id,
+        created_at: session.created_at,
+        image_url: session.image_url,
+        problem_count,
+        correct_count: 0,
+        incorrect_count: 0,
+      };
+    })
+    .filter((session) => session.problem_count === 0);
   
   return analyzingSessions;
 }
 
-// 라벨링이 필요한 세션 조회 (status === 'completed' AND 모든 문제의 user_mark가 null)
+// 라벨링이 필요한 세션 조회 (problem_count > 0 AND 모든 문제의 user_mark가 null)
 export async function fetchPendingLabelingSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
   
-  // sessions와 problems, labels를 조인하여 통계 계산 (completed 상태만)
+  // sessions와 problems, labels를 조인하여 통계 계산
   const { data, error } = await supabase
     .from('sessions')
     .select(`
       id,
       created_at,
       image_url,
-      status,
       problems (
         id,
         labels (
@@ -421,34 +433,23 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       )
     `)
     .eq('user_id', userId)
-    .eq('status', 'completed')
     .order('created_at', { ascending: false });
   
   if (error) throw error;
   
-  // 라벨링이 필요한 세션 필터링: problem_count > 0 AND 모든 문제의 user_mark가 null
+  // 통계 계산 및 라벨링 필요 여부 확인
   const sessions: SessionWithProblems[] = (data || [])
     .map((session: any) => {
       const problems = session.problems || [];
       const problem_count = problems.length;
-      
-      // user_mark가 null인 문제 개수 세기
-      let unlabeled_count = 0;
       let correct_count = 0;
       let incorrect_count = 0;
       
       problems.forEach((problem: any) => {
         const labels = problem.labels || [];
         if (labels.length > 0) {
-          const userMark = labels[0].user_mark;
-          if (userMark === null || userMark === undefined) {
-            unlabeled_count++;
-          } else {
-            const mark = normalizeMark(userMark);
-            if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
-          }
-        } else {
-          unlabeled_count++;
+          const mark = normalizeMark(labels[0].user_mark);
+          if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
         }
       });
       
@@ -459,14 +460,12 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         problem_count,
         correct_count,
         incorrect_count,
-        unlabeled_count,
       };
     })
-    .filter((session: any) => {
-      // 라벨링이 필요한 세션: problem_count > 0 AND 모든 문제의 user_mark가 null
-      return session.problem_count > 0 && session.unlabeled_count === session.problem_count;
-    })
-    .map(({ unlabeled_count, ...session }) => session); // unlabeled_count 제거
+    .filter((session) => {
+      // 라벨링이 필요한 세션: problem_count > 0 AND correct_count === 0 AND incorrect_count === 0
+      return session.problem_count > 0 && session.correct_count === 0 && session.incorrect_count === 0;
+    });
   
   return sessions;
 }

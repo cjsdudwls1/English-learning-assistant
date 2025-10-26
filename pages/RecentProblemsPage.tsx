@@ -13,7 +13,7 @@ export const RecentProblemsPage: React.FC = () => {
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [displayedCount, setDisplayedCount] = useState(5);
+  const [showAllSessions, setShowAllSessions] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalImageUrl, setModalImageUrl] = useState<string>('');
   const [modalSessionId, setModalSessionId] = useState<string>('');
@@ -29,17 +29,13 @@ export const RecentProblemsPage: React.FC = () => {
       // 분석 중인 세션 조회
       const analyzing = await fetchAnalyzingSessions();
       setAnalyzingSessions(analyzing);
-      console.log('Analyzing sessions:', analyzing.length);
       
       // 라벨링이 필요한 세션 조회
       const pendingSessions = await fetchPendingLabelingSessions();
       setPendingLabelingSessions(pendingSessions);
-      console.log('Pending labeling sessions:', pendingSessions.length);
       
       // 분석 중이거나 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
-      const shouldPoll = analyzing.length > 0 || pendingSessions.length > 0;
-      setPollingActive(shouldPoll);
-      console.log('Should poll:', shouldPoll);
+      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : '조회 실패');
     } finally {
@@ -51,14 +47,13 @@ export const RecentProblemsPage: React.FC = () => {
     loadData();
   }, []);
 
-  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 1초마다 상태 확인
+  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 2초마다 상태 확인
   useEffect(() => {
     if (!pollingActive) return;
     
     const interval = setInterval(() => {
-      console.log('Polling: Checking for updates...');
       loadData();
-    }, 1000);
+    }, 2000);
     
     return () => clearInterval(interval);
   }, [pollingActive]);
@@ -107,24 +102,14 @@ export const RecentProblemsPage: React.FC = () => {
     setSelectedSessions(newSelected);
   };
 
-  const handleSelectAll = () => {
-    if (selectedSessions.size === displayedSessions.length) {
-      // 모든 항목이 선택되어 있으면 전체 해제
-      setSelectedSessions(new Set());
-    } else {
-      // 모든 항목 선택
-      setSelectedSessions(new Set(displayedSessions.map(session => session.id)));
-    }
-  };
-
   const handleLabelingComplete = async () => {
     // 라벨링 완료 후 데이터 다시 로드
     await loadData();
   };
 
   const displayedSessions = useMemo(() => {
-    return sessions.slice(0, displayedCount);
-  }, [sessions, displayedCount]);
+    return showAllSessions ? sessions : sessions.slice(0, 5);
+  }, [sessions, showAllSessions]);
 
   if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
@@ -154,12 +139,6 @@ export const RecentProblemsPage: React.FC = () => {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">최근 업로드한 문제</h2>
           <div className="flex gap-2">
-            <button
-              onClick={handleSelectAll}
-              className="px-4 py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
-            >
-              {selectedSessions.size === displayedSessions.length ? '전체 해제' : '전체선택'}
-            </button>
             {selectedSessions.size > 0 && (
               <button
                 onClick={handleBulkDelete}
@@ -229,13 +208,13 @@ export const RecentProblemsPage: React.FC = () => {
                 </div>
               </div>
             ))}
-            {displayedCount < sessions.length && (
+            {sessions.length > 5 && (
               <div className="text-center pt-4">
                 <button
-                  onClick={() => setDisplayedCount(prev => Math.min(prev + 5, sessions.length))}
+                  onClick={() => setShowAllSessions(!showAllSessions)}
                   className="px-4 py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
                 >
-                  더보기 (5개)
+                  {showAllSessions ? '접기' : `더보기 (${sessions.length}개)`}
                 </button>
               </div>
             )}
