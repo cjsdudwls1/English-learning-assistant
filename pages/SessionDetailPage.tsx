@@ -85,52 +85,10 @@ export const SessionDetailPage: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleRotate = async (rotatedBlob: Blob) => {
-    if (!sessionId) return;
-    
-    try {
-      // Blob을 File로 변환
-      const rotatedFile = new File([rotatedBlob], `rotated_${Date.now()}.jpg`, {
-        type: rotatedBlob.type,
-        lastModified: Date.now(),
-      });
-      
-      // Storage에 재업로드
-      const timestamp = Date.now();
-      const safeName = `rotated_${timestamp}.jpg`;
-      const { data: userData } = await supabase.auth.getUser();
-      const email = userData.user?.email || userData.user?.id || 'unknown';
-      const emailLocal = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
-      const path = `${emailLocal}/${timestamp}_${safeName}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('problem-images')
-        .upload(path, rotatedFile, {
-          contentType: rotatedBlob.type,
-          cacheControl: '3600',
-          upsert: false
-        });
-      
-      if (uploadError) throw uploadError;
-      
-      const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(uploadData.path);
-      const newImageUrl = urlData.publicUrl;
-      
-      // sessions 테이블의 image_url 업데이트
-      const { error: updateError } = await supabase
-        .from('sessions')
-        .update({ image_url: newImageUrl })
-        .eq('id', sessionId);
-      
-      if (updateError) throw updateError;
-      
-      // 화면 새로고침
-      setImageUrl(newImageUrl);
-      
-    } catch (error) {
-      console.error('Image rotation failed:', error);
-      alert('이미지 회전 중 오류가 발생했습니다.');
-    }
+  const handleRotate = async (rotationAngle: any) => {
+    // CSS transform으로만 처리 - 서버 저장 불필요
+    // 실제로는 rotation 상태만 변경되어 이미지가 회전됨
+    console.log('Image rotation angle:', rotationAngle);
   };
 
   if (loading) {
