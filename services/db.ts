@@ -470,8 +470,8 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
   return sessions;
 }
 
-// 문제별 라벨링 정보 조회 (라벨링 UI용)
-export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id: string; index_in_image: number }[]> {
+// 문제별 라벨링 정보 조회 (라벨링 UI용) - AI 분석 결과 포함
+export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id: string; index_in_image: number; ai_is_correct: boolean | null }[]> {
   const userId = await getCurrentUserId();
   
   // 세션 소유권 검증
@@ -486,10 +486,16 @@ export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id:
     throw new Error('이 세션에 접근할 권한이 없습니다.');
   }
   
-  // problems 조회
+  // problems와 labels 조회 (AI 분석 결과 포함)
   const { data: problems, error: problemsError } = await supabase
     .from('problems')
-    .select('id, index_in_image')
+    .select(`
+      id, 
+      index_in_image,
+      labels (
+        is_correct
+      )
+    `)
     .eq('session_id', sessionId)
     .order('index_in_image', { ascending: true });
   
@@ -498,6 +504,7 @@ export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id:
   return (problems || []).map((p: any) => ({
     id: p.id,
     index_in_image: p.index_in_image,
+    ai_is_correct: p.labels?.[0]?.is_correct ?? null,
   }));
 }
 
