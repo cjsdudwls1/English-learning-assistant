@@ -29,13 +29,17 @@ export const RecentProblemsPage: React.FC = () => {
       // 분석 중인 세션 조회
       const analyzing = await fetchAnalyzingSessions();
       setAnalyzingSessions(analyzing);
+      console.log('Analyzing sessions:', analyzing.length);
       
       // 라벨링이 필요한 세션 조회
       const pendingSessions = await fetchPendingLabelingSessions();
       setPendingLabelingSessions(pendingSessions);
+      console.log('Pending labeling sessions:', pendingSessions.length);
       
       // 분석 중이거나 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
-      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0);
+      const shouldPoll = analyzing.length > 0 || pendingSessions.length > 0;
+      setPollingActive(shouldPoll);
+      console.log('Should poll:', shouldPoll);
     } catch (e) {
       setError(e instanceof Error ? e.message : '조회 실패');
     } finally {
@@ -47,13 +51,14 @@ export const RecentProblemsPage: React.FC = () => {
     loadData();
   }, []);
 
-  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 2초마다 상태 확인
+  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 1초마다 상태 확인
   useEffect(() => {
     if (!pollingActive) return;
     
     const interval = setInterval(() => {
+      console.log('Polling: Checking for updates...');
       loadData();
-    }, 2000);
+    }, 1000);
     
     return () => clearInterval(interval);
   }, [pollingActive]);

@@ -76,45 +76,31 @@ const App: React.FC = () => {
       // 이미지를 base64로 변환
       const { base64, mimeType } = await fileToBase64(imageFile);
       
-      // 타임아웃 설정 (10초)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      try {
-        // Edge Function 호출하고 세션 생성까지 기다림
-        const response = await fetch(functionUrl, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({
-            imageBase64: base64,
-            mimeType,
-            userId: userData.user.id,
-            fileName: imageFile.name,
-          }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
+      // Edge Function 호출 (백그라운드에서 실행)
+      fetch(functionUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          imageBase64: base64,
+          mimeType,
+          userId: userData.user.id,
+          fileName: imageFile.name,
+        }),
+      }).then(async (response) => {
         if (response.ok) {
           const result = await response.json();
           console.log('Session created:', result.sessionId);
         } else {
           console.error('Failed to create session:', response.status);
         }
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        if (fetchError.name === 'AbortError') {
-          console.log('Request timeout - session creation in progress');
-        } else {
-          console.error('Fetch error:', fetchError);
-        }
-      }
+      }).catch((error) => {
+        console.error('Fetch error:', error);
+      });
       
-      // 성공/실패 여부와 관계없이 /recent로 이동 (세션은 백그라운드에서 생성됨)
+      // 즉시 /recent로 이동 (세션은 백그라운드에서 생성됨)
       setIsLoading(false);
       navigate(`/recent`);
     } catch (err) {
