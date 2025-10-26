@@ -80,25 +80,29 @@ const App: React.FC = () => {
       setIsLoading(false);
       alert('업로드 완료. AI 분석이 진행중입니다. 앱에서 나가도 좋습니다.');
       
-      // Edge Function 호출 (Supabase 클라이언트 사용)
-      console.log('Attempting to call Edge Function via Supabase client');
+      // Edge Function 호출 (직접 fetch 사용)
+      console.log('Attempting to call Edge Function via direct fetch');
       
-      supabase.functions.invoke('analyze-image', {
-        body: {
+      const response = await fetch('https://vkoegxohahpptdyipmkr.supabase.co/functions/v1/analyze-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({
           imageBase64: base64,
           mimeType,
           userId: userData.user.id,
           fileName: imageFile.name,
-        }
-      }).then(({ data, error }) => {
-        if (error) {
-          console.error('Supabase Edge Function error:', error);
-        } else {
-          console.log('Session created:', data);
-        }
-      }).catch((error) => {
-        console.error('Supabase client error:', error);
+        })
       });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Session created:', result);
+      } else {
+        console.error('Edge Function error:', response.status, await response.text());
+      }
       
       // Edge Function 호출 후 /recent로 이동 (새로고침 포함)
       window.location.href = '/recent';
