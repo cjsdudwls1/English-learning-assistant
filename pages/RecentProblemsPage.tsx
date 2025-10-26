@@ -102,6 +102,16 @@ export const RecentProblemsPage: React.FC = () => {
     setSelectedSessions(newSelected);
   };
 
+  const toggleSelectAll = () => {
+    if (selectedSessions.size === displayedSessions.length) {
+      // 모든 항목이 선택되어 있으면 모두 해제
+      setSelectedSessions(new Set());
+    } else {
+      // 모든 항목 선택
+      setSelectedSessions(new Set(displayedSessions.map(s => s.id)));
+    }
+  };
+
   const handleLabelingComplete = async () => {
     // 라벨링 완료 후 데이터 다시 로드
     await loadData();
@@ -139,6 +149,12 @@ export const RecentProblemsPage: React.FC = () => {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">최근 업로드한 문제</h2>
           <div className="flex gap-2">
+            <button
+              onClick={toggleSelectAll}
+              className="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700"
+            >
+              {selectedSessions.size === displayedSessions.length && displayedSessions.length > 0 ? '전체 해제' : '전체 선택'}
+            </button>
             {selectedSessions.size > 0 && (
               <button
                 onClick={handleBulkDelete}
