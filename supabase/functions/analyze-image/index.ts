@@ -332,8 +332,8 @@ serve(async (req) => {
       return {
         problem_id: idByIndex.get(it.index ?? idx)!,
         user_answer: it.사용자가_기술한_정답?.text || '',
-        user_mark: null,  // 사용자 라벨링 대기 상태로 유지
-        is_correct: normalizedMark === 'O',  // AI 분석 결과는 is_correct에 저장
+        user_mark: normalizedMark,
+        is_correct: normalizedMark === 'O',
         classification: it.문제_유형_분류 || {},
         confidence: {
           stem: it.문제내용?.confidence_score || 1.0,
