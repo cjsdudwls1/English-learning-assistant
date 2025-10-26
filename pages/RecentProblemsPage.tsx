@@ -13,7 +13,7 @@ export const RecentProblemsPage: React.FC = () => {
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAllSessions, setShowAllSessions] = useState(false);
+  const [visibleSessionCount, setVisibleSessionCount] = useState(5);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalImageUrl, setModalImageUrl] = useState<string>('');
   const [modalSessionId, setModalSessionId] = useState<string>('');
@@ -103,12 +103,12 @@ export const RecentProblemsPage: React.FC = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedSessions.size === displayedSessions.length) {
+    if (selectedSessions.size === sessions.length) {
       // 모든 항목이 선택되어 있으면 모두 해제
       setSelectedSessions(new Set());
     } else {
-      // 모든 항목 선택
-      setSelectedSessions(new Set(displayedSessions.map(s => s.id)));
+      // 모든 항목 선택 (보이지 않는 것 포함)
+      setSelectedSessions(new Set(sessions.map(s => s.id)));
     }
   };
 
@@ -118,8 +118,8 @@ export const RecentProblemsPage: React.FC = () => {
   };
 
   const displayedSessions = useMemo(() => {
-    return showAllSessions ? sessions : sessions.slice(0, 5);
-  }, [sessions, showAllSessions]);
+    return sessions.slice(0, visibleSessionCount);
+  }, [sessions, visibleSessionCount]);
 
   if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
@@ -153,7 +153,7 @@ export const RecentProblemsPage: React.FC = () => {
               onClick={toggleSelectAll}
               className="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700"
             >
-              {selectedSessions.size === displayedSessions.length && displayedSessions.length > 0 ? '전체 해제' : '전체 선택'}
+              {selectedSessions.size === sessions.length && sessions.length > 0 ? '전체 해제' : '전체 선택'}
             </button>
             {selectedSessions.size > 0 && (
               <button
@@ -224,13 +224,13 @@ export const RecentProblemsPage: React.FC = () => {
                 </div>
               </div>
             ))}
-            {sessions.length > 5 && (
+            {visibleSessionCount < sessions.length && (
               <div className="text-center pt-4">
                 <button
-                  onClick={() => setShowAllSessions(!showAllSessions)}
+                  onClick={() => setVisibleSessionCount(prev => Math.min(prev + 5, sessions.length))}
                   className="px-4 py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
                 >
-                  {showAllSessions ? '접기' : `더보기 (${sessions.length}개)`}
+                  더보기 ({sessions.length - visibleSessionCount}개)
                 </button>
               </div>
             )}
