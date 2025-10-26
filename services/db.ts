@@ -437,19 +437,29 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
   
   if (error) throw error;
   
-  // 통계 계산 및 라벨링 필요 여부 확인
+  // 라벨링이 필요한 세션 필터링: problem_count > 0 AND 모든 문제의 user_mark가 null
   const sessions: SessionWithProblems[] = (data || [])
     .map((session: any) => {
       const problems = session.problems || [];
       const problem_count = problems.length;
+      
+      // user_mark가 null인 문제 개수 세기
+      let unlabeled_count = 0;
       let correct_count = 0;
       let incorrect_count = 0;
       
       problems.forEach((problem: any) => {
         const labels = problem.labels || [];
         if (labels.length > 0) {
-          const mark = normalizeMark(labels[0].user_mark);
-          if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+          const userMark = labels[0].user_mark;
+          if (userMark === null || userMark === undefined) {
+            unlabeled_count++;
+          } else {
+            const mark = normalizeMark(userMark);
+            if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+          }
+        } else {
+          unlabeled_count++;
         }
       });
       
@@ -460,12 +470,14 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         problem_count,
         correct_count,
         incorrect_count,
+        unlabeled_count,
       };
     })
-    .filter((session) => {
-      // 라벨링이 필요한 세션: problem_count > 0 AND correct_count === 0 AND incorrect_count === 0
-      return session.problem_count > 0 && session.correct_count === 0 && session.incorrect_count === 0;
-    });
+    .filter((session: any) => {
+      // 라벨링이 필요한 세션: problem_count > 0 AND 모든 문제의 user_mark가 null
+      return session.problem_count > 0 && session.unlabeled_count === session.problem_count;
+    })
+    .map(({ unlabeled_count, ...session }) => session); // unlabeled_count 제거
   
   return sessions;
 }
