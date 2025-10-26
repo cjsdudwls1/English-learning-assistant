@@ -444,12 +444,16 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       const problem_count = problems.length;
       let correct_count = 0;
       let incorrect_count = 0;
+      let has_user_labels = false;
       
       problems.forEach((problem: any) => {
         const labels = problem.labels || [];
         if (labels.length > 0) {
           const mark = normalizeMark(labels[0].user_mark);
-          if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+          if (mark !== null && mark !== undefined) {
+            has_user_labels = true;
+            if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+          }
         }
       });
       
@@ -460,11 +464,12 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         problem_count,
         correct_count,
         incorrect_count,
+        has_user_labels,
       };
     })
     .filter((session) => {
-      // 라벨링이 필요한 세션: problem_count > 0 AND correct_count === 0 AND incorrect_count === 0
-      return session.problem_count > 0 && session.correct_count === 0 && session.incorrect_count === 0;
+      // 라벨링이 필요한 세션: AI 분석 완료 (problem_count > 0) AND 사용자 라벨링 미완료 (has_user_labels === false)
+      return session.problem_count > 0 && !session.has_user_labels;
     });
   
   return sessions;

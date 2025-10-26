@@ -49,4 +49,5 @@ export interface SessionWithProblems {
   problem_count: number;
   correct_count: number;
   incorrect_count: number;
+  has_user_labels?: boolean;
 }
