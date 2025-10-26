@@ -76,8 +76,8 @@ const App: React.FC = () => {
       // 이미지를 base64로 변환
       const { base64, mimeType } = await fileToBase64(imageFile);
       
-      // Edge Function 호출 (백그라운드에서 실행)
-      fetch(functionUrl, {
+      // Edge Function 호출
+      const response = await fetch(functionUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -89,20 +89,21 @@ const App: React.FC = () => {
           userId: userData.user.id,
           fileName: imageFile.name,
         }),
-      }).then(async (response) => {
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Session created:', result.sessionId);
-        } else {
-          console.error('Failed to create session:', response.status);
-        }
-      }).catch((error) => {
-        console.error('Fetch error:', error);
       });
-      
-      // 즉시 /recent로 이동 (세션은 백그라운드에서 생성됨)
-      setIsLoading(false);
-      navigate(`/recent`);
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Session created:', result.sessionId);
+        
+        // 성공 메시지 표시
+        setIsLoading(false);
+        alert('업로드 완료. AI 분석이 진행중입니다. 앱에서 나가도 좋습니다.');
+        
+        // 확인 버튼 클릭 시 /recent로 이동 (새로고침 포함)
+        window.location.href = '/recent';
+      } else {
+        throw new Error('Failed to create session');
+      }
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다. 다시 시도해주세요.');
