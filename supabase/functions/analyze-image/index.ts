@@ -103,7 +103,9 @@ ${classificationData}
     - 그 외 표식(△, 취소선 등)이 보이더라도 상황 판단하여 "O" 또는 "X" 중 하나로 결정합니다.
 
 **[3단계: 문제 유형 분류]**
-- [2단계]에서 추출한 문제 텍스트를 기반으로, 주어진 분류 기준표를 참조하여 문제의 유형을 "1Depth"부터 "4Depth"까지 분류합니다.
+- [2단계]에서 추출한 문제 텍스트를 기반으로, 주어진 분류 기준표를 참조하여 문제의 유형을 "1Depth", "2Depth", "3Depth", "4Depth" 키를 사용하여 분류합니다.
+- **중요**: 반드시 키 이름을 "대분류", "중분류", "세분류"가 아닌 "1Depth", "2Depth", "3Depth", "4Depth"로 사용해야 합니다.
+- 예시: {"1Depth": "문장 유형", "2Depth": "시제와 동사 활용", "3Depth": "현재시제", "4Depth": "현재진행"}
 - 분류의 정확도에 대한 자체적인 신뢰도를 '높음', '보통', '낮음' 중 하나로 평가하고, 왜 그렇게 분류했는지에 대한 구체적인 근거를 한 문장으로 요약합니다.
 
 **[4단계: 후처리 및 신뢰도 평가]**
@@ -271,22 +273,25 @@ serve(async (req) => {
     });
 
     // 백그라운드에서 분석 계속 진행
-    (async () => {
+    console.log('Starting background analysis...');
+    
+    // 백그라운드 분석을 즉시 시작
+    const backgroundAnalysis = async () => {
       try {
         // 3. Gemini API로 분석
         console.log('Step 3: Analyzing image with Gemini...');
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
-    const imagePart = { inlineData: { data: imageBase64, mimeType } };
-    const textPart = { text: prompt };
+        const imagePart = { inlineData: { data: imageBase64, mimeType } };
+        const textPart = { text: prompt };
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts: [textPart, imagePart] },
-    });
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: { parts: [textPart, imagePart] },
+        });
 
-    const responseText = response.text;
-    console.log('Step 3 completed: Gemini response received, length:', responseText.length);
+        const responseText = response.text;
+        console.log('Step 3 completed: Gemini response received, length:', responseText.length);
     
     // JSON 파싱
     const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -380,7 +385,10 @@ serve(async (req) => {
           console.error('Failed to update session status to failed:', statusError);
         }
       }
-    })();
+    };
+    
+    // 백그라운드 분석 시작
+    backgroundAnalysis().catch(console.error);
 
     // 세션 생성 후 즉시 응답 반환
     return response;
