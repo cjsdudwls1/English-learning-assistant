@@ -83,25 +83,29 @@ const App: React.FC = () => {
       // Edge Function 호출 (직접 fetch 사용)
       console.log('Attempting to call Edge Function via direct fetch');
       
-      const response = await fetch('https://vkoegxohahpptdyipmkr.supabase.co/functions/v1/analyze-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-        },
-        body: JSON.stringify({
-          imageBase64: base64,
-          mimeType,
-          userId: userData.user.id,
-          fileName: imageFile.name,
-        })
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Session created:', result);
-      } else {
-        console.error('Edge Function error:', response.status, await response.text());
+      try {
+        const response = await fetch('https://vkoegxohahpptdyipmkr.supabase.co/functions/v1/analyze-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            imageBase64: base64,
+            mimeType,
+            userId: userData.user.id,
+            fileName: imageFile.name,
+          })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Session created:', result);
+        } else {
+          console.error('Edge Function error:', response.status, await response.text());
+        }
+      } catch (fetchError) {
+        console.error('Fetch error:', fetchError);
       }
       
       // Edge Function 호출 후 /recent로 이동 (새로고침 포함)
