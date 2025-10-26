@@ -192,6 +192,7 @@ const App: React.FC = () => {
       </main>
       <footer className="text-center py-6 text-slate-500 text-sm">
         <p>Powered by Google Gemini API</p>
+        <p className="mt-2">고객지원: <a href="mailto:mearidj@gmail.com" className="text-indigo-600 hover:text-indigo-800 underline">mearidj@gmail.com</a></p>
       </footer>
     </div>
   );
