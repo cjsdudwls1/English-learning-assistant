@@ -12,7 +12,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   imageUrl, 
   onSave 
 }) => {
-  const [problems, setProblems] = useState<{ id: string; index_in_image: number }[]>([]);
+  const [problems, setProblems] = useState<{ id: string; index_in_image: number; ai_is_correct: boolean | null }[]>([]);
   const [labels, setLabels] = useState<Record<string, '정답' | '오답' | null>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -26,10 +26,15 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       setLoading(true);
       const data = await fetchProblemsForLabeling(sessionId);
       setProblems(data);
-      // 초기 라벨 상태 초기화
+      // AI 분석 결과를 초기값으로 설정
       const initialLabels: Record<string, '정답' | '오답' | null> = {};
       data.forEach(p => {
-        initialLabels[p.id] = null;
+        // AI가 분석한 결과를 초기값으로 설정
+        if (p.ai_is_correct !== null) {
+          initialLabels[p.id] = p.ai_is_correct ? '정답' : '오답';
+        } else {
+          initialLabels[p.id] = null;
+        }
       });
       setLabels(initialLabels);
     } catch (error) {
