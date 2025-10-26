@@ -71,18 +71,6 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
         })
       );
       
-      // 세션 상태를 'labeled'로 업데이트
-      const { supabase } = await import('../services/supabaseClient');
-      const { error: statusError } = await supabase
-        .from('sessions')
-        .update({ status: 'labeled' })
-        .eq('id', sessionId);
-      
-      if (statusError) {
-        console.error('Failed to update session status:', statusError);
-        throw statusError;
-      }
-      
       // 저장 완료 후 콜백 호출
       onSave?.();
     } catch (error) {

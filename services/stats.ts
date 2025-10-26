@@ -35,13 +35,11 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
         session_id,
         sessions!inner (
           user_id,
-          created_at,
-          status
+          created_at
         )
       )
     `)
-    .eq('problems.sessions.user_id', userId)
-    .eq('problems.sessions.status', 'labeled');
+    .eq('problems.sessions.user_id', userId);
 
   // 기간 필터링
   if (startDate) {
@@ -101,13 +99,11 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
         session_id,
         sessions!inner (
           user_id,
-          created_at,
-          status
+          created_at
         )
       )
     `)
-    .eq('problems.sessions.user_id', userId)
-    .eq('problems.sessions.status', 'labeled');
+    .eq('problems.sessions.user_id', userId);
 
   // 기간 필터링
   if (startDate) {
