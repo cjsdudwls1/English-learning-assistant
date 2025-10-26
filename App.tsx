@@ -80,41 +80,24 @@ const App: React.FC = () => {
       setIsLoading(false);
       alert('업로드 완료. AI 분석이 진행중입니다. 앱에서 나가도 좋습니다.');
       
-      // Edge Function 호출 (백그라운드에서 실행)
-      console.log('Attempting to call Edge Function:', functionUrl);
-      console.log('Environment variables:', {
-        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-        hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
-      });
+      // Edge Function 호출 (Supabase 클라이언트 사용)
+      console.log('Attempting to call Edge Function via Supabase client');
       
-      fetch(functionUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY
-        },
-        body: JSON.stringify({
+      supabase.functions.invoke('analyze-image', {
+        body: {
           imageBase64: base64,
           mimeType,
           userId: userData.user.id,
           fileName: imageFile.name,
-        }),
-      }).then(async (response) => {
-        console.log('Edge Function response:', response.status, response.statusText);
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Session created:', result.sessionId);
+        }
+      }).then(({ data, error }) => {
+        if (error) {
+          console.error('Supabase Edge Function error:', error);
         } else {
-          console.error('Failed to create session:', response.status, await response.text());
+          console.log('Session created:', data);
         }
       }).catch((error) => {
-        console.error('Fetch error:', error);
-        console.error('Error details:', {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        });
+        console.error('Supabase client error:', error);
       });
       
       // Edge Function 호출 후 /recent로 이동 (새로고침 포함)
