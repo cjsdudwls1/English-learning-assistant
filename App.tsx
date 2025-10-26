@@ -93,7 +93,7 @@ const App: React.FC = () => {
 
       // 즉시 analyzing 페이지로 이동 (Edge Function 완료를 기다리지 않음)
       setIsLoading(false);
-      navigate(`/analyzing/${userData.user.id}_${Date.now()}`); // 임시 sessionId 생성
+      navigate(`/recent`); // /analyzing 대신 /recent로 이동
       
       // 백그라운드에서 Edge Function 완료 대기 (선택사항)
       responsePromise.then(async (response) => {

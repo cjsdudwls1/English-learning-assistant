@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchUserSessions, deleteSession } from '../services/db';
+import { fetchUserSessions, deleteSession, fetchPendingLabelingSessions } from '../services/db';
 import { ImageModal } from '../components/ImageModal';
+import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import type { SessionWithProblems } from '../types';
 
 export const RecentProblemsPage: React.FC = () => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<SessionWithProblems[]>([]);
+  const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAllSessions, setShowAllSessions] = useState(false);
@@ -14,12 +16,20 @@ export const RecentProblemsPage: React.FC = () => {
   const [modalImageUrl, setModalImageUrl] = useState<string>('');
   const [modalSessionId, setModalSessionId] = useState<string>('');
   const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
+  const [pollingActive, setPollingActive] = useState(true);
 
   const loadData = async () => {
     try {
       setLoading(true);
       const sessionsData = await fetchUserSessions();
       setSessions(sessionsData);
+      
+      // 라벨링이 필요한 세션 조회
+      const pendingSessions = await fetchPendingLabelingSessions();
+      setPendingLabelingSessions(pendingSessions);
+      
+      // 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
+      setPollingActive(pendingSessions.length > 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : '조회 실패');
     } finally {
@@ -30,6 +40,17 @@ export const RecentProblemsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // 폴링 로직: 라벨링이 필요한 세션이 있으면 2초마다 상태 확인
+  useEffect(() => {
+    if (!pollingActive) return;
+    
+    const interval = setInterval(() => {
+      loadData();
+    }, 2000);
+    
+    return () => clearInterval(interval);
+  }, [pollingActive]);
 
   const handleDelete = async (sessionId: string) => {
     if (!window.confirm('이 세션을 삭제하시겠습니까?')) return;
@@ -75,15 +96,30 @@ export const RecentProblemsPage: React.FC = () => {
     setSelectedSessions(newSelected);
   };
 
+  const handleLabelingComplete = async () => {
+    // 라벨링 완료 후 데이터 다시 로드
+    await loadData();
+  };
+
   const displayedSessions = useMemo(() => {
     return showAllSessions ? sessions : sessions.slice(0, 5);
   }, [sessions, showAllSessions]);
 
-  if (loading) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
+  if (loading && sessions.length === 0) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* 라벨링 UI - 최상단 */}
+      {pendingLabelingSessions.map((session) => (
+        <QuickLabelingCard
+          key={session.id}
+          sessionId={session.id}
+          imageUrl={session.image_url}
+          onSave={handleLabelingComplete}
+        />
+      ))}
+
       <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">최근 업로드한 문제</h2>

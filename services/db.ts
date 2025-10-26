@@ -367,4 +367,122 @@ export async function fetchProblemsByClassification(
   }));
 }
 
+// 라벨링이 필요한 세션 조회 (problem_count > 0 AND 모든 문제의 user_mark가 null)
+export async function fetchPendingLabelingSessions(): Promise<SessionWithProblems[]> {
+  const userId = await getCurrentUserId();
+  
+  // sessions와 problems, labels를 조인하여 통계 계산
+  const { data, error } = await supabase
+    .from('sessions')
+    .select(`
+      id,
+      created_at,
+      image_url,
+      problems (
+        id,
+        labels (
+          user_mark
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  
+  if (error) throw error;
+  
+  // 통계 계산 및 라벨링 필요 여부 확인
+  const sessions: SessionWithProblems[] = (data || [])
+    .map((session: any) => {
+      const problems = session.problems || [];
+      const problem_count = problems.length;
+      let correct_count = 0;
+      let incorrect_count = 0;
+      
+      problems.forEach((problem: any) => {
+        const labels = problem.labels || [];
+        if (labels.length > 0) {
+          const mark = normalizeMark(labels[0].user_mark);
+          if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+        }
+      });
+      
+      return {
+        id: session.id,
+        created_at: session.created_at,
+        image_url: session.image_url,
+        problem_count,
+        correct_count,
+        incorrect_count,
+      };
+    })
+    .filter((session) => {
+      // 라벨링이 필요한 세션: problem_count > 0 AND correct_count === 0 AND incorrect_count === 0
+      return session.problem_count > 0 && session.correct_count === 0 && session.incorrect_count === 0;
+    });
+  
+  return sessions;
+}
+
+// 문제별 라벨링 정보 조회 (라벨링 UI용)
+export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id: string; index_in_image: number }[]> {
+  const userId = await getCurrentUserId();
+  
+  // 세션 소유권 검증
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .select('user_id')
+    .eq('id', sessionId)
+    .single();
+  
+  if (sessionError) throw sessionError;
+  if (session.user_id !== userId) {
+    throw new Error('이 세션에 접근할 권한이 없습니다.');
+  }
+  
+  // problems 조회
+  const { data: problems, error: problemsError } = await supabase
+    .from('problems')
+    .select('id, index_in_image')
+    .eq('session_id', sessionId)
+    .order('index_in_image', { ascending: true });
+  
+  if (problemsError) throw problemsError;
+  
+  return (problems || []).map((p: any) => ({
+    id: p.id,
+    index_in_image: p.index_in_image,
+  }));
+}
+
+// 간단한 라벨링 업데이트 (정답/오답만)
+export async function quickUpdateLabels(sessionId: string, problemId: string, mark: '정답' | '오답'): Promise<void> {
+  const userId = await getCurrentUserId();
+  
+  // 세션 소유권 검증
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .select('user_id')
+    .eq('id', sessionId)
+    .single();
+  
+  if (sessionError) throw sessionError;
+  if (session.user_id !== userId) {
+    throw new Error('이 세션에 접근할 권한이 없습니다.');
+  }
+  
+  // labels 테이블 업데이트
+  const normalizedMark = normalizeMark(mark);
+  const isCorrect = isCorrectFromMark(normalizedMark);
+  
+  const { error: labelUpdateError } = await supabase
+    .from('labels')
+    .update({
+      user_mark: normalizedMark,
+      is_correct: isCorrect,
+    })
+    .eq('problem_id', problemId);
+  
+  if (labelUpdateError) throw labelUpdateError;
+}
+
 

@@ -56,3 +56,4 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSub
     </div>
   );
 };
+
