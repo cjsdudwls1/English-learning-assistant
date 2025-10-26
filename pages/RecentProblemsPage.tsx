@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchUserSessions, deleteSession, fetchPendingLabelingSessions } from '../services/db';
+import { fetchUserSessions, deleteSession, fetchPendingLabelingSessions, fetchAnalyzingSessions } from '../services/db';
 import { ImageModal } from '../components/ImageModal';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
+import { AnalyzingCard } from '../components/AnalyzingCard';
 import type { SessionWithProblems } from '../types';
 
 export const RecentProblemsPage: React.FC = () => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<SessionWithProblems[]>([]);
+  const [analyzingSessions, setAnalyzingSessions] = useState<SessionWithProblems[]>([]);
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +26,16 @@ export const RecentProblemsPage: React.FC = () => {
       const sessionsData = await fetchUserSessions();
       setSessions(sessionsData);
       
+      // 분석 중인 세션 조회
+      const analyzing = await fetchAnalyzingSessions();
+      setAnalyzingSessions(analyzing);
+      
       // 라벨링이 필요한 세션 조회
       const pendingSessions = await fetchPendingLabelingSessions();
       setPendingLabelingSessions(pendingSessions);
       
-      // 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
-      setPollingActive(pendingSessions.length > 0);
+      // 분석 중이거나 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
+      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : '조회 실패');
     } finally {
@@ -41,7 +47,7 @@ export const RecentProblemsPage: React.FC = () => {
     loadData();
   }, []);
 
-  // 폴링 로직: 라벨링이 필요한 세션이 있으면 2초마다 상태 확인
+  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 2초마다 상태 확인
   useEffect(() => {
     if (!pollingActive) return;
     
@@ -105,12 +111,21 @@ export const RecentProblemsPage: React.FC = () => {
     return showAllSessions ? sessions : sessions.slice(0, 5);
   }, [sessions, showAllSessions]);
 
-  if (loading && sessions.length === 0) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
+  if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* 라벨링 UI - 최상단 */}
+      {/* 분석 중 UI - 최상단 */}
+      {analyzingSessions.map((session) => (
+        <AnalyzingCard
+          key={session.id}
+          sessionId={session.id}
+          imageUrl={session.image_url}
+        />
+      ))}
+
+      {/* 라벨링 UI - 분석 중 다음 */}
       {pendingLabelingSessions.map((session) => (
         <QuickLabelingCard
           key={session.id}
