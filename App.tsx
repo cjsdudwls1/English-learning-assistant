@@ -80,9 +80,6 @@ const App: React.FC = () => {
       setIsLoading(false);
       alert('업로드 완료. AI 분석이 진행중입니다. 앱에서 나가도 좋습니다.');
       
-      // 확인 버튼 클릭 시 /recent로 이동 (새로고침 포함)
-      window.location.href = '/recent';
-      
       // Edge Function 호출 (백그라운드에서 실행)
       fetch(functionUrl, {
         method: 'POST',
@@ -106,6 +103,9 @@ const App: React.FC = () => {
       }).catch((error) => {
         console.error('Fetch error:', error);
       });
+      
+      // Edge Function 호출 후 /recent로 이동 (새로고침 포함)
+      window.location.href = '/recent';
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다. 다시 시도해주세요.');
