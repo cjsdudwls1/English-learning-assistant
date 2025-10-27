@@ -1,15 +1,14 @@
 
-// SECURITY FIX: 이 파일은 보안상 주석 처리됨 - Edge Function에서만 Gemini API 사용
-// import { GoogleGenAI } from "@google/genai";
-// import type { AnalysisResult, AnalysisResults } from '../types';
-// import { classificationData } from '../constants';
+import { GoogleGenAI } from "@google/genai";
+import type { AnalysisResult, AnalysisResults } from '../types';
+import { classificationData } from '../constants';
 
-// const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY || 'temp_key_for_build';
-// if (!API_KEY || API_KEY === 'temp_key_for_build') {
-//   console.warn("VITE_GEMINI_API_KEY environment variable is not set - using temporary key");
-// }
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY || 'temp_key_for_build';
+if (!API_KEY || API_KEY === 'temp_key_for_build') {
+  console.warn("VITE_GEMINI_API_KEY environment variable is not set - using temporary key");
+}
 
-// const ai = new GoogleGenAI({ apiKey: API_KEY });
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const prompt = `
 ### 1. 페르소나 (Persona) ###
