@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
         })
       ],
       define: {
-        'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || 'temp_key_for_build'),
+        // SECURITY FIX: VITE_GEMINI_API_KEY 제거 - Edge Function에서만 사용
         'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || 'https://temp.supabase.co'),
         'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || 'temp_key_for_build')
       },
