@@ -5,8 +5,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { fetchProblemsByClassification } from '../services/db';
-import { supabase } from '../services/supabaseClient';
-// import { generateProblemAnalysisReport } from '../services/coaching'; // SECURITY FIX: Edge Function으로 이동
+import { generateProblemAnalysisReport } from '../services/coaching';
 
 export const StatsPage: React.FC = () => {
   const navigate = useNavigate();
