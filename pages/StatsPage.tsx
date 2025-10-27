@@ -5,7 +5,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { fetchProblemsByClassification } from '../services/db';
-import { generateProblemAnalysisReport } from '../services/coaching';
+import { supabase } from '../services/supabaseClient';
+// import { generateProblemAnalysisReport } from '../services/coaching'; // SECURITY FIX: Edge Function으로 이동
 
 export const StatsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -78,8 +79,39 @@ export const StatsPage: React.FC = () => {
     
     try {
       setIsGeneratingReport(true);
-      const report = await generateProblemAnalysisReport(selectedProblems);
-      setAiAnalysisReport(report);
+      
+      // SECURITY FIX: Edge Function 호출로 변경
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        setError('로그인이 필요합니다.');
+        return;
+      }
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-report`;
+      
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({
+          problems: selectedProblems,
+          userId: userData.user.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setAiAnalysisReport(result.report);
+      } else {
+        throw new Error(result.error || 'AI 분석 리포트 생성 실패');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'AI 분석 리포트 생성 실패');
     } finally {
