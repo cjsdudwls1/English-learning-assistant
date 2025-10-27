@@ -89,7 +89,41 @@ ${classificationData}
 - **불필요한 정보**: 프롬프트에 명시되지 않은 어떠한 정보도 추가로 생성하거나 출력하지 마세요.
 `;
 
-// SECURITY FIX: 이 함수는 Edge Function으로 이동됨
 export const analyzeEnglishProblemImage = async (imageBase64: string, mimeType: string): Promise<AnalysisResults> => {
-  throw new Error('이 함수는 Edge Function으로 이동되었습니다. analyze-image Edge Function을 사용하세요.');
+  try {
+    const imagePart = {
+      inlineData: {
+        data: imageBase64,
+        mimeType: mimeType,
+      },
+    };
+
+    const textPart = {
+      text: prompt,
+    };
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [textPart, imagePart] },
+    });
+    
+    const responseText = response.text;
+    
+    // Clean up the response text to ensure it's valid JSON
+    const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    const result = JSON.parse(jsonString);
+    // 간단 검증: items 배열 형태 보장
+    if (!result || !Array.isArray(result.items)) {
+      throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
+    }
+    return result as AnalysisResults;
+
+  } catch (error) {
+    console.error("Error analyzing image:", error);
+    if (error instanceof SyntaxError) {
+      throw new Error("AI 응답을 파싱하는 데 실패했습니다. 응답 형식이 올바르지 않을 수 있습니다.");
+    }
+    throw new Error("Gemini API 호출 중 오류가 발생했습니다.");
+  }
 };
