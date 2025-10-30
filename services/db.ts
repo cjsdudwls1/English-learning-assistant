@@ -432,6 +432,8 @@ export async function fetchProblemsByClassification(
     .select(`
       problem_id,
       is_correct,
+      classification,
+      user_answer,
       problems!inner (
         id,
         session_id,
@@ -474,6 +476,8 @@ export async function fetchProblemsByClassification(
   return (data || []).map((item: any) => ({
     problem_id: item.problem_id,
     is_correct: item.is_correct,
+    classification: item.classification || {},
+    user_answer: item.user_answer || '',
     problem: {
       id: item.problems.id,
       session_id: item.problems.session_id,
