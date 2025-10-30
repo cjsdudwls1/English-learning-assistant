@@ -90,6 +90,14 @@ export const StatsPage: React.FC = () => {
     navigate(`/retry?ids=${encodeURIComponent(ids)}`);
   };
 
+  const toggleSelectAll = () => {
+    if (selectedProblems.length === 0) return;
+    const allIds = new Set<string>(selectedProblems.map((p: any) => p.problem_id));
+    // 모두 선택되어 있으면 전체 해제, 아니면 전체 선택
+    const isAllSelected = Array.from(allIds).every(id => checkedProblemIds.has(id));
+    setCheckedProblemIds(isAllSelected ? new Set() : allIds);
+  };
+
   const handleAiAnalysis = async () => {
     if (selectedProblems.length === 0) return;
     
@@ -235,13 +243,21 @@ export const StatsPage: React.FC = () => {
             </h3>
             <div className="flex items-center gap-2">
               {!selectedFilter?.isCorrect && (
-                <button
-                  onClick={navigateRetry}
-                  disabled={checkedProblemIds.size === 0}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  다시 풀어보기
-                </button>
+                <>
+                  <button
+                    onClick={toggleSelectAll}
+                    className="px-4 py-2 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200"
+                  >
+                    {selectedProblems.length > 0 && selectedProblems.every((p: any) => checkedProblemIds.has(p.problem_id)) ? '전체해제' : '전체선택'}
+                  </button>
+                  <button
+                    onClick={navigateRetry}
+                    disabled={checkedProblemIds.size === 0}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    다시 풀어보기
+                  </button>
+                </>
               )}
               <button
               onClick={handleAiAnalysis}
@@ -254,16 +270,16 @@ export const StatsPage: React.FC = () => {
           </div>
           <div className="space-y-3 max-h-[600px] overflow-auto">
             {selectedProblems.map((item, idx) => (
-              <div key={idx} className="border border-slate-200 rounded-lg p-4">
+              <div
+                key={idx}
+                className={`border rounded-lg p-4 transition-colors cursor-pointer ${checkedProblemIds.has(item.problem_id) ? 'bg-blue-50 border-blue-300' : 'border-slate-200 hover:bg-slate-50'}`}
+                onClick={() => {
+                  if (selectedFilter?.isCorrect) return; // 정답 목록에서는 선택 비활성화 유지
+                  const isChecked = checkedProblemIds.has(item.problem_id);
+                  toggleCheck(item.problem_id, !isChecked);
+                }}
+              >
                 <div className="flex items-start gap-3">
-                  {!selectedFilter?.isCorrect && (
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={checkedProblemIds.has(item.problem_id)}
-                      onChange={(e) => toggleCheck(item.problem_id, e.target.checked)}
-                    />
-                  )}
                   <img 
                     src={item.problem.session.image_url} 
                     alt="문제 이미지"
