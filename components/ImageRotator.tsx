@@ -18,8 +18,7 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
   const resetTimerRef = useRef<number | null>(null);
 
   const rotateImage = (degrees: number) => {
-    // 빠른 연속 클릭만 방지하고 다회전 자체는 허용
-    if (isRotating) return;
+    // 즉시 연속 클릭 허용 (서버 업로드는 중첩 가능)
     
     const canvas = canvasRef.current;
     const img = imgRef.current;
@@ -91,7 +90,6 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
         src={imageUrl}
         alt="회전할 이미지"
         className="w-full h-auto"
-        style={{ transform: `rotate(${rotation}deg)` }}
         onLoad={() => {
           // 이미지 로드 후 초기 Canvas 설정
           const canvas = canvasRef.current;
@@ -108,20 +106,14 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
       <div className="absolute top-2 right-2 flex gap-2">
         <button
           onClick={handleRotateLeft}
-          disabled={isRotating}
-          className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md ${
-            isRotating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-100'
-          }`}
+          className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}
           title="좌회전"
         >
           ↶
         </button>
         <button
           onClick={handleRotateRight}
-          disabled={isRotating}
-          className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md ${
-            isRotating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-100'
-          }`}
+          className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}
           title="우회전"
         >
           ↷
