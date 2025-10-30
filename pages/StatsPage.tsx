@@ -282,7 +282,7 @@ export const StatsPage: React.FC = () => {
             </div>
           )}
 
-          <div className="space-y-3 max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] overflow-auto">
+          <div className="space-y-3 md:max-h-[70vh] md:overflow-auto">
             {selectedProblems.map((item, idx) => (
               <div
                 key={idx}
