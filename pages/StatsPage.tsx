@@ -17,6 +17,7 @@ export const StatsPage: React.FC = () => {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [selectedProblems, setSelectedProblems] = useState<any[]>([]);
+  const [checkedProblemIds, setCheckedProblemIds] = useState<Set<string>>(new Set());
   const [selectedFilter, setSelectedFilter] = useState<{node: StatsNode, isCorrect: boolean} | null>(null);
   const [aiAnalysisReport, setAiAnalysisReport] = useState<string | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -65,6 +66,7 @@ export const StatsPage: React.FC = () => {
         isCorrect
       );
       setSelectedProblems(problems);
+      setCheckedProblemIds(new Set());
       setSelectedFilter({ node, isCorrect });
       setAiAnalysisReport(null); // 새로운 문제 선택 시 리포트 초기화
     } catch (e) {
@@ -72,6 +74,20 @@ export const StatsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleCheck = (problemId: string, checked: boolean) => {
+    setCheckedProblemIds(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(problemId); else next.delete(problemId);
+      return next;
+    });
+  };
+
+  const navigateRetry = () => {
+    if (checkedProblemIds.size === 0) return;
+    const ids = Array.from(checkedProblemIds).join(',');
+    navigate(`/retry?ids=${encodeURIComponent(ids)}`);
   };
 
   const handleAiAnalysis = async () => {
@@ -217,18 +233,37 @@ export const StatsPage: React.FC = () => {
             <h3 className="text-xl font-bold">
               {selectedFilter?.node.depth1} - {selectedFilter?.isCorrect ? '정답' : '오답'} 문제 ({selectedProblems.length}개)
             </h3>
-            <button
+            <div className="flex items-center gap-2">
+              {!selectedFilter?.isCorrect && (
+                <button
+                  onClick={navigateRetry}
+                  disabled={checkedProblemIds.size === 0}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  다시 풀어보기
+                </button>
+              )}
+              <button
               onClick={handleAiAnalysis}
               disabled={isGeneratingReport}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {isGeneratingReport ? 'AI 분석 중...' : 'AI 분석'}
-            </button>
+              </button>
+            </div>
           </div>
           <div className="space-y-3 max-h-[600px] overflow-auto">
             {selectedProblems.map((item, idx) => (
               <div key={idx} className="border border-slate-200 rounded-lg p-4">
                 <div className="flex items-start gap-3">
+                  {!selectedFilter?.isCorrect && (
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={checkedProblemIds.has(item.problem_id)}
+                      onChange={(e) => toggleCheck(item.problem_id, e.target.checked)}
+                    />
+                  )}
                   <img 
                     src={item.problem.session.image_url} 
                     alt="문제 이미지"

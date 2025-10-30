@@ -170,6 +170,71 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
   return items;
 }
 
+// 문제 ID 배열로 문제 조회 (사용자 소유 검증 포함)
+export async function fetchProblemsByIds(problemIds: string[]): Promise<ProblemItem[]> {
+  const userId = await getCurrentUserId();
+
+  if (!problemIds || problemIds.length === 0) return [];
+
+  // labels 기준으로 조인하여 소유자 필터링 및 문제 데이터 수집
+  const { data, error } = await supabase
+    .from('labels')
+    .select(`
+      problem_id,
+      user_answer,
+      user_mark,
+      is_correct,
+      classification,
+      problems!inner (
+        id,
+        index_in_image,
+        stem,
+        choices,
+        session_id,
+        sessions!inner (
+          user_id
+        )
+      )
+    `)
+    .in('problem_id', problemIds)
+    .eq('problems.sessions.user_id', userId);
+
+  if (error) throw error;
+
+  return (data || []).map((row: any) => {
+    const classification = row.classification || {};
+    return {
+      index: row.problems.index_in_image,
+      사용자가_직접_채점한_정오답: normalizeMark(row.user_mark),
+      AI가_판단한_정오답: row.is_correct !== undefined && row.is_correct !== null
+        ? (row.is_correct ? '정답' : '오답')
+        : undefined,
+      문제내용: {
+        text: row.problems.stem || '',
+        confidence_score: 1.0,
+      },
+      문제_보기: (row.problems.choices || []).map((c: any) => ({
+        text: c.text || '',
+        confidence_score: c.confidence || 1.0,
+      })),
+      사용자가_기술한_정답: {
+        text: row.user_answer || '',
+        confidence_score: 1.0,
+        auto_corrected: false,
+        alternate_interpretations: [],
+      },
+      문제_유형_분류: {
+        '1Depth': classification['1Depth'] || '',
+        '2Depth': classification['2Depth'] || '',
+        '3Depth': classification['3Depth'] || '',
+        '4Depth': classification['4Depth'] || '',
+        '분류_신뢰도': classification['분류_신뢰도'] || '보통',
+      },
+      분류_근거: '',
+    } as ProblemItem;
+  });
+}
+
 // 문제 수정
 export async function updateProblemLabels(sessionId: string, items: ProblemItem[]): Promise<void> {
   // 먼저 해당 세션의 문제 ID들을 가져옴
