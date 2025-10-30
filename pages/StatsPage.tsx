@@ -111,6 +111,10 @@ export const StatsPage: React.FC = () => {
         return;
       }
 
+      // 선택된 문제만 필터링
+      const filteredProblems = selectedProblems.filter((p: any) => checkedProblemIds.has(p.problem_id));
+      const problemsToAnalyze = filteredProblems.length > 0 ? filteredProblems : selectedProblems;
+
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-report`;
       
       const response = await fetch(functionUrl, {
@@ -120,7 +124,7 @@ export const StatsPage: React.FC = () => {
           'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
         },
         body: JSON.stringify({
-          problems: selectedProblems,
+          problems: problemsToAnalyze,
           userId: userData.user.id
         })
       });
