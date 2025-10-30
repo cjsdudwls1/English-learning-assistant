@@ -147,7 +147,7 @@ export const RecentProblemsPage: React.FC = () => {
 
       <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">최근 업로드한 문제</h2>
+          <h2 className="text-2xl font-bold whitespace-nowrap">최근 업로드한 문제</h2>
           <div className="flex gap-2">
             <button
               onClick={toggleSelectAll}
