@@ -22,7 +22,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleImageSelect = (file: File) => {
+  const handleImageSelect = (file: File | null) => {
     setImageFile(file);
     setAnalysisResult(null);
     setSessionId(null);

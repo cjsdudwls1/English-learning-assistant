@@ -17,7 +17,7 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
   const imgRef = useRef<HTMLImageElement>(null);
 
   const rotateImage = (degrees: number) => {
-    // 중복 클릭 방지
+    // 빠른 연속 클릭만 방지하고 다회전 자체는 허용
     if (isRotating) return;
     
     const canvas = canvasRef.current;
@@ -52,7 +52,7 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
     ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
     ctx.restore();
 
-    // Blob으로 변환
+    // Blob으로 변환 (회전 결과를 실제 픽셀 데이터로 저장)
     canvas.toBlob((blob) => {
       if (blob) {
         onRotate(blob);

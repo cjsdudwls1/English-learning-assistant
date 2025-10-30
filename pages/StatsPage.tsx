@@ -313,6 +313,44 @@ export const StatsPage: React.FC = () => {
                       >
                         상세보기
                       </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            setIsGeneratingReport(true);
+                            const { data: userData } = await supabase.auth.getUser();
+                            if (!userData.user) {
+                              setError('로그인이 필요합니다.');
+                              return;
+                            }
+                            const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-report`;
+                            const response = await fetch(functionUrl, {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+                              },
+                              body: JSON.stringify({
+                                problems: [item],
+                                userId: userData.user.id
+                              })
+                            });
+                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                            const result = await response.json();
+                            if (!result.success) throw new Error(result.error || 'AI 분석 실패');
+                            setAiAnalysisReport(result.report);
+                            // DB 저장(문항별)
+                            await (await import('../services/db')).saveProblemReport(item.problem_id, result.report);
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : 'AI 분석 실패');
+                          } finally {
+                            setIsGeneratingReport(false);
+                          }
+                        }}
+                        className="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        disabled={isGeneratingReport}
+                      >
+                        단일 AI 분석
+                      </button>
                     </div>
                   </div>
                   <span className={`px-2 py-1 text-xs rounded ${

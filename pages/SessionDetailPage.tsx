@@ -89,43 +89,40 @@ export const SessionDetailPage: React.FC = () => {
     if (!sessionId) return;
     
     try {
-      // Blob을 File로 변환
-      const rotatedFile = new File([rotatedBlob], `rotated_${Date.now()}.jpg`, {
+      // 기존 public URL에서 스토리지 경로 추출 후 동일 경로로 덮어쓰기(upsert)
+      const currentUrl = imageUrl;
+      if (!currentUrl) throw new Error('이미지 URL을 찾을 수 없습니다.');
+
+      const match = currentUrl.match(/\/object\/public\/problem-images\/(.*)$/);
+      if (!match || !match[1]) throw new Error('스토리지 경로를 파싱할 수 없습니다.');
+      const storagePath = match[1];
+
+      const rotatedFile = new File([rotatedBlob], storagePath.split('/').pop() || `rotated_${Date.now()}.jpg`, {
         type: rotatedBlob.type,
         lastModified: Date.now(),
       });
-      
-      // Storage에 재업로드
-      const timestamp = Date.now();
-      const safeName = `rotated_${timestamp}.jpg`;
-      const { data: userData } = await supabase.auth.getUser();
-      const email = userData.user?.email || userData.user?.id || 'unknown';
-      const emailLocal = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
-      const path = `${emailLocal}/${timestamp}_${safeName}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
+
+      const { error: uploadError } = await supabase.storage
         .from('problem-images')
-        .upload(path, rotatedFile, {
+        .upload(storagePath, rotatedFile, {
           contentType: rotatedBlob.type,
           cacheControl: '3600',
-          upsert: false
+          upsert: true,
         });
-      
+
       if (uploadError) throw uploadError;
-      
-      const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(uploadData.path);
-      const newImageUrl = urlData.publicUrl;
-      
-      // sessions 테이블의 image_url 업데이트
+
+      // 캐시 무효화를 위해 쿼리스트링 버전 부여
+      const cacheBustedUrl = `${currentUrl.split('?')[0]}?v=${Date.now()}`;
+
       const { error: updateError } = await supabase
         .from('sessions')
-        .update({ image_url: newImageUrl })
+        .update({ image_url: cacheBustedUrl })
         .eq('id', sessionId);
-      
+
       if (updateError) throw updateError;
-      
-      // 화면 새로고침
-      setImageUrl(newImageUrl);
+
+      setImageUrl(cacheBustedUrl);
       
     } catch (error) {
       console.error('Image rotation failed:', error);
