@@ -15,6 +15,7 @@ export const SessionDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string>('pending');
   const [imageUrl, setImageUrl] = useState<string>('');
+  const originalImageUrlRef = React.useRef<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
@@ -61,6 +62,7 @@ export const SessionDetailPage: React.FC = () => {
           
           if (!sessionError && sessionData) {
             setImageUrl(sessionData.image_url);
+            originalImageUrlRef.current = sessionData.image_url;
           }
         }
       } catch (e) {
@@ -89,12 +91,9 @@ export const SessionDetailPage: React.FC = () => {
     if (!sessionId) return;
     
     try {
-      // 1) 즉시 미리보기 반영 (사용자 피드백 지연 제거)
-      const localPreviewUrl = URL.createObjectURL(rotatedBlob);
-      setImageUrl(localPreviewUrl);
-
       // 기존 public URL에서 스토리지 경로 추출 후 동일 경로로 덮어쓰기(upsert)
-      const currentUrl = imageUrl;
+      // 주의: blob: 미리보기 URL이 아닌 원본 서버 URL을 사용해야 함
+      const currentUrl = originalImageUrlRef.current || imageUrl;
       if (!currentUrl) throw new Error('이미지 URL을 찾을 수 없습니다.');
 
       const match = currentUrl.match(/\/object\/public\/problem-images\/(.*)$/);
@@ -106,27 +105,40 @@ export const SessionDetailPage: React.FC = () => {
         lastModified: Date.now(),
       });
 
-      const { error: uploadError } = await supabase.storage
-        .from('problem-images')
-        .upload(storagePath, rotatedFile, {
-          contentType: rotatedBlob.type,
-          cacheControl: '0',
-          upsert: true,
-        });
-
+      // 업로드: 일시 오류 대비 재시도(최대 2회)
+      let uploadError: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { error } = await supabase.storage
+          .from('problem-images')
+          .upload(storagePath, rotatedFile, {
+            contentType: rotatedBlob.type,
+            cacheControl: '0',
+            upsert: true,
+          });
+        if (!error) { uploadError = null; break; }
+        uploadError = error;
+        await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+      }
       if (uploadError) throw uploadError;
 
       // 캐시 무효화를 위해 쿼리스트링 버전 부여
       const cacheBustedUrl = `${currentUrl.split('?')[0]}?v=${Date.now()}`;
 
-      const { error: updateError } = await supabase
-        .from('sessions')
-        .update({ image_url: cacheBustedUrl })
-        .eq('id', sessionId);
-
+      // DB 업데이트(재시도 포함)
+      let updateError: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { error } = await supabase
+          .from('sessions')
+          .update({ image_url: cacheBustedUrl })
+          .eq('id', sessionId);
+        if (!error) { updateError = null; break; }
+        updateError = error;
+        await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+      }
       if (updateError) throw updateError;
 
       setImageUrl(cacheBustedUrl);
+      originalImageUrlRef.current = cacheBustedUrl;
       
     } catch (error) {
       console.error('Image rotation failed:', error);
