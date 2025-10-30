@@ -16,6 +16,7 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const resetTimerRef = useRef<number | null>(null);
+  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
 
   const rotateImage = (degrees: number) => {
     // 즉시 연속 클릭 허용 (서버 업로드는 중첩 가능)
@@ -59,6 +60,14 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
     ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
     ctx.restore();
 
+    // 즉시 미리보기 반영: 캔버스 데이터를 dataURL로 반영
+    try {
+      const preview = canvas.toDataURL('image/jpeg', 0.9);
+      setLocalPreviewUrl(preview);
+    } catch (_e) {
+      // ignore
+    }
+
     // Blob으로 변환 (회전 결과를 실제 픽셀 데이터로 저장)
     canvas.toBlob((blob) => {
       if (blob) {
@@ -87,9 +96,10 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
     <div className={`relative ${className}`}>
       <img
         ref={imgRef}
-        src={imageUrl}
+        src={localPreviewUrl || imageUrl}
         alt="회전할 이미지"
         className="w-full h-auto"
+        crossOrigin="anonymous"
         onLoad={() => {
           // 이미지 로드 후 초기 Canvas 설정
           const canvas = canvasRef.current;
