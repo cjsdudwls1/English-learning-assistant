@@ -310,14 +310,6 @@ export const StatsPage: React.FC = () => {
                     <p className="text-slate-600 text-sm mt-1 line-clamp-2">
                       {item.problem.stem}
                     </p>
-                    <div className="mt-2">
-                      <button
-                        onClick={() => navigate(`/session/${item.problem.session_id}`)}
-                        className="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                      >
-                        상세보기
-                      </button>
-                    </div>
                   </div>
                   <span className={`px-2 py-1 text-xs rounded ${
                     item.is_correct ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
