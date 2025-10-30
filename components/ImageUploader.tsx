@@ -3,7 +3,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { ImageRotator } from './ImageRotator';
 
 interface ImageUploaderProps {
-  onImageSelect: (file: File) => void;
+  onImageSelect: (file: File | null) => void;
 }
 
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) => {
@@ -43,6 +43,12 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
     reader.readAsDataURL(rotatedBlob);
   }, [currentFile, onImageSelect]);
 
+  const handleCancel = useCallback(() => {
+    setCurrentFile(null);
+    setPreviewUrl(null);
+    onImageSelect(null);
+  }, [onImageSelect]);
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4 text-slate-700">1. 문제 이미지 업로드</h2>
@@ -67,6 +73,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect }) =
             <p className="text-sm text-slate-500 mt-2 text-center">
               회전 버튼을 사용하여 이미지 방향을 조정할 수 있습니다
             </p>
+            <div className="mt-3 text-center">
+              <button onClick={handleCancel} className="px-4 py-2 text-sm bg-gray-200 text-gray-800 rounded hover:bg-gray-300">취소</button>
+            </div>
           </div>
         )}
       </div>
