@@ -268,6 +268,16 @@ export const StatsPage: React.FC = () => {
               </button>
             </div>
           </div>
+          {/* AI 분석 리포트: 상단으로 이동 */}
+          {aiAnalysisReport && (
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-lg font-semibold text-blue-800 mb-3">AI 분석 리포트</h4>
+              <div className="text-blue-700 whitespace-pre-wrap">
+                {aiAnalysisReport}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-3 max-h-[600px] overflow-auto">
             {selectedProblems.map((item, idx) => (
               <div
@@ -315,15 +325,6 @@ export const StatsPage: React.FC = () => {
             ))}
           </div>
           
-          {/* AI 분석 리포트 */}
-          {aiAnalysisReport && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-lg font-semibold text-blue-800 mb-3">AI 분석 리포트</h4>
-              <div className="text-blue-700 whitespace-pre-wrap">
-                {aiAnalysisReport}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

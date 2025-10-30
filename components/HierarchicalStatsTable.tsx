@@ -118,7 +118,7 @@ export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({
             <th className="p-2">카테고리</th>
             <th className="p-2">정답</th>
             <th className="p-2">오답</th>
-            <th className="p-2">오답률</th>
+            <th className="p-2">정답률</th>
           </tr>
         </thead>
         <tbody>
