@@ -88,6 +88,8 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
             canvas.width = img.naturalWidth;
             canvas.height = img.naturalHeight;
           }
+          // 이미지가 새로 로드되면 버튼 비활성화 상태를 해제하여 재회전 가능
+          setIsRotating(false);
         }}
       />
       
