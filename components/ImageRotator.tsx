@@ -15,6 +15,7 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
   const [isRotating, setIsRotating] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const resetTimerRef = useRef<number | null>(null);
 
   const rotateImage = (degrees: number) => {
     // 빠른 연속 클릭만 방지하고 다회전 자체는 허용
@@ -26,6 +27,13 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
     if (!canvas || !img) return;
 
     setIsRotating(true);
+    // 안전 타이머: 예기치 못한 경우에도 버튼이 장시간 비활성화되지 않도록 보장
+    if (resetTimerRef.current) {
+      window.clearTimeout(resetTimerRef.current);
+    }
+    resetTimerRef.current = window.setTimeout(() => {
+      setIsRotating(false);
+    }, 3000);
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -60,6 +68,10 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
       // 회전 완료 후 상태 해제
       setTimeout(() => {
         setIsRotating(false);
+        if (resetTimerRef.current) {
+          window.clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = null;
+        }
       }, 100);
     }, 'image/jpeg', 0.9);
   };
