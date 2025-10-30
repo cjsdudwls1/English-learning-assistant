@@ -13,6 +13,7 @@ import { StatsPage } from './pages/StatsPage';
 import { RecentProblemsPage } from './pages/RecentProblemsPage';
 import { AnalyzingPage } from './pages/AnalyzingPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
+import { RetryProblemsPage } from './pages/RetryProblemsPage';
 
 const App: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -160,6 +161,7 @@ const App: React.FC = () => {
           <Route path="/edit/:sessionId" element={<AuthGate><EditPage /></AuthGate>} />
           <Route path="/analyzing/:sessionId" element={<AuthGate><AnalyzingPage /></AuthGate>} />
           <Route path="/session/:sessionId" element={<AuthGate><SessionDetailPage /></AuthGate>} />
+          <Route path="/retry" element={<AuthGate><RetryProblemsPage /></AuthGate>} />
           <Route path="/recent" element={<AuthGate><RecentProblemsPage /></AuthGate>} />
           <Route path="/stats" element={<AuthGate><StatsPage /></AuthGate>} />
           <Route path="/" element={<AuthGate><div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">

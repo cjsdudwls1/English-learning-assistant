@@ -6,9 +6,13 @@ interface MultiProblemEditorProps {
   initial: AnalysisResults;
   onChange?: (items: ProblemItem[]) => void;
   onSubmit?: (items: ProblemItem[]) => Promise<void>;
+  hideMarking?: boolean;
+  hideClassification?: boolean;
+  hideReport?: boolean;
+  hideSubmit?: boolean;
 }
 
-export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial, onChange, onSubmit }) => {
+export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial, onChange, onSubmit, hideMarking, hideClassification, hideReport, hideSubmit }) => {
   const [items, setItems] = useState<ProblemItem[]>(initial.items);
 
   // initial prop이 변경될 때 내부 state를 동기화
@@ -71,36 +75,40 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
             <div>
               <h3 className="text-lg font-bold">문항 #{i + 1}</h3>
             </div>
-            <div className="flex gap-2">
-              {marks.map(m => {
-                const isUserSelected = it.사용자가_직접_채점한_정오답 === m;
-                const isAISelected = it.AI가_판단한_정오답 === m;
-                
-                return (
+            {!hideMarking && (
+              <div className="flex gap-2">
+                {marks.map(m => {
+                  const isUserSelected = it.사용자가_직접_채점한_정오답 === m;
+                  const isAISelected = it.AI가_판단한_정오답 === m;
+                  
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`px-4 py-2 rounded font-medium transition-colors ${
+                        isUserSelected
+                          ? 'bg-blue-600 text-white'
+                          : isAISelected
+                          ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 ring-2 ring-blue-500'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                      onClick={() => updateMark(i, m)}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+                {!hideReport && (
                   <button
-                    key={m}
-                    type="button"
-                    className={`px-4 py-2 rounded font-medium transition-colors ${
-                      isUserSelected
-                        ? 'bg-blue-600 text-white'
-                        : isAISelected
-                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 ring-2 ring-blue-500'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                    onClick={() => updateMark(i, m)}
+                    onClick={() => handleReportClick(i)}
+                    className="px-3 py-2 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                    title="AI 분석이 잘못되었다고 생각되시나요?"
                   >
-                    {m}
+                    신고
                   </button>
-                );
-              })}
-              <button
-                onClick={() => handleReportClick(i)}
-                className="px-3 py-2 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                title="AI 분석이 잘못되었다고 생각되시나요?"
-              >
-                신고
-              </button>
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="mt-3">
@@ -119,43 +127,49 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-sm text-slate-600">1Depth</label>
-              <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['1Depth']}
-                onChange={(e) => updateClassification(i, { '1Depth': e.target.value })} />
+          {!hideClassification && (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-sm text-slate-600">1Depth</label>
+                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['1Depth']}
+                  onChange={(e) => updateClassification(i, { '1Depth': e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-600">2Depth</label>
+                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['2Depth']}
+                  onChange={(e) => updateClassification(i, { '2Depth': e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-600">3Depth</label>
+                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['3Depth']}
+                  onChange={(e) => updateClassification(i, { '3Depth': e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-600">4Depth</label>
+                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['4Depth']}
+                  onChange={(e) => updateClassification(i, { '4Depth': e.target.value })} />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm text-slate-600">2Depth</label>
-              <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['2Depth']}
-                onChange={(e) => updateClassification(i, { '2Depth': e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-600">3Depth</label>
-              <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['3Depth']}
-                onChange={(e) => updateClassification(i, { '3Depth': e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-600">4Depth</label>
-              <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['4Depth']}
-                onChange={(e) => updateClassification(i, { '4Depth': e.target.value })} />
-            </div>
-          </div>
+          )}
         </div>
       ))}
 
       {error && <div className="p-3 bg-red-100 border text-red-800 rounded">{error}</div>}
-      <div className="text-right">
-        <button disabled={saving} onClick={handleSubmit} className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold disabled:bg-slate-400">
-          {saving ? '저장 중...' : '저장'}
-        </button>
-      </div>
+      {!hideSubmit && (
+        <div className="text-right">
+          <button disabled={saving} onClick={handleSubmit} className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold disabled:bg-slate-400">
+            {saving ? '저장 중...' : '저장'}
+          </button>
+        </div>
+      )}
       
-      <ReportModal
-        isOpen={reportModalOpen}
-        onClose={() => setReportModalOpen(false)}
-        onSubmit={handleReportSubmit}
-      />
+      {!hideReport && (
+        <ReportModal
+          isOpen={reportModalOpen}
+          onClose={() => setReportModalOpen(false)}
+          onSubmit={handleReportSubmit}
+        />
+      )}
     </div>
   );
 };
