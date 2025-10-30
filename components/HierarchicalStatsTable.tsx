@@ -85,7 +85,7 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
         <td className="p-2">
           {node.total_count > 0 ? (
             <span className="text-slate-600">
-              {((node.incorrect_count / node.total_count) * 100).toFixed(1)}%
+              {((node.correct_count / node.total_count) * 100).toFixed(1)}%
             </span>
           ) : (
             <span className="text-slate-400">-</span>
