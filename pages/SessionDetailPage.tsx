@@ -132,7 +132,7 @@ export const SessionDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+      <div className="mx-auto bg-white rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 border border-slate-200 max-w-full lg:max-w-6xl">
         <p className="text-center text-slate-600">불러오는 중...</p>
       </div>
     );

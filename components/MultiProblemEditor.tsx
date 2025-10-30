@@ -70,7 +70,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
   return (
     <div className="space-y-6">
       {items.map((it, i) => (
-        <div key={i} className="border border-slate-200 rounded-lg p-4 bg-white">
+        <div key={i} className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-bold">문항 #{i + 1}</h3>
@@ -113,7 +113,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
 
           <div className="mt-3">
             <label className="text-sm text-slate-600">문제 본문</label>
-            <div className="w-full border rounded px-3 py-2 mt-1 min-h-[100px] max-h-[300px] overflow-auto bg-slate-50 text-slate-700">
+            <div className="w-full border rounded px-3 py-2 mt-1 min-h-[100px] max-h-[40vh] sm:max-h-[300px] overflow-auto bg-slate-50 text-slate-700">
               {it.문제내용.text}
               {it.문제_보기 && it.문제_보기.length > 0 && (
                 <div className="mt-2 space-y-1">

@@ -154,12 +154,12 @@ export const StatsPage: React.FC = () => {
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="mx-auto space-y-6 max-w-full px-2 sm:px-4 md:px-6 lg:max-w-5xl">
       <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
         <h2 className="text-2xl font-bold mb-4">유형별 정오답 통계</h2>
         
         {/* 기간 설정 UI */}
-        <div className="mb-6 p-4 bg-slate-50 rounded-lg">
+        <div className="mb-6 p-3 sm:p-4 bg-slate-50 rounded-lg">
           <div className="flex flex-wrap gap-2 items-center mb-3">
             <span className="text-sm font-medium text-slate-700">기간 설정:</span>
             <button
@@ -278,11 +278,11 @@ export const StatsPage: React.FC = () => {
             </div>
           )}
 
-          <div className="space-y-3 max-h-[600px] overflow-auto">
+          <div className="space-y-3 max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] overflow-auto">
             {selectedProblems.map((item, idx) => (
               <div
                 key={idx}
-                className={`border rounded-lg p-4 transition-colors cursor-pointer ${checkedProblemIds.has(item.problem_id) ? 'bg-blue-50 border-blue-300' : 'border-slate-200 hover:bg-slate-50'}`}
+                className={`border rounded-lg p-3 sm:p-4 transition-colors cursor-pointer ${checkedProblemIds.has(item.problem_id) ? 'bg-blue-50 border-blue-300' : 'border-slate-200 hover:bg-slate-50'}`}
                 onClick={() => {
                   if (selectedFilter?.isCorrect) return; // 정답 목록에서는 선택 비활성화 유지
                   const isChecked = checkedProblemIds.has(item.problem_id);
@@ -293,7 +293,7 @@ export const StatsPage: React.FC = () => {
                   <img 
                     src={item.problem.session.image_url} 
                     alt="문제 이미지"
-                    className="w-24 h-24 object-cover rounded border cursor-pointer"
+                    className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded border cursor-pointer flex-shrink-0"
                     onClick={() => navigate(`/session/${item.problem.session_id}`)}
                   />
                   <div className="flex-1">

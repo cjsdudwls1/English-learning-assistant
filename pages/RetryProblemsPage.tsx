@@ -49,7 +49,7 @@ export const RetryProblemsPage: React.FC = () => {
   const initial: AnalysisResults = { items };
 
   return (
-    <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+    <div className="mx-auto bg-white rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 border border-slate-200 max-w-full lg:max-w-5xl">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">다시 풀어보기 ({items.length}문항)</h2>
         <button onClick={() => navigate('/stats')} className="px-3 py-1 text-sm bg-gray-200 rounded">뒤로</button>
