@@ -89,6 +89,10 @@ export const SessionDetailPage: React.FC = () => {
     if (!sessionId) return;
     
     try {
+      // 1) 즉시 미리보기 반영 (사용자 피드백 지연 제거)
+      const localPreviewUrl = URL.createObjectURL(rotatedBlob);
+      setImageUrl(localPreviewUrl);
+
       // 기존 public URL에서 스토리지 경로 추출 후 동일 경로로 덮어쓰기(upsert)
       const currentUrl = imageUrl;
       if (!currentUrl) throw new Error('이미지 URL을 찾을 수 없습니다.');
@@ -106,7 +110,7 @@ export const SessionDetailPage: React.FC = () => {
         .from('problem-images')
         .upload(storagePath, rotatedFile, {
           contentType: rotatedBlob.type,
-          cacheControl: '3600',
+          cacheControl: '0',
           upsert: true,
         });
 
