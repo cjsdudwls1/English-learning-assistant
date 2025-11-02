@@ -5,6 +5,8 @@ interface HierarchicalStatsTableProps {
   data: StatsNode[];
   onImageClick?: (sessionIds: string[]) => void;
   onNumberClick?: (node: StatsNode, isCorrect: boolean) => void;
+  selectedNodes?: Set<string>;
+  onNodeSelect?: (node: StatsNode, selected: boolean) => void;
 }
 
 interface StatsRowProps {
@@ -12,12 +14,34 @@ interface StatsRowProps {
   level: number;
   onImageClick?: (sessionIds: string[]) => void;
   onNumberClick?: (node: StatsNode, isCorrect: boolean) => void;
+  selectedNodes?: Set<string>;
+  onNodeSelect?: (node: StatsNode, selected: boolean) => void;
 }
 
-const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumberClick }) => {
+const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumberClick, selectedNodes, onNodeSelect }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const indent = level * 20;
+
+  // 노드 키 생성 (고유 식별자)
+  const getNodeKey = (n: StatsNode): string => {
+    return `${n.depth1 || ''}_${n.depth2 || ''}_${n.depth3 || ''}_${n.depth4 || ''}`;
+  };
+
+  const nodeKey = getNodeKey(node);
+  const isSelected = selectedNodes?.has(nodeKey) || false;
+
+  // 하위 노드들을 모두 가져오는 함수
+  const getAllDescendants = (n: StatsNode): StatsNode[] => {
+    const descendants: StatsNode[] = [];
+    if (n.children) {
+      for (const child of n.children) {
+        descendants.push(child);
+        descendants.push(...getAllDescendants(child));
+      }
+    }
+    return descendants;
+  };
 
   const handleToggle = () => {
     if (hasChildren) {
@@ -31,15 +55,47 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
     }
   };
 
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const checked = e.target.checked;
+    
+    if (onNodeSelect) {
+      // 상위 노드 선택 시 하위 모든 노드도 선택
+      if (checked) {
+        // 자신 선택
+        onNodeSelect(node, true);
+        // 모든 하위 노드 선택
+        const descendants = getAllDescendants(node);
+        descendants.forEach(desc => onNodeSelect(desc, true));
+      } else {
+        // 자신 해제
+        onNodeSelect(node, false);
+        // 모든 하위 노드 해제
+        const descendants = getAllDescendants(node);
+        descendants.forEach(desc => onNodeSelect(desc, false));
+      }
+    }
+  };
+
   return (
     <>
       <tr 
-        className={`border-b hover:bg-slate-50 cursor-pointer ${hasChildren ? 'font-semibold' : ''}`}
+        className={`border-b hover:bg-slate-50 cursor-pointer font-semibold`}
         onClick={handleToggle}
-        style={{ paddingLeft: `${indent}px` }}
+        style={{ paddingLeft: '0px' }}
       >
         <td className="p-2" style={{ paddingLeft: `${indent + 8}px` }}>
           <div className="flex items-center gap-2">
+            {/* 체크박스 추가 */}
+            {onNodeSelect && (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={handleCheckboxChange}
+                onClick={(e) => e.stopPropagation()}
+                className="w-4 h-4 cursor-pointer"
+              />
+            )}
             {hasChildren && (
               <span className="text-slate-500">
                 {isExpanded ? '▼' : '▶'}
@@ -99,6 +155,8 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
           level={level + 1}
           onImageClick={onImageClick}
           onNumberClick={onNumberClick}
+          selectedNodes={selectedNodes}
+          onNodeSelect={onNodeSelect}
         />
       ))}
     </>
@@ -108,7 +166,9 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
 export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({ 
   data, 
   onImageClick,
-  onNumberClick 
+  onNumberClick,
+  selectedNodes,
+  onNodeSelect
 }) => {
   return (
     <div className="overflow-x-auto">
@@ -129,6 +189,8 @@ export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({
               level={0}
               onImageClick={onImageClick}
               onNumberClick={onNumberClick}
+              selectedNodes={selectedNodes}
+              onNodeSelect={onNodeSelect}
             />
           ))}
         </tbody>
