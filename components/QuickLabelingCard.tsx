@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchProblemsForLabeling, quickUpdateLabels } from '../services/db';
+import { fetchSessionProblems } from '../services/db';
 
 interface QuickLabelingCardProps {
   sessionId: string;
@@ -14,75 +14,22 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   onSave 
 }) => {
   const navigate = useNavigate();
-  const [problems, setProblems] = useState<{ id: string; index_in_image: number; ai_is_correct: boolean | null }[]>([]);
-  const [labels, setLabels] = useState<Record<string, '정답' | '오답' | null>>({});
-  const [saving, setSaving] = useState(false);
+  const [problemCount, setProblemCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadProblems();
+    loadProblemCount();
   }, [sessionId]);
 
-  const loadProblems = async () => {
+  const loadProblemCount = async () => {
     try {
       setLoading(true);
-      const data = await fetchProblemsForLabeling(sessionId);
-      setProblems(data);
-      // AI 분석 결과를 초기값으로 설정
-      const initialLabels: Record<string, '정답' | '오답' | null> = {};
-      data.forEach(p => {
-        // AI가 분석한 결과를 초기값으로 설정
-        if (p.ai_is_correct !== null) {
-          initialLabels[p.id] = p.ai_is_correct ? '정답' : '오답';
-        } else {
-          initialLabels[p.id] = null;
-        }
-      });
-      setLabels(initialLabels);
+      const data = await fetchSessionProblems(sessionId);
+      setProblemCount(data.length);
     } catch (error) {
       console.error('Failed to load problems:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleMarkChange = (problemId: string, mark: '정답' | '오답') => {
-    setLabels(prev => ({
-      ...prev,
-      [problemId]: mark
-    }));
-  };
-
-  const handleSave = async () => {
-    // 모든 문제에 라벨이 있는지 확인
-    const allLabeled = Object.values(labels).every(label => label !== null);
-    if (!allLabeled) {
-      alert('모든 문제에 정답 또는 오답을 선택해주세요.');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      
-      // 모든 문제의 라벨 저장
-      await Promise.all(
-        Object.entries(labels).map(([problemId, mark]) => {
-          if (mark) {
-            return quickUpdateLabels(sessionId, problemId, mark);
-          }
-        })
-      );
-      
-      // 저장 완료 후 콜백 호출
-      onSave?.();
-      
-      // 저장 완료 후 상세보기 페이지로 이동 옵션 제공 (선택사항)
-      // navigate(`/session/${sessionId}`);
-    } catch (error) {
-      console.error('Failed to save labels:', error);
-      alert('저장 중 오류가 발생했습니다.');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -107,51 +54,24 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           className="w-24 h-24 object-cover rounded border flex-shrink-0"
         />
         
-        {/* 문제 목록 - 세로 레이아웃 */}
+        {/* 안내 메시지 */}
         <div className="flex-1">
-          <div className="space-y-3">
-            {problems.map((problem) => (
-              <div key={problem.id} className="flex items-center gap-3">
-                <span className="font-semibold text-lg min-w-[50px]">Q{problem.index_in_image}</span>
-                <button
-                  onClick={() => handleMarkChange(problem.id, '정답')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    labels[problem.id] === '정답'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  정답
-                </button>
-                <button
-                  onClick={() => handleMarkChange(problem.id, '오답')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    labels[problem.id] === '오답'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  오답
-                </button>
-              </div>
-            ))}
-          </div>
+          <h3 className="text-xl font-bold text-slate-800 mb-2">AI 분석 완료</h3>
+          <p className="text-slate-600 mb-4">
+            AI가 분석한 문제 {problemCount}개를 확인하고 검수해주세요.
+          </p>
+          <p className="text-sm text-slate-500">
+            상세보기에서 문제 유형, 정오답 등을 확인하고 수정할 수 있습니다.
+          </p>
         </div>
         
-        {/* 저장 및 상세보기 버튼 */}
-        <div className="flex flex-col gap-2 self-start">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            {saving ? '저장 중...' : '저장'}
-          </button>
+        {/* 상세보기 버튼 */}
+        <div className="self-start">
           <button
             onClick={() => navigate(`/session/${sessionId}`)}
-            className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
+            className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 shadow-md"
           >
-            상세보기
+            상세보기 및 검수
           </button>
         </div>
       </div>

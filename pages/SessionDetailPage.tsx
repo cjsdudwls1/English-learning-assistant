@@ -76,7 +76,19 @@ export const SessionDetailPage: React.FC = () => {
   const handleSubmit = async (items: ProblemItem[]) => {
     if (!sessionId) return;
     try {
+      // 모든 문제에 정답/오답이 선택되었는지 확인
+      const allLabeled = items.every(item => {
+        const mark = item.사용자가_직접_채점한_정오답;
+        return mark === 'O' || mark === 'X';
+      });
+      
+      if (!allLabeled) {
+        alert('모든 문제에 정답 또는 오답을 선택해주세요.');
+        return;
+      }
+      
       await updateProblemLabels(sessionId, items);
+      alert('저장 완료! 통계에 반영되었습니다.');
       navigate('/stats');
     } catch (e) {
       alert(e instanceof Error ? e.message : '저장 중 오류가 발생했습니다.');
