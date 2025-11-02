@@ -535,7 +535,10 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
         status: session.status,
       };
     })
-    .filter((session) => session.problem_count === 0 || session.status === 'processing');
+    .filter((session) => {
+      // 분석 중인 세션: problem_count === 0 (문제가 아직 저장되지 않음) 또는 status === 'processing'
+      return session.problem_count === 0 || session.status === 'processing';
+    });
   
   return analyzingSessions;
 }
@@ -570,12 +573,21 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       const problem_count = problems.length;
       let correct_count = 0;
       let incorrect_count = 0;
+      let allMarksNull = true; // 모든 문제의 user_mark가 null인지 확인
       
       problems.forEach((problem: any) => {
         const labels = problem.labels || [];
         if (labels.length > 0) {
-          const mark = normalizeMark(labels[0].user_mark);
-          if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+          const userMark = labels[0].user_mark;
+          // user_mark가 null이 아닌 경우만 카운트 (null이면 사용자 검수 전)
+          if (userMark !== null && userMark !== undefined) {
+            allMarksNull = false; // 하나라도 null이 아니면 false
+            const mark = normalizeMark(userMark);
+            if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
+          }
+        } else {
+          // label이 아예 없으면 라벨링 필요
+          allMarksNull = true;
         }
       });
       
@@ -586,11 +598,17 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         problem_count,
         correct_count,
         incorrect_count,
+        allMarksNull, // 모든 user_mark가 null인지 여부
       };
     })
-    .filter((session) => {
-      // 라벨링이 필요한 세션: problem_count > 0 AND correct_count === 0 AND incorrect_count === 0
-      return session.problem_count > 0 && session.correct_count === 0 && session.incorrect_count === 0;
+    .filter((session: any) => {
+      // 라벨링이 필요한 세션: problem_count > 0 AND 모든 문제의 user_mark가 null
+      return session.problem_count > 0 && session.allMarksNull === true;
+    })
+    .map((session: any) => {
+      // allMarksNull 필드 제거 (반환 타입에 없음)
+      const { allMarksNull, ...rest } = session;
+      return rest;
     });
   
   return sessions;

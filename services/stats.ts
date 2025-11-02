@@ -31,6 +31,7 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
     .select(`
       classification,
       is_correct,
+      user_mark,
       problems!inner (
         session_id,
         sessions!inner (
@@ -39,7 +40,8 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
         )
       )
     `)
-    .eq('problems.sessions.user_id', userId);
+    .eq('problems.sessions.user_id', userId)
+    .not('user_mark', 'is', null); // user_mark가 null이 아닌 경우만 통계에 포함
 
   // 기간 필터링
   if (startDate) {
@@ -75,11 +77,14 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
     }
     
     const stats = statsMap.get(key)!;
-    stats.total_count++;
-    if (row.is_correct) {
-      stats.correct_count++;
-    } else {
-      stats.incorrect_count++;
+    // user_mark가 null이 아닌 경우만 통계에 포함 (이미 쿼리에서 필터링했지만 이중 검증)
+    if (row.user_mark !== null && row.user_mark !== undefined) {
+      stats.total_count++;
+      if (row.is_correct) {
+        stats.correct_count++;
+      } else {
+        stats.incorrect_count++;
+      }
     }
   }
   
@@ -95,6 +100,7 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
     .select(`
       classification,
       is_correct,
+      user_mark,
       problems!inner (
         session_id,
         sessions!inner (
@@ -103,7 +109,8 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
         )
       )
     `)
-    .eq('problems.sessions.user_id', userId);
+    .eq('problems.sessions.user_id', userId)
+    .not('user_mark', 'is', null); // user_mark가 null이 아닌 경우만 통계에 포함
 
   // 기간 필터링
   if (startDate) {
@@ -143,10 +150,13 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
         });
       }
       const stats1 = statsMap.get(key1)!;
-      stats1.total_count++;
-      if (row.is_correct) stats1.correct_count++; else stats1.incorrect_count++;
-      if (row.problems?.session_id && !stats1.sessionIds?.includes(row.problems.session_id)) {
-        stats1.sessionIds?.push(row.problems.session_id);
+      // user_mark가 null이 아닌 경우만 통계에 포함
+      if (row.user_mark !== null && row.user_mark !== undefined) {
+        stats1.total_count++;
+        if (row.is_correct) stats1.correct_count++; else stats1.incorrect_count++;
+        if (row.problems?.session_id && !stats1.sessionIds?.includes(row.problems.session_id)) {
+          stats1.sessionIds?.push(row.problems.session_id);
+        }
       }
     }
     
@@ -165,10 +175,13 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
         });
       }
       const stats2 = statsMap.get(key2)!;
-      stats2.total_count++;
-      if (row.is_correct) stats2.correct_count++; else stats2.incorrect_count++;
-      if (row.problems?.session_id && !stats2.sessionIds?.includes(row.problems.session_id)) {
-        stats2.sessionIds?.push(row.problems.session_id);
+      // user_mark가 null이 아닌 경우만 통계에 포함
+      if (row.user_mark !== null && row.user_mark !== undefined) {
+        stats2.total_count++;
+        if (row.is_correct) stats2.correct_count++; else stats2.incorrect_count++;
+        if (row.problems?.session_id && !stats2.sessionIds?.includes(row.problems.session_id)) {
+          stats2.sessionIds?.push(row.problems.session_id);
+        }
       }
     }
     
@@ -188,10 +201,13 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
         });
       }
       const stats3 = statsMap.get(key3)!;
-      stats3.total_count++;
-      if (row.is_correct) stats3.correct_count++; else stats3.incorrect_count++;
-      if (row.problems?.session_id && !stats3.sessionIds?.includes(row.problems.session_id)) {
-        stats3.sessionIds?.push(row.problems.session_id);
+      // user_mark가 null이 아닌 경우만 통계에 포함
+      if (row.user_mark !== null && row.user_mark !== undefined) {
+        stats3.total_count++;
+        if (row.is_correct) stats3.correct_count++; else stats3.incorrect_count++;
+        if (row.problems?.session_id && !stats3.sessionIds?.includes(row.problems.session_id)) {
+          stats3.sessionIds?.push(row.problems.session_id);
+        }
       }
     }
     
@@ -212,10 +228,13 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
         });
       }
       const stats4 = statsMap.get(key4)!;
-      stats4.total_count++;
-      if (row.is_correct) stats4.correct_count++; else stats4.incorrect_count++;
-      if (row.problems?.session_id && !stats4.sessionIds?.includes(row.problems.session_id)) {
-        stats4.sessionIds?.push(row.problems.session_id);
+      // user_mark가 null이 아닌 경우만 통계에 포함
+      if (row.user_mark !== null && row.user_mark !== undefined) {
+        stats4.total_count++;
+        if (row.is_correct) stats4.correct_count++; else stats4.incorrect_count++;
+        if (row.problems?.session_id && !stats4.sessionIds?.includes(row.problems.session_id)) {
+          stats4.sessionIds?.push(row.problems.session_id);
+        }
       }
     }
   }
