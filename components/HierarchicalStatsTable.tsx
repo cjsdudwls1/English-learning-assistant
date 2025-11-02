@@ -80,7 +80,7 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
   return (
     <>
       <tr 
-        className={`border-b hover:bg-slate-50 cursor-pointer font-semibold`}
+        className={`border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900/50 cursor-pointer font-semibold`}
         onClick={handleToggle}
         style={{ paddingLeft: '0px' }}
       >
@@ -97,11 +97,11 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
               />
             )}
             {hasChildren && (
-              <span className="text-slate-500">
+              <span className="text-slate-500 dark:text-slate-400">
                 {isExpanded ? '▼' : '▶'}
               </span>
             )}
-            <span>
+            <span className="text-slate-800 dark:text-slate-200">
               {node.depth4 || node.depth3 || node.depth2 || node.depth1}
             </span>
           </div>
@@ -116,7 +116,7 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
                 handleCountClick(node.sessionIds || []);
               }
             }}
-            className="text-blue-600 hover:text-blue-800 hover:underline"
+            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline transition-colors"
             disabled={!node.sessionIds || node.sessionIds.length === 0}
           >
             {node.correct_count}
@@ -132,7 +132,7 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
                 handleCountClick(node.sessionIds || []);
               }
             }}
-            className="text-red-600 hover:text-red-800 hover:underline"
+            className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 hover:underline transition-colors"
             disabled={!node.sessionIds || node.sessionIds.length === 0}
           >
             {node.incorrect_count}
@@ -140,11 +140,11 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
         </td>
         <td className="p-2">
           {node.total_count > 0 ? (
-            <span className="text-slate-600">
+            <span className="text-slate-600 dark:text-slate-400">
               {((node.correct_count / node.total_count) * 100).toFixed(1)}%
             </span>
           ) : (
-            <span className="text-slate-400">-</span>
+            <span className="text-slate-400 dark:text-slate-500">-</span>
           )}
         </td>
       </tr>
@@ -174,11 +174,11 @@ export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({
     <div className="overflow-x-auto">
       <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="bg-slate-100">
-            <th className="p-2">카테고리</th>
-            <th className="p-2">정답</th>
-            <th className="p-2">오답</th>
-            <th className="p-2">정답률</th>
+          <tr className="bg-slate-100 dark:bg-slate-800">
+            <th className="p-2 text-slate-800 dark:text-slate-200">카테고리</th>
+            <th className="p-2 text-slate-800 dark:text-slate-200">정답</th>
+            <th className="p-2 text-slate-800 dark:text-slate-200">오답</th>
+            <th className="p-2 text-slate-800 dark:text-slate-200">정답률</th>
           </tr>
         </thead>
         <tbody>

@@ -82,8 +82,17 @@ serve(async (req) => {
       {"text": "선택지 1", "is_correct": false},
       {"text": "선택지 2", "is_correct": true},
       {"text": "선택지 3", "is_correct": false},
-      {"text": "선택지 4", "is_correct": false}
+      {"text": "선택지 4", "is_correct": false},
+      {"text": "선택지 5", "is_correct": false}
     ],
+    "explanation": "정답 해설: 왜 이것이 정답인지 설명 (한국어로)",
+    "wrong_explanations": {
+      "0": "오답 해설: 왜 선택지 1이 오답인지 설명",
+      "1": "이 선택지는 정답입니다",
+      "2": "오답 해설: 왜 선택지 3이 오답인지 설명",
+      "3": "오답 해설: 왜 선택지 4가 오답인지 설명",
+      "4": "오답 해설: 왜 선택지 5가 오답인지 설명"
+    },
     "classification": {
       "depth1": "${depth1}",
       "depth2": "${depth2 || ''}",
@@ -95,10 +104,12 @@ serve(async (req) => {
 
 중요 사항:
 1. 모든 문제는 ${classificationPath} 분류에 맞아야 합니다.
-2. 각 문제는 4개의 선택지를 가져야 합니다.
+2. 각 문제는 정확히 5개의 선택지를 가져야 합니다 (5지선다형).
 3. 정답은 하나만 있어야 합니다 (is_correct: true).
-4. 문제 난이도는 중학교 수준으로 작성해주세요.
-5. JSON 형식만 반환하고 다른 설명은 추가하지 마세요.`;
+4. explanation 필드에는 정답 해설을 한국어로 작성하세요.
+5. wrong_explanations 객체에는 각 선택지 인덱스를 키로 하여 오답 해설을 작성하세요 (정답 인덱스는 "이 선택지는 정답입니다"로 표시).
+6. 문제 난이도는 중학교 수준으로 작성해주세요.
+7. JSON 형식만 반환하고 다른 설명은 추가하지 마세요.`;
 
       console.log(`Generating ${problemCount} problems for classification: ${classificationPath}`);
       
@@ -126,19 +137,54 @@ serve(async (req) => {
         problems = [];
       }
 
-      // 분류 정보 추가
-      problems = problems.map(problem => ({
-        ...problem,
-        classification: {
-          depth1,
-          depth2: depth2 || '',
-          depth3: depth3 || '',
-          depth4: depth4 || ''
-        }
+      // 분류 정보 추가 및 정답 인덱스 계산
+      const processedProblems = problems.map((problem: any) => {
+        // 정답 인덱스 찾기
+        const correctIndex = problem.choices.findIndex((c: any) => c.is_correct);
+        
+        return {
+          ...problem,
+          correct_answer_index: correctIndex,
+          classification: {
+            depth1,
+            depth2: depth2 || '',
+            depth3: depth3 || '',
+            depth4: depth4 || ''
+          },
+          source_classification: {
+            depth1,
+            depth2: depth2 || '',
+            depth3: depth3 || '',
+            depth4: depth4 || ''
+          }
+        };
+      });
+
+      // DB에 저장
+      const problemsToSave = processedProblems.map((p: any) => ({
+        user_id: userId,
+        stem: p.stem,
+        choices: p.choices,
+        correct_answer_index: p.correct_answer_index,
+        explanation: p.explanation || null,
+        wrong_explanation: p.wrong_explanations || null,
+        classification: p.classification,
+        source_classification: p.source_classification
       }));
 
-      allProblems.push(...problems);
-      console.log(`Generated ${problems.length} problems for ${classificationPath}`);
+      const { error: insertError } = await supabase
+        .from('generated_problems')
+        .insert(problemsToSave);
+
+      if (insertError) {
+        console.error('Failed to save generated problems:', insertError);
+        // 저장 실패해도 문제 생성은 계속 진행
+      } else {
+        console.log(`Saved ${problemsToSave.length} problems to database`);
+      }
+
+      allProblems.push(...processedProblems);
+      console.log(`Generated ${processedProblems.length} problems for ${classificationPath}`);
     }
 
     console.log(`Total generated problems: ${allProblems.length}`);

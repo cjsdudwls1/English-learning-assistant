@@ -83,9 +83,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4 text-slate-700">1. 문제 이미지 업로드</h2>
+      <h2 className="text-xl font-semibold mb-4 text-slate-700 dark:text-slate-300">1. 문제 이미지 업로드</h2>
       <div className="space-y-4">
-        <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
+        <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center bg-slate-50/50 dark:bg-slate-900/30">
           <input
             type="file"
             accept="image/*"
@@ -93,7 +93,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
             onChange={handleFileChange}
             className="mb-4"
           />
-          <p className="text-sm text-slate-500 mt-2">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
             여러 이미지를 한번에 선택할 수 있습니다
           </p>
         </div>
@@ -101,12 +101,12 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
         {imageFiles.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
                 선택된 이미지: {imageFiles.length}개
               </p>
               <button 
                 onClick={handleClearAll}
-                className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                className="px-3 py-1 text-sm bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors"
               >
                 전체 삭제
               </button>
@@ -114,29 +114,29 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {imageFiles.map((imageFile, index) => (
-                <div key={imageFile.id} className="bg-slate-50 rounded-lg p-4 relative">
+                <div key={imageFile.id} className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 relative">
                   <button
                     onClick={() => handleRemove(index)}
-                    className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 z-10"
+                    className="absolute top-2 right-2 w-6 h-6 bg-red-500 dark:bg-red-600 text-white rounded-full flex items-center justify-center hover:bg-red-600 dark:hover:bg-red-700 z-10 transition-colors"
                     title="삭제"
                   >
                     ×
                   </button>
-                  <div className="max-h-[400px] overflow-auto rounded-md border bg-white flex items-center justify-center p-4">
+                  <div className="max-h-[400px] overflow-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 flex items-center justify-center p-4">
                     <ImageRotator
                       imageUrl={imageFile.previewUrl}
                       onRotate={(blob) => handleRotate(index, blob)}
                       className="max-w-full max-h-[400px] object-contain"
                     />
                   </div>
-                  <p className="text-xs text-slate-500 mt-2 text-center">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">
                     {imageFile.file.name}
                   </p>
                 </div>
               ))}
             </div>
             
-            <p className="text-sm text-slate-500 text-center">
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
               회전 버튼을 사용하여 각 이미지 방향을 조정할 수 있습니다
             </p>
           </div>
