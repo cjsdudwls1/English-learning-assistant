@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     // 환경 변수 확인
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || 'AIzaSyA2w5PqQOn98wHaZy2MtiRkbxeHqrEYbTo';
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing Supabase environment variables');

@@ -16,14 +16,14 @@ import { SessionDetailPage } from './pages/SessionDetailPage';
 import { RetryProblemsPage } from './pages/RetryProblemsPage';
 
 const App: React.FC = () => {
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResults | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleImageSelect = (file: File | null) => {
-    setImageFile(file);
+  const handleImagesSelect = (files: File[]) => {
+    setImageFiles(files);
     setAnalysisResult(null);
     setSessionId(null);
     setError(null);
@@ -46,7 +46,7 @@ const App: React.FC = () => {
   const navigate = useNavigate();
 
   const handleAnalyzeClick = useCallback(async () => {
-    if (!imageFile) {
+    if (imageFiles.length === 0) {
       setError('분석할 이미지를 먼저 업로드해주세요.');
       return;
     }
@@ -70,60 +70,67 @@ const App: React.FC = () => {
         return;
       }
 
-      // 1. Edge Function 호출 (이미지 업로드, 세션 생성, 분석을 모두 처리)
-      console.log('1. Starting image upload and analysis...');
+      // 여러 이미지를 순차적으로 업로드
+      console.log(`Starting upload and analysis for ${imageFiles.length} images...`);
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`;
-      
-      // 이미지를 base64로 변환
-      const { base64, mimeType } = await fileToBase64(imageFile);
-      
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+
       // 이미지 업로드 버튼을 누르는 즉시 성공 메시지 표시
       setIsLoading(false);
-      alert('업로드 완료. AI 분석이 진행중입니다. 앱에서 나가도 좋습니다.');
+      alert(`${imageFiles.length}개 이미지 업로드 완료. AI 분석이 진행중입니다. 앱에서 나가도 좋습니다.`);
       
-      // Edge Function 호출 (직접 fetch 사용)
-      console.log('Attempting to call Edge Function via direct fetch');
-      
-      try {
-        const response = await fetch('https://vkoegxohahpptdyipmkr.supabase.co/functions/v1/analyze-image', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-          },
-          body: JSON.stringify({
-            imageBase64: base64,
-            mimeType,
-            userId: userData.user.id,
-            fileName: imageFile.name,
-          })
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Session created:', result);
-        } else {
-          console.error('Edge Function error:', response.status, await response.text());
+      // 모든 이미지를 백그라운드에서 업로드
+      const uploadPromises = imageFiles.map(async (file) => {
+        try {
+          const { base64, mimeType } = await fileToBase64(file);
+          
+          const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              imageBase64: base64,
+              mimeType,
+              userId: userData.user.id,
+              fileName: file.name,
+            })
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log('Session created for', file.name, ':', result);
+            return result;
+          } else {
+            console.error('Edge Function error for', file.name, ':', response.status, await response.text());
+            return null;
+          }
+        } catch (fetchError) {
+          console.error('Fetch error for', file.name, ':', fetchError);
+          return null;
         }
-      } catch (fetchError) {
-        console.error('Fetch error:', fetchError);
-      }
+      });
+
+      // 모든 업로드 완료 대기 (에러가 나도 계속 진행)
+      await Promise.all(uploadPromises);
       
-      // Edge Function 호출 후 /recent로 이동 (새로고침 포함)
-      window.location.href = '/recent';
+      // Edge Function 호출 후 /stats로 이동 (새로고침 포함)
+      window.location.href = '/stats';
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다. 다시 시도해주세요.');
       setIsLoading(false);
     }
-  }, [imageFile, navigate]);
+  }, [imageFiles, navigate]);
 
   return (
     <div className="min-h-screen font-sans">
       <Header />
       <nav className="container mx-auto px-4 md:px-8 py-3 flex gap-3 items-center text-sm text-slate-600">
         <Link to="/upload" className="hover:text-indigo-600">풀이한 문제 올리기</Link>
-        <Link to="/recent" className="hover:text-indigo-600">최근 업로드된 문제</Link>
+        {/* <Link to="/recent" className="hover:text-indigo-600">최근 업로드된 문제</Link> - 내부 검증용으로만 사용 */}
         <Link to="/stats" className="hover:text-indigo-600">통계</Link>
         <div className="ml-auto"><LogoutButton /></div>
       </nav>
@@ -138,14 +145,14 @@ const App: React.FC = () => {
                     AI 분석은 백그라운드에서 진행되며, 통계 페이지에서 결과를 확인할 수 있습니다.
                   </p>
                 </div>
-                <ImageUploader onImageSelect={handleImageSelect} />
+                <ImageUploader onImagesSelect={handleImagesSelect} />
                 <div className="mt-6 text-center">
                   <button
                     onClick={handleAnalyzeClick}
-                    disabled={!imageFile || isLoading}
+                    disabled={imageFiles.length === 0 || isLoading}
                     className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                   >
-                    {isLoading ? '업로드 중...' : '이미지 업로드'}
+                    {isLoading ? '업로드 중...' : `이미지 올리기 (${imageFiles.length}개)`}
                   </button>
                 </div>
                 {isLoading && <Loader />}
@@ -171,14 +178,14 @@ const App: React.FC = () => {
                     AI 분석은 백그라운드에서 진행되며, 통계 페이지에서 결과를 확인할 수 있습니다.
                   </p>
                 </div>
-                <ImageUploader onImageSelect={handleImageSelect} />
+                <ImageUploader onImagesSelect={handleImagesSelect} />
                 <div className="mt-6 text-center">
                   <button
                     onClick={handleAnalyzeClick}
-                    disabled={!imageFile || isLoading}
+                    disabled={imageFiles.length === 0 || isLoading}
                     className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                   >
-                    {isLoading ? '업로드 중...' : '이미지 업로드'}
+                    {isLoading ? '업로드 중...' : `이미지 올리기 (${imageFiles.length}개)`}
                   </button>
                 </div>
                 {isLoading && <Loader />}

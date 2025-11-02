@@ -4,7 +4,6 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
-import { fetchProblemsByClassification } from '../services/db';
 import { supabase } from '../services/supabaseClient';
 // import { generateProblemAnalysisReport } from '../services/coaching'; // SECURITY FIX: Edge Function으로 이동
 
@@ -16,11 +15,9 @@ export const StatsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
-  const [selectedProblems, setSelectedProblems] = useState<any[]>([]);
-  const [checkedProblemIds, setCheckedProblemIds] = useState<Set<string>>(new Set());
-  const [selectedFilter, setSelectedFilter] = useState<{node: StatsNode, isCorrect: boolean} | null>(null);
-  const [aiAnalysisReport, setAiAnalysisReport] = useState<string | null>(null);
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
+  const [generatedProblems, setGeneratedProblems] = useState<any[]>([]);
+  const [isGeneratingProblems, setIsGeneratingProblems] = useState(false);
 
   const loadData = async () => {
     try {
@@ -55,67 +52,82 @@ export const StatsPage: React.FC = () => {
     setEndDate(null);
   };
 
-  const handleNodeClick = async (node: StatsNode, isCorrect: boolean) => {
-    try {
-      setLoading(true);
-      const problems = await fetchProblemsByClassification(
-        node.depth1,
-        node.depth2 || '',
-        node.depth3 || '',
-        node.depth4 || '',
-        isCorrect
-      );
-      setSelectedProblems(problems);
-      setCheckedProblemIds(new Set());
-      setSelectedFilter({ node, isCorrect });
-      setAiAnalysisReport(null); // 새로운 문제 선택 시 리포트 초기화
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '문제 조회 실패');
-    } finally {
-      setLoading(false);
-    }
+  // 노드 키 생성 함수
+  const getNodeKey = (node: StatsNode): string => {
+    return `${node.depth1 || ''}_${node.depth2 || ''}_${node.depth3 || ''}_${node.depth4 || ''}`;
   };
 
-  const toggleCheck = (problemId: string, checked: boolean) => {
-    setCheckedProblemIds(prev => {
+  // 노드 선택 핸들러
+  const handleNodeSelect = (node: StatsNode, selected: boolean) => {
+    setSelectedNodes(prev => {
       const next = new Set(prev);
-      if (checked) next.add(problemId); else next.delete(problemId);
+      const key = getNodeKey(node);
+      if (selected) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
       return next;
     });
   };
 
-  const navigateRetry = () => {
-    if (checkedProblemIds.size === 0) return;
-    const ids = Array.from(checkedProblemIds).join(',');
-    navigate(`/retry?ids=${encodeURIComponent(ids)}`);
+  // 최하위 depth 노드만 필터링하는 함수
+  const getLeafNodes = (nodes: StatsNode[]): StatsNode[] => {
+    const leafNodes: StatsNode[] = [];
+    const traverse = (ns: StatsNode[]) => {
+      for (const node of ns) {
+        if (!node.children || node.children.length === 0) {
+          // 최하위 노드
+          leafNodes.push(node);
+        } else {
+          traverse(node.children);
+        }
+      }
+    };
+    traverse(nodes);
+    return leafNodes;
   };
 
-  const toggleSelectAll = () => {
-    if (selectedProblems.length === 0) return;
-    const allIds = new Set<string>(selectedProblems.map((p: any) => p.problem_id));
-    // 모두 선택되어 있으면 전체 해제, 아니면 전체 선택
-    const isAllSelected = Array.from(allIds).every(id => checkedProblemIds.has(id));
-    setCheckedProblemIds(isAllSelected ? new Set() : allIds);
-  };
+  // 유사 문제 생성 핸들러
+  const handleGenerateSimilarProblems = async () => {
+    if (selectedNodes.size === 0) {
+      alert('문제 유형을 선택해주세요.');
+      return;
+    }
 
-  const handleAiAnalysis = async () => {
-    if (selectedProblems.length === 0) return;
-    
     try {
-      setIsGeneratingReport(true);
-      
-      // SECURITY FIX: Edge Function 호출로 변경
+      setIsGeneratingProblems(true);
+      setError(null);
+
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) {
         setError('로그인이 필요합니다.');
         return;
       }
 
-      // 선택된 문제만 필터링
-      const filteredProblems = selectedProblems.filter((p: any) => checkedProblemIds.has(p.problem_id));
-      const problemsToAnalyze = filteredProblems.length > 0 ? filteredProblems : selectedProblems;
+      // 선택된 노드들 중 최하위 depth만 필터링
+      const allLeafNodes = getLeafNodes(hierarchicalData);
+      const selectedLeafNodes = allLeafNodes.filter(node => {
+        const key = getNodeKey(node);
+        return selectedNodes.has(key);
+      });
 
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-report`;
+      if (selectedLeafNodes.length === 0) {
+        alert('최하위 depth의 문제 유형을 선택해주세요.');
+        setIsGeneratingProblems(false);
+        return;
+      }
+
+      // 각 최하위 depth당 2문제씩 생성
+      const classifications = selectedLeafNodes.map(node => ({
+        depth1: node.depth1,
+        depth2: node.depth2 || '',
+        depth3: node.depth3 || '',
+        depth4: node.depth4 || '',
+        problemCount: 2 // 최하위 depth당 2문제
+      }));
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-similar-problems`;
       
       const response = await fetch(functionUrl, {
         method: 'POST',
@@ -124,27 +136,33 @@ export const StatsPage: React.FC = () => {
           'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
         },
         body: JSON.stringify({
-          problems: problemsToAnalyze,
+          classifications,
           userId: userData.user.id
         })
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, ${errorText}`);
       }
 
       const result = await response.json();
       
       if (result.success) {
-        setAiAnalysisReport(result.report);
+        setGeneratedProblems(result.problems || []);
       } else {
-        throw new Error(result.error || 'AI 분석 리포트 생성 실패');
+        throw new Error(result.error || '유사 문제 생성 실패');
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'AI 분석 리포트 생성 실패');
+      setError(e instanceof Error ? e.message : '유사 문제 생성 실패');
     } finally {
-      setIsGeneratingReport(false);
+      setIsGeneratingProblems(false);
     }
+  };
+
+  // 숫자 클릭 핸들러 제거 (더 이상 문제 리스트 표시하지 않음)
+  const handleNodeClick = () => {
+    // 숫자 클릭 시 아무 동작도 하지 않음 (유사 문제 생성은 체크박스 선택 후 버튼 클릭)
   };
 
   const totals = useMemo(() => {
@@ -229,98 +247,76 @@ export const StatsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="mb-4 text-slate-700">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-slate-700">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
+          <button
+            onClick={handleGenerateSimilarProblems}
+            disabled={selectedNodes.size === 0 || isGeneratingProblems}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            {isGeneratingProblems ? '생성 중...' : '유사 문제 생성'}
+          </button>
+        </div>
         
         <HierarchicalStatsTable 
           data={hierarchicalData} 
           onImageClick={() => {}}
           onNumberClick={handleNodeClick}
+          selectedNodes={selectedNodes}
+          onNodeSelect={handleNodeSelect}
         />
       </div>
 
-      {/* 선택된 문제 리스트 */}
-      {selectedProblems.length > 0 && (
+      {/* 생성된 유사 문제 표시 */}
+      {generatedProblems.length > 0 && (
         <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold">
-              {selectedFilter?.node.depth1} - {selectedFilter?.isCorrect ? '정답' : '오답'} 문제 ({selectedProblems.length}개)
+              생성된 유사 문제 ({generatedProblems.length}개)
             </h3>
-            <div className="flex items-center gap-2">
-              {!selectedFilter?.isCorrect && (
-                <>
-                  <button
-                    onClick={toggleSelectAll}
-                    className="px-4 py-2 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200"
-                  >
-                    {selectedProblems.length > 0 && selectedProblems.every((p: any) => checkedProblemIds.has(p.problem_id)) ? '전체해제' : '전체선택'}
-                  </button>
-                  <button
-                    onClick={navigateRetry}
-                    disabled={checkedProblemIds.size === 0}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  >
-                    다시 풀어보기
-                  </button>
-                </>
-              )}
-              <button
-              onClick={handleAiAnalysis}
-              disabled={isGeneratingReport}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            <button
+              onClick={() => setGeneratedProblems([])}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
             >
-              {isGeneratingReport ? 'AI 분석 중...' : 'AI 분석'}
-              </button>
-            </div>
+              닫기
+            </button>
           </div>
-          {/* AI 분석 리포트: 상단으로 이동 */}
-          {aiAnalysisReport && (
-            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-lg font-semibold text-blue-800 mb-3">AI 분석 리포트</h4>
-              <div className="text-blue-700 whitespace-pre-wrap">
-                {aiAnalysisReport}
-              </div>
-            </div>
-          )}
 
-          <div className="space-y-3 md:max-h-[70vh] md:overflow-auto">
-            {selectedProblems.map((item, idx) => (
+          <div className="space-y-4 md:max-h-[70vh] md:overflow-auto">
+            {generatedProblems.map((problem, idx) => (
               <div
                 key={idx}
-                className={`border rounded-lg p-3 sm:p-4 transition-colors cursor-pointer ${checkedProblemIds.has(item.problem_id) ? 'bg-blue-50 border-blue-300' : 'border-slate-200 hover:bg-slate-50'}`}
-                onClick={() => {
-                  if (selectedFilter?.isCorrect) return; // 정답 목록에서는 선택 비활성화 유지
-                  const isChecked = checkedProblemIds.has(item.problem_id);
-                  toggleCheck(item.problem_id, !isChecked);
-                }}
+                className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50"
               >
-                <div className="flex items-start gap-3">
-                  <img 
-                    src={item.problem.session.image_url} 
-                    alt="문제 이미지"
-                    className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded border cursor-pointer flex-shrink-0"
-                    onClick={() => navigate(`/session/${item.problem.session_id}`)}
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm text-slate-500">
-                      {new Date(item.problem.session.created_at).toLocaleDateString('ko-KR')}
-                    </p>
-                    <p className="text-slate-700 font-medium mt-1">
-                      문제 #{item.problem.index_in_image + 1}
-                    </p>
-                    <p className="text-slate-600 text-sm mt-1 line-clamp-2">
-                      {item.problem.stem}
-                    </p>
-                  </div>
-                  <span className={`px-2 py-1 text-xs rounded ${
-                    item.is_correct ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                  }`}>
-                    {item.is_correct ? '정답' : '오답'}
+                <div className="mb-2">
+                  <span className="text-sm font-medium text-indigo-600">
+                    문제 {idx + 1}
                   </span>
+                  {problem.classification && (
+                    <span className="ml-2 text-xs text-slate-500">
+                      ({problem.classification.depth1} 
+                      {problem.classification.depth2 && ` > ${problem.classification.depth2}`}
+                      {problem.classification.depth3 && ` > ${problem.classification.depth3}`}
+                      {problem.classification.depth4 && ` > ${problem.classification.depth4}`})
+                    </span>
+                  )}
+                </div>
+                <div className="text-slate-700 mb-3">
+                  <p className="font-medium mb-2">{problem.stem}</p>
+                  {problem.choices && problem.choices.length > 0 && (
+                    <ul className="list-disc list-inside space-y-1 text-sm">
+                      {problem.choices.map((choice: any, cIdx: number) => (
+                        <li key={cIdx} className={choice.is_correct ? 'text-green-600 font-medium' : ''}>
+                          {choice.text}
+                          {choice.is_correct && ' ✓'}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-          
         </div>
       )}
     </div>
