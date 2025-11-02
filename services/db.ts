@@ -131,20 +131,25 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
   
   if (problemsError) throw problemsError;
   
-  // ProblemItem 형식으로 변환
+  // ProblemItem 형식으로 변환 (AI 분석 결과 포함)
   const items: ProblemItem[] = (problems || []).map((p: any) => {
     const label = p.labels?.[0] || {};
     const classification = label.classification || {};
     
+    // user_mark가 null이면 AI 분석 결과(is_correct)를 기본값으로 사용
+    const userMark = label.user_mark !== null && label.user_mark !== undefined
+      ? normalizeMark(label.user_mark)
+      : (label.is_correct ? 'O' : 'X'); // AI 분석 결과를 기본값으로
+    
     return {
       index: p.index_in_image,
-      사용자가_직접_채점한_정오답: normalizeMark(label.user_mark),
+      사용자가_직접_채점한_정오답: userMark,
       AI가_판단한_정오답: label.is_correct !== undefined && label.is_correct !== null
         ? (label.is_correct ? '정답' : '오답')
         : undefined,
       문제내용: {
         text: p.stem || '',
-        confidence_score: 1.0,
+        confidence_score: label.confidence?.stem || 1.0,
       },
       문제_보기: (p.choices || []).map((c: any) => ({
         text: c.text || '',
@@ -152,7 +157,7 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
       })),
       사용자가_기술한_정답: {
         text: label.user_answer || '',
-        confidence_score: 1.0,
+        confidence_score: label.confidence?.answer || 1.0,
         auto_corrected: false,
         alternate_interpretations: [],
       },

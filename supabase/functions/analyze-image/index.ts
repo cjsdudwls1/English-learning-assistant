@@ -320,8 +320,8 @@ serve(async (req) => {
 
     console.log(`Step 4 completed: Inserted ${problems?.length || 0} problems`);
 
-    // 5. 라벨 저장
-    console.log('Step 5: Save labels to database...');
+    // 5. AI 분석 결과를 labels에 저장 (user_mark는 null로 - 사용자 검수 대기)
+    console.log('Step 5: Save AI analysis results to labels (pending user review)...');
     const idByIndex = new Map<number, string>();
     for (const row of problems || []) {
       idByIndex.set(row.index_in_image, row.id);
@@ -332,8 +332,8 @@ serve(async (req) => {
       return {
         problem_id: idByIndex.get(it.index ?? idx)!,
         user_answer: it.사용자가_기술한_정답?.text || '',
-        user_mark: normalizedMark,
-        is_correct: normalizedMark === 'O',
+        user_mark: null, // 사용자 검수 전이므로 null
+        is_correct: normalizedMark === 'O', // AI 분석 결과 저장
         classification: it.문제_유형_분류 || {},
         confidence: {
           stem: it.문제내용?.confidence_score || 1.0,
@@ -349,7 +349,7 @@ serve(async (req) => {
       throw labelsError;
     }
 
-    console.log('Step 5 completed: Analysis completed successfully!');
+    console.log('Step 5 completed: AI analysis results saved (pending user review)');
 
         // 6. 세션 상태를 completed로 업데이트
         console.log('Step 6: Update session status to completed...');
