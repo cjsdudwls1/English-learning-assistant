@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchProblemsForLabeling, quickUpdateLabels } from '../services/db';
 
 interface QuickLabelingCardProps {
@@ -12,6 +13,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   imageUrl, 
   onSave 
 }) => {
+  const navigate = useNavigate();
   const [problems, setProblems] = useState<{ id: string; index_in_image: number; ai_is_correct: boolean | null }[]>([]);
   const [labels, setLabels] = useState<Record<string, '정답' | '오답' | null>>({});
   const [saving, setSaving] = useState(false);
@@ -73,6 +75,9 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       
       // 저장 완료 후 콜백 호출
       onSave?.();
+      
+      // 저장 완료 후 상세보기 페이지로 이동 옵션 제공 (선택사항)
+      // navigate(`/session/${sessionId}`);
     } catch (error) {
       console.error('Failed to save labels:', error);
       alert('저장 중 오류가 발생했습니다.');
@@ -133,14 +138,22 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           </div>
         </div>
         
-        {/* 저장 버튼 */}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed self-start"
-        >
-          {saving ? '저장 중...' : '저장'}
-        </button>
+        {/* 저장 및 상세보기 버튼 */}
+        <div className="flex flex-col gap-2 self-start">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            {saving ? '저장 중...' : '저장'}
+          </button>
+          <button
+            onClick={() => navigate(`/session/${sessionId}`)}
+            className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
+          >
+            상세보기
+          </button>
+        </div>
       </div>
     </div>
   );
