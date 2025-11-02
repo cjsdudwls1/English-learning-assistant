@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
@@ -9,10 +8,8 @@ import { fetchAnalyzingSessions, fetchPendingLabelingSessions } from '../service
 import { AnalyzingCard } from '../components/AnalyzingCard';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import type { SessionWithProblems } from '../types';
-// import { generateProblemAnalysisReport } from '../services/coaching'; // SECURITY FIX: Edge Function으로 이동
 
 export const StatsPage: React.FC = () => {
-  const navigate = useNavigate();
   const [rows, setRows] = useState<TypeStatsRow[]>([]);
   const [hierarchicalData, setHierarchicalData] = useState<StatsNode[]>([]);
   const [loading, setLoading] = useState(true);
