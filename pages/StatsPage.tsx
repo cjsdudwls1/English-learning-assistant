@@ -36,8 +36,15 @@ export const StatsPage: React.FC = () => {
       ]);
       setRows(statsData);
       setHierarchicalData(hierarchicalStatsData);
+      
+      // AnalyzingCard에 표시된 세션 ID 수집
+      const analyzingIds = new Set(analyzing.map(s => s.id));
+      
+      // AnalyzingCard에 표시되지 않은 세션만 QuickLabelingCard에 표시
+      const filteredPendingSessions = pendingSessions.filter(s => !analyzingIds.has(s.id));
+      
       setAnalyzingSessions(analyzing);
-      setPendingLabelingSessions(pendingSessions);
+      setPendingLabelingSessions(filteredPendingSessions);
       
       // 분석 중이거나 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
       setPollingActive(analyzing.length > 0 || pendingSessions.length > 0);

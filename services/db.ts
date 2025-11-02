@@ -543,7 +543,7 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
   return analyzingSessions;
 }
 
-// 라벨링이 필요한 세션 조회 (problem_count > 0 AND 모든 문제의 user_mark가 null)
+// 라벨링이 필요한 세션 조회 (problem_count > 0 AND 모든 문제의 user_mark가 null AND status === 'completed')
 export async function fetchPendingLabelingSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
   
@@ -554,6 +554,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       id,
       created_at,
       image_url,
+      status,
       problems (
         id,
         labels (
@@ -562,6 +563,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       )
     `)
     .eq('user_id', userId)
+    .eq('status', 'completed') // 분석이 완료된 세션만 (AnalyzingCard에서 제외하기 위해)
     .order('created_at', { ascending: false });
   
   if (error) throw error;
@@ -585,9 +587,10 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
             const mark = normalizeMark(userMark);
             if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
           }
+          // user_mark가 null이면 allMarksNull은 그대로 true 유지
         } else {
-          // label이 아예 없으면 라벨링 필요
-          allMarksNull = true;
+          // label이 없으면 라벨링이 필요하지만, allMarksNull은 이미 true로 시작했으므로 그대로 유지
+          // (모든 문제의 user_mark가 null인 경우만 라벨링 필요로 간주)
         }
       });
       
@@ -598,6 +601,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         problem_count,
         correct_count,
         incorrect_count,
+        status: session.status, // status 필드 추가
         allMarksNull, // 모든 user_mark가 null인지 여부
       };
     })
