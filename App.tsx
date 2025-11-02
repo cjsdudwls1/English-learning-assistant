@@ -4,8 +4,7 @@ import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
 import { supabase } from './services/supabaseClient';
-import type { AnalysisResults } from './types';
-import { Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link } from 'react-router-dom';
 import { AuthGate } from './components/AuthGate';
 import { LogoutButton } from './components/LoginButton';
 import { EditPage } from './pages/EditPage';
@@ -17,15 +16,11 @@ import { RetryProblemsPage } from './pages/RetryProblemsPage';
 
 const App: React.FC = () => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResults | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleImagesSelect = (files: File[]) => {
     setImageFiles(files);
-    setAnalysisResult(null);
-    setSessionId(null);
     setError(null);
   };
 
@@ -42,8 +37,6 @@ const App: React.FC = () => {
       reader.onerror = (error) => reject(error);
     });
   };
-
-  const navigate = useNavigate();
 
   const handleAnalyzeClick = useCallback(async () => {
     if (imageFiles.length === 0) {
@@ -123,7 +116,7 @@ const App: React.FC = () => {
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다. 다시 시도해주세요.');
       setIsLoading(false);
     }
-  }, [imageFiles, navigate]);
+  }, [imageFiles]);
 
   return (
     <div className="min-h-screen font-sans">
