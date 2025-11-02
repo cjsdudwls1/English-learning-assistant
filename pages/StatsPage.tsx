@@ -23,9 +23,11 @@ export const StatsPage: React.FC = () => {
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [pollingActive, setPollingActive] = useState(true);
 
-  const loadData = async () => {
+  const loadData = async (showLoading: boolean = false) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const [statsData, hierarchicalStatsData, analyzing, pendingSessions] = await Promise.all([
         fetchStatsByType(startDate || undefined, endDate || undefined),
         fetchHierarchicalStats(startDate || undefined, endDate || undefined),
@@ -42,20 +44,22 @@ export const StatsPage: React.FC = () => {
     } catch (e) {
       setError(e instanceof Error ? e.message : '통계 조회 실패');
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadData(true); // 초기 로드 시에만 loading 표시
   }, [startDate, endDate]);
 
-  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 3초마다 상태 확인
+  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 3초마다 상태 확인 (loading 표시 없음)
   useEffect(() => {
     if (!pollingActive) return;
     
     const interval = setInterval(() => {
-      loadData();
+      loadData(false); // 폴링 시에는 loading 표시 안 함
     }, 3000);
     
     return () => clearInterval(interval);

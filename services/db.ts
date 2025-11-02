@@ -493,7 +493,7 @@ export async function fetchProblemsByClassification(
   }));
 }
 
-// 분석 중인 세션 조회 (problem_count === 0)
+// 분석 중인 세션 조회 (problem_count === 0 또는 status === 'processing')
 export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
   
@@ -504,6 +504,7 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
       id,
       created_at,
       image_url,
+      status,
       problems (
         id
       )
@@ -513,7 +514,7 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
   
   if (error) throw error;
   
-  // problem_count === 0인 세션만 필터링
+  // problem_count === 0이거나 status === 'processing'인 세션만 필터링
   const analyzingSessions: SessionWithProblems[] = (data || [])
     .map((session: any) => {
       const problems = session.problems || [];
@@ -526,9 +527,10 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
         problem_count,
         correct_count: 0,
         incorrect_count: 0,
+        status: session.status,
       };
     })
-    .filter((session) => session.problem_count === 0);
+    .filter((session) => session.problem_count === 0 || session.status === 'processing');
   
   return analyzingSessions;
 }
