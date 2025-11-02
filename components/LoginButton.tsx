@@ -38,23 +38,23 @@ export const LoginButton: React.FC = () => {
     <div className="w-full max-w-sm">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">이메일</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">이메일</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
             placeholder="your@email.com"
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">비밀번호</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">비밀번호</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
             placeholder="••••••••"
             required
           />
@@ -62,7 +62,7 @@ export const LoginButton: React.FC = () => {
         <button
           type="submit"
           disabled={loading}
-          className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-slate-400"
+          className="w-full px-6 py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? '처리 중...' : isSignUp ? '회원가입' : '로그인'}
         </button>
@@ -70,18 +70,18 @@ export const LoginButton: React.FC = () => {
       
       <button
         onClick={() => setIsSignUp(!isSignUp)}
-        className="mt-3 text-sm text-indigo-600 hover:text-indigo-800 underline"
+        className="mt-3 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline transition-colors"
       >
         {isSignUp ? '이미 계정이 있으신가요? 로그인' : '계정이 없으신가요? 회원가입'}
       </button>
 
       {error && (
-        <div className="mt-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded text-sm">
+        <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded text-sm">
           {error}
         </div>
       )}
       {message && (
-        <div className="mt-4 p-3 bg-green-100 border border-green-300 text-green-800 rounded text-sm">
+        <div className="mt-4 p-3 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-800 text-green-800 dark:text-green-200 rounded text-sm">
           {message}
         </div>
       )}
@@ -95,7 +95,7 @@ export const LogoutButton: React.FC = () => {
     window.location.reload();
   };
   return (
-    <button onClick={handleLogout} className="px-4 py-2 bg-slate-200 text-slate-800 rounded-md font-medium hover:bg-slate-300">
+    <button onClick={handleLogout} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-md font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
       로그아웃
     </button>
   );

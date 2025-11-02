@@ -7,6 +7,7 @@ import { supabase } from '../services/supabaseClient';
 import { fetchAnalyzingSessions, fetchPendingLabelingSessions } from '../services/db';
 import { AnalyzingCard } from '../components/AnalyzingCard';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
+import { GeneratedProblemCard } from '../components/GeneratedProblemCard';
 import type { SessionWithProblems } from '../types';
 
 export const StatsPage: React.FC = () => {
@@ -211,8 +212,8 @@ export const StatsPage: React.FC = () => {
     return { correct, incorrect, total };
   }, [rows]);
 
-  if (loading) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
-  if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
+  if (loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">불러오는 중...</div>;
+  if (error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{error}</div>;
 
   return (
     <div className="mx-auto space-y-6 max-w-full px-2 sm:px-4 md:px-6 lg:max-w-5xl">
@@ -235,13 +236,13 @@ export const StatsPage: React.FC = () => {
         />
       ))}
 
-      <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
-        <h2 className="text-2xl font-bold mb-4">유형별 정오답 통계</h2>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+        <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-200">유형별 정오답 통계</h2>
         
         {/* 기간 설정 UI */}
-        <div className="mb-6 p-3 sm:p-4 bg-slate-50 rounded-lg">
+        <div className="mb-6 p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
           <div className="flex flex-wrap gap-2 items-center mb-3">
-            <span className="text-sm font-medium text-slate-700">기간 설정:</span>
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">기간 설정:</span>
             <button
               onClick={() => handleSetDateRange(1)}
               className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
@@ -306,11 +307,11 @@ export const StatsPage: React.FC = () => {
         </div>
 
         <div className="mb-4 flex items-center justify-between">
-          <div className="text-slate-700">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
+          <div className="text-slate-700 dark:text-slate-300">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
           <button
             onClick={handleGenerateSimilarProblems}
             disabled={selectedNodes.size === 0 || isGeneratingProblems}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
           >
             {isGeneratingProblems ? '생성 중...' : '유사 문제 생성'}
           </button>
@@ -327,14 +328,14 @@ export const StatsPage: React.FC = () => {
 
       {/* 생성된 유사 문제 표시 */}
       {generatedProblems.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
               생성된 유사 문제 ({generatedProblems.length}개)
             </h3>
             <button
               onClick={() => setGeneratedProblems([])}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
             >
               닫기
             </button>
@@ -342,37 +343,11 @@ export const StatsPage: React.FC = () => {
 
           <div className="space-y-4 md:max-h-[70vh] md:overflow-auto">
             {generatedProblems.map((problem, idx) => (
-              <div
+              <GeneratedProblemCard
                 key={idx}
-                className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50"
-              >
-                <div className="mb-2">
-                  <span className="text-sm font-medium text-indigo-600">
-                    문제 {idx + 1}
-                  </span>
-                  {problem.classification && (
-                    <span className="ml-2 text-xs text-slate-500">
-                      ({problem.classification.depth1} 
-                      {problem.classification.depth2 && ` > ${problem.classification.depth2}`}
-                      {problem.classification.depth3 && ` > ${problem.classification.depth3}`}
-                      {problem.classification.depth4 && ` > ${problem.classification.depth4}`})
-                    </span>
-                  )}
-                </div>
-                <div className="text-slate-700 mb-3">
-                  <p className="font-medium mb-2">{problem.stem}</p>
-                  {problem.choices && problem.choices.length > 0 && (
-                    <ul className="list-disc list-inside space-y-1 text-sm">
-                      {problem.choices.map((choice: any, cIdx: number) => (
-                        <li key={cIdx} className={choice.is_correct ? 'text-green-600 font-medium' : ''}>
-                          {choice.text}
-                          {choice.is_correct && ' ✓'}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
+                problem={problem}
+                index={idx}
+              />
             ))}
           </div>
         </div>

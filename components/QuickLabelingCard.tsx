@@ -85,29 +85,29 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6">
         <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">문제 불러오는 중...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto"></div>
+          <p className="mt-4 text-slate-600 dark:text-slate-400">문제 불러오는 중...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 mb-6">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6">
       <div className="flex items-start gap-6 mb-6">
         {/* 이미지 썸네일 */}
         <img 
           src={imageUrl} 
           alt="문제 이미지" 
-          className="w-24 h-24 object-cover rounded border flex-shrink-0"
+          className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 flex-shrink-0"
         />
         
         {/* 헤더 */}
         <div className="flex-1">
-          <h3 className="text-xl font-bold text-slate-800 mb-2">AI 분석 완료</h3>
-          <p className="text-slate-600">
+          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">AI 분석 완료</h3>
+          <p className="text-slate-600 dark:text-slate-400">
             AI가 분석한 문제 {problems.length}개를 확인하고 검수해주세요.
           </p>
         </div>
@@ -120,13 +120,13 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           const aiMark = problem.AI가_판단한_정오답;
           
           return (
-            <div key={problem.index} className="border border-slate-200 rounded-lg p-4">
+            <div key={problem.index} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="font-bold text-lg text-slate-700">Q{problem.index + 1}</span>
+                    <span className="font-bold text-lg text-slate-700 dark:text-slate-300">Q{problem.index + 1}</span>
                     {aiMark && (
-                      <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                      <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
                         AI: {aiMark}
                       </span>
                     )}
@@ -134,9 +134,9 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                   
                   {/* 문제 내용 */}
                   <div className="mb-3">
-                    <p className="text-slate-700 font-medium mb-2">{problem.문제내용.text}</p>
+                    <p className="text-slate-700 dark:text-slate-300 font-medium mb-2">{problem.문제내용.text}</p>
                     {problem.문제_보기 && problem.문제_보기.length > 0 && (
-                      <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
+                      <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-400 space-y-1">
                         {problem.문제_보기.map((choice, idx) => (
                           <li key={idx}>{choice.text}</li>
                         ))}
@@ -147,14 +147,14 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                   {/* 사용자 답안 */}
                   {problem.사용자가_기술한_정답?.text && (
                     <div className="mb-3">
-                      <span className="text-sm text-slate-500">사용자 답안: </span>
-                      <span className="text-sm font-medium text-slate-700">{problem.사용자가_기술한_정답.text}</span>
+                      <span className="text-sm text-slate-500 dark:text-slate-400">사용자 답안: </span>
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{problem.사용자가_기술한_정답.text}</span>
                     </div>
                   )}
 
                   {/* 문제 유형 */}
                   {problem.문제_유형_분류 && (
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
                       {[
                         problem.문제_유형_분류['1Depth'],
                         problem.문제_유형_분류['2Depth'],
@@ -171,8 +171,8 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     onClick={() => handleMarkChange(problem.index, 'O')}
                     className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                       currentMark === 'O'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        ? 'bg-blue-600 dark:bg-blue-500 text-white'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                     }`}
                   >
                     정답
@@ -181,8 +181,8 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     onClick={() => handleMarkChange(problem.index, 'X')}
                     className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                       currentMark === 'X'
-                        ? 'bg-red-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        ? 'bg-red-600 dark:bg-red-500 text-white'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                     }`}
                   >
                     오답
@@ -198,14 +198,14 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       <div className="flex gap-3 justify-end">
         <button
           onClick={() => navigate(`/session/${sessionId}`)}
-          className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
+          className="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
         >
           상세보기
         </button>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          className="px-6 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? '저장 중...' : '최종 저장'}
         </button>

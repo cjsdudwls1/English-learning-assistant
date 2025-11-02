@@ -119,21 +119,21 @@ const App: React.FC = () => {
   }, [imageFiles]);
 
   return (
-    <div className="min-h-screen font-sans">
+    <div className="min-h-screen font-sans bg-white dark:bg-slate-900">
       <Header />
-      <nav className="container mx-auto px-4 md:px-8 py-3 flex gap-3 items-center text-sm text-slate-600">
-        <Link to="/upload" className="hover:text-indigo-600">풀이한 문제 올리기</Link>
-        {/* <Link to="/recent" className="hover:text-indigo-600">최근 업로드된 문제</Link> - 내부 검증용으로만 사용 */}
-        <Link to="/stats" className="hover:text-indigo-600">통계</Link>
+      <nav className="container mx-auto px-4 md:px-8 py-3 flex gap-3 items-center text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+        <Link to="/upload" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">풀이한 문제 올리기</Link>
+        {/* <Link to="/recent" className="hover:text-indigo-600 dark:hover:text-indigo-400">최근 업로드된 문제</Link> - 내부 검증용으로만 사용 */}
+        <Link to="/stats" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">통계</Link>
         <div className="ml-auto"><LogoutButton /></div>
       </nav>
       <main className="container mx-auto p-4 md:p-8">
         <Routes>
           <Route path="/upload" element={
             <AuthGate>
-              <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-800">
+              <div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
                     📸 문제 이미지를 업로드하면 즉시 "업로드되었습니다!" 메시지가 표시됩니다.
                     AI 분석은 백그라운드에서 진행되며, 통계 페이지에서 결과를 확인할 수 있습니다.
                   </p>
@@ -150,7 +150,7 @@ const App: React.FC = () => {
                 </div>
                 {isLoading && <Loader />}
                 {error && (
-                  <div className="mt-6 p-4 bg-red-100 border border-red-300 text-red-800 rounded-lg text-center">
+                  <div className="mt-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg text-center">
                     <p className="font-semibold">오류 발생</p>
                     <p>{error}</p>
                   </div>
@@ -164,9 +164,9 @@ const App: React.FC = () => {
           <Route path="/retry" element={<AuthGate><RetryProblemsPage /></AuthGate>} />
           <Route path="/recent" element={<AuthGate><RecentProblemsPage /></AuthGate>} />
           <Route path="/stats" element={<AuthGate><StatsPage /></AuthGate>} />
-          <Route path="/" element={<AuthGate><div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-800">
+          <Route path="/" element={<AuthGate><div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
                     📸 문제 이미지를 업로드하면 즉시 "업로드되었습니다!" 메시지가 표시됩니다.
                     AI 분석은 백그라운드에서 진행되며, 통계 페이지에서 결과를 확인할 수 있습니다.
                   </p>
@@ -183,17 +183,17 @@ const App: React.FC = () => {
                 </div>
                 {isLoading && <Loader />}
                 {error && (
-                  <div className="mt-6 p-4 bg-red-100 border border-red-300 text-red-800 rounded-lg text-center">
+                  <div className="mt-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg text-center">
                     <p className="font-semibold">오류 발생</p>
                     <p>{error}</p>
                   </div>
                 )}
               </div></AuthGate>} />
-          <Route path="*" element={<AuthGate><div className="text-center py-10"><a href="/upload" className="text-indigo-600 underline">문제 업로드하러 가기</a></div></AuthGate>} />
+          <Route path="*" element={<AuthGate><div className="text-center py-10"><a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">문제 업로드하러 가기</a></div></AuthGate>} />
         </Routes>
       </main>
-      <footer className="text-center py-6 text-slate-500 text-sm">
-        <p>고객지원: <a href="mailto:mearidj@gmail.com" className="text-indigo-600 hover:text-indigo-800 underline">mearidj@gmail.com</a></p>
+      <footer className="text-center py-6 text-slate-500 dark:text-slate-400 text-sm bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+        <p>고객지원: <a href="mailto:mearidj@gmail.com" className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">mearidj@gmail.com</a></p>
       </footer>
     </div>
   );
