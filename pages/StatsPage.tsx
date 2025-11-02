@@ -5,6 +5,10 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { supabase } from '../services/supabaseClient';
+import { fetchAnalyzingSessions, fetchPendingLabelingSessions } from '../services/db';
+import { AnalyzingCard } from '../components/AnalyzingCard';
+import { QuickLabelingCard } from '../components/QuickLabelingCard';
+import type { SessionWithProblems } from '../types';
 // import { generateProblemAnalysisReport } from '../services/coaching'; // SECURITY FIX: Edge Function으로 이동
 
 export const StatsPage: React.FC = () => {
@@ -18,16 +22,26 @@ export const StatsPage: React.FC = () => {
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
   const [generatedProblems, setGeneratedProblems] = useState<any[]>([]);
   const [isGeneratingProblems, setIsGeneratingProblems] = useState(false);
+  const [analyzingSessions, setAnalyzingSessions] = useState<SessionWithProblems[]>([]);
+  const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
+  const [pollingActive, setPollingActive] = useState(true);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [statsData, hierarchicalStatsData] = await Promise.all([
+      const [statsData, hierarchicalStatsData, analyzing, pendingSessions] = await Promise.all([
         fetchStatsByType(startDate || undefined, endDate || undefined),
         fetchHierarchicalStats(startDate || undefined, endDate || undefined),
+        fetchAnalyzingSessions(),
+        fetchPendingLabelingSessions(),
       ]);
       setRows(statsData);
       setHierarchicalData(hierarchicalStatsData);
+      setAnalyzingSessions(analyzing);
+      setPendingLabelingSessions(pendingSessions);
+      
+      // 분석 중이거나 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
+      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : '통계 조회 실패');
     } finally {
@@ -38,6 +52,23 @@ export const StatsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [startDate, endDate]);
+
+  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 3초마다 상태 확인
+  useEffect(() => {
+    if (!pollingActive) return;
+    
+    const interval = setInterval(() => {
+      loadData();
+    }, 3000);
+    
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pollingActive]);
+
+  const handleLabelingComplete = async () => {
+    // 라벨링 완료 후 데이터 다시 로드
+    await loadData();
+  };
 
   const handleSetDateRange = (months: number) => {
     const end = new Date();
@@ -177,6 +208,25 @@ export const StatsPage: React.FC = () => {
 
   return (
     <div className="mx-auto space-y-6 max-w-full px-2 sm:px-4 md:px-6 lg:max-w-5xl">
+      {/* 분석 중 UI - 최상단 */}
+      {analyzingSessions.map((session) => (
+        <AnalyzingCard
+          key={session.id}
+          sessionId={session.id}
+          imageUrl={session.image_url}
+        />
+      ))}
+
+      {/* 라벨링 UI - 분석 중 다음 */}
+      {pendingLabelingSessions.map((session) => (
+        <QuickLabelingCard
+          key={session.id}
+          sessionId={session.id}
+          imageUrl={session.image_url}
+          onSave={handleLabelingComplete}
+        />
+      ))}
+
       <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
         <h2 className="text-2xl font-bold mb-4">유형별 정오답 통계</h2>
         
