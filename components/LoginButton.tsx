@@ -8,6 +8,11 @@ export const LoginButton: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  
+  // 회원가입 시 추가 정보
+  const [gender, setGender] = useState<string>('');
+  const [age, setAge] = useState<string>('');
+  const [grade, setGrade] = useState<string>('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,10 +22,37 @@ export const LoginButton: React.FC = () => {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
+        // 회원가입 시 추가 정보 검증
+        if (!gender || !age || !grade) {
+          throw new Error('성별, 연령, 학년을 모두 입력해주세요.');
+        }
+        
+        const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
+        if (authError) throw authError;
+        
+        // 프로필 정보 저장
+        if (authData.user) {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert({
+              user_id: authData.user.id,
+              email: email,
+              gender: gender,
+              age: parseInt(age, 10),
+              grade: grade,
+            }, {
+              onConflict: 'user_id'
+            });
+          
+          if (profileError) throw profileError;
+        }
+        
         setMessage('회원가입 완료! 이메일을 확인하거나 바로 로그인하세요.');
         setIsSignUp(false);
+        // 폼 초기화
+        setGender('');
+        setAge('');
+        setGrade('');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -59,6 +91,64 @@ export const LoginButton: React.FC = () => {
             required
           />
         </div>
+        
+        {isSignUp && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">성별</label>
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
+                required={isSignUp}
+              >
+                <option value="">선택하세요</option>
+                <option value="male">남성</option>
+                <option value="female">여성</option>
+                <option value="other">기타</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">연령</label>
+              <input
+                type="number"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
+                placeholder="예: 15"
+                min="1"
+                max="100"
+                required={isSignUp}
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">학년</label>
+              <select
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
+                required={isSignUp}
+              >
+                <option value="">선택하세요</option>
+                <option value="초등학교 1학년">초등학교 1학년</option>
+                <option value="초등학교 2학년">초등학교 2학년</option>
+                <option value="초등학교 3학년">초등학교 3학년</option>
+                <option value="초등학교 4학년">초등학교 4학년</option>
+                <option value="초등학교 5학년">초등학교 5학년</option>
+                <option value="초등학교 6학년">초등학교 6학년</option>
+                <option value="중학교 1학년">중학교 1학년</option>
+                <option value="중학교 2학년">중학교 2학년</option>
+                <option value="중학교 3학년">중학교 3학년</option>
+                <option value="고등학교 1학년">고등학교 1학년</option>
+                <option value="고등학교 2학년">고등학교 2학년</option>
+                <option value="고등학교 3학년">고등학교 3학년</option>
+              </select>
+            </div>
+          </>
+        )}
+        
         <button
           type="submit"
           disabled={loading}
