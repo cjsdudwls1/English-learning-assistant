@@ -39,11 +39,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const newTheme = prev === 'light' ? 'dark' : 'light';
       // 즉시 DOM 업데이트 (React 리렌더링 대기 없이)
       const root = document.documentElement;
-      if (newTheme === 'dark') {
-        root.classList.add('dark');
-      } else {
-        root.classList.remove('dark');
-      }
+      root.classList.toggle('dark', newTheme === 'dark');
       localStorage.setItem('theme', newTheme);
       return newTheme;
     });
