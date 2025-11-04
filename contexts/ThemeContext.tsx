@@ -13,7 +13,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setTheme] = useState<Theme>(() => {
     // localStorage에서 저장된 테마 불러오기 또는 시스템 설정 확인
     const saved = localStorage.getItem('theme');
-    if (saved) {
+    if (saved === 'dark' || saved === 'light') {
       return saved as Theme;
     }
     // 시스템 다크모드 설정 확인
@@ -23,18 +23,30 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return 'light';
   });
 
+  // theme 변경 시 DOM 클래스 업데이트
   useEffect(() => {
-    // HTML 클래스에 다크모드 적용
+    const root = document.documentElement;
     if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+      root.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('dark');
+      root.classList.remove('dark');
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    setTheme(prev => {
+      const newTheme = prev === 'light' ? 'dark' : 'light';
+      // 즉시 DOM 업데이트 (React 리렌더링 대기 없이)
+      const root = document.documentElement;
+      if (newTheme === 'dark') {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+      localStorage.setItem('theme', newTheme);
+      return newTheme;
+    });
   };
 
   return (
