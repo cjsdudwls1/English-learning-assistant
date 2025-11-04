@@ -13,6 +13,7 @@ import { RecentProblemsPage } from './pages/RecentProblemsPage';
 import { AnalyzingPage } from './pages/AnalyzingPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { RetryProblemsPage } from './pages/RetryProblemsPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 const App: React.FC = () => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -125,6 +126,7 @@ const App: React.FC = () => {
         <Link to="/upload" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">풀이한 문제 올리기</Link>
         {/* <Link to="/recent" className="hover:text-indigo-600 dark:hover:text-indigo-400">최근 업로드된 문제</Link> - 내부 검증용으로만 사용 */}
         <Link to="/stats" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">통계</Link>
+        <Link to="/profile" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">내 프로필</Link>
         <div className="ml-auto"><LogoutButton /></div>
       </nav>
       <main className="container mx-auto p-4 md:p-8">
@@ -164,6 +166,7 @@ const App: React.FC = () => {
           <Route path="/retry" element={<AuthGate><RetryProblemsPage /></AuthGate>} />
           <Route path="/recent" element={<AuthGate><RecentProblemsPage /></AuthGate>} />
           <Route path="/stats" element={<AuthGate><StatsPage /></AuthGate>} />
+          <Route path="/profile" element={<AuthGate><ProfilePage /></AuthGate>} />
           <Route path="/" element={<AuthGate><div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
                 <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <p className="text-sm text-blue-800 dark:text-blue-200">

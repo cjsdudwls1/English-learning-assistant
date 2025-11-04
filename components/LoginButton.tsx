@@ -96,17 +96,33 @@ export const LoginButton: React.FC = () => {
           <>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">성별</label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
-                required={isSignUp}
-              >
-                <option value="">선택하세요</option>
-                <option value="male">남성</option>
-                <option value="female">여성</option>
-                <option value="other">기타</option>
-              </select>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setGender('male')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                    gender === 'male'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  남성
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGender('female')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                    gender === 'female'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  여성
+                </button>
+              </div>
+              {isSignUp && !gender && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">성별을 선택해주세요.</p>
+              )}
             </div>
             
             <div>
