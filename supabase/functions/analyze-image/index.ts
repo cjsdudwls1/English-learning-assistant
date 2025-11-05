@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 
 // Taxonomy 데이터를 DB에서 동적으로 로드하는 함수
-async function loadTaxonomyData(supabase: any): Promise<string> {
+async function loadTaxonomyData(supabase: any): Promise<{ structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }> {
   console.log('Loading taxonomy data from database...');
   
   const { data, error } = await supabase
@@ -18,12 +18,23 @@ async function loadTaxonomyData(supabase: any): Promise<string> {
   
   // 계층 구조로 변환
   const structure: any = {};
+  const allValues: { depth1: Set<string>; depth2: Set<string>; depth3: Set<string>; depth4: Set<string> } = {
+    depth1: new Set(),
+    depth2: new Set(),
+    depth3: new Set(),
+    depth4: new Set(),
+  };
   
   for (const row of data || []) {
     const d1 = row.depth1 || '';
     const d2 = row.depth2 || '';
     const d3 = row.depth3 || '';
     const d4 = row.depth4 || '';
+    
+    if (d1) allValues.depth1.add(d1);
+    if (d2) allValues.depth2.add(d2);
+    if (d3) allValues.depth3.add(d3);
+    if (d4) allValues.depth4.add(d4);
     
     if (!structure[d1]) structure[d1] = {};
     if (!structure[d1][d2]) structure[d1][d2] = {};
@@ -55,7 +66,15 @@ async function loadTaxonomyData(supabase: any): Promise<string> {
   const taxonomyTree = formatStructure(structure);
   console.log('Taxonomy data loaded:', taxonomyTree.substring(0, 200) + '...');
   
-  return taxonomyTree;
+  return {
+    structure: taxonomyTree,
+    allValues: {
+      depth1: Array.from(allValues.depth1).sort(),
+      depth2: Array.from(allValues.depth2).sort(),
+      depth3: Array.from(allValues.depth3).sort(),
+      depth4: Array.from(allValues.depth4).sort(),
+    },
+  };
 }
 
 // depth1~4로 taxonomy 조회하여 code, CEFR, 난이도 찾기
@@ -89,7 +108,9 @@ async function findTaxonomyByDepth(
   };
 }
 
-function buildPrompt(classificationData: string) {
+function buildPrompt(classificationData: { structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }) {
+  const { structure, allValues } = classificationData;
+  
   return `
 ### 1. 페르소나 (Persona) ###
 당신은 두 가지 전문성을 겸비한 최고 수준의 AI 전문가입니다:
@@ -101,12 +122,18 @@ function buildPrompt(classificationData: string) {
 
 ### 3. 맥락 (Context) ###
 - **입력 데이터 1 (이미지)**: 사용자가 촬영하거나 업로드한 영어 문제 이미지 파일. 이 이미지에는 인쇄된 문제 텍스트, 객관식 보기, 그리고 사용자가 손으로 작성한 답안 및 채점 표시(O, X, △, ✓, 취소선 등)가 포함되어 있습니다.
-- **입력 데이터 2 (분류 기준표)**: 문제 유형을 분류하기 위한 기준이 되는 데이터입니다. 아래 계층 구조를 정확히 따르세요.
+- **입력 데이터 2 (분류 기준표)**: 문제 유형을 분류하기 위한 기준이 되는 데이터입니다.
+
+**분류 기준표 계층 구조:**
 \`\`\`
-${classificationData}
+${structure}
 \`\`\`
 
-**중요**: 분류 시 반드시 위 계층 구조의 정확한 depth1, depth2, depth3, depth4 값만 사용하세요.
+**⚠️ 절대 규칙:**
+- 위 계층 구조에 나와있는 정확한 depth1, depth2, depth3, depth4 값만 사용하세요.
+- 공백이나 특수문자(·)를 변경하지 마세요. (예: ❌ "문장유형" → ✅ "문장 유형·시제·상")
+- 임의의 값이나 약어를 사용하지 마세요. (예: ❌ "어휘" → ✅ "어휘·연결")
+- 계층 구조를 정확히 따라야 합니다 (depth1 → depth2 → depth3 → depth4).
 
 ### 4. 단계별 지시 (Step-by-Step Instructions / Chain-of-Thought) ###
 다음 단계를 순서대로, 그리고 신중하게 수행하여 최종 결과물을 도출하세요.
@@ -200,6 +227,9 @@ serve(async (req) => {
     });
   }
 
+  let supabase: ReturnType<typeof createClient> | undefined;
+  let createdSessionId: string | undefined;
+
   try {
     console.log('Edge Function called:', { 
       method: req.method, 
@@ -242,7 +272,7 @@ serve(async (req) => {
       throw new Error('GEMINI_API_KEY environment variable is not set');
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // 1. 이미지를 Storage에 업로드
     console.log('Step 1: Upload image to storage...');
@@ -281,7 +311,7 @@ serve(async (req) => {
       .single();
 
     if (sessionError) throw sessionError;
-    const createdSessionId = sessionData.id;
+    createdSessionId = sessionData.id;
     console.log('Step 2 completed: Session created with ID', createdSessionId);
 
     // 세션 생성 후 즉시 sessionId 반환 (분석은 백그라운드에서 계속)
@@ -299,8 +329,8 @@ serve(async (req) => {
       try {
         // 3. Taxonomy 데이터 로드
         console.log('Step 3a: Loading taxonomy data from database...');
-        const classificationData = await loadTaxonomyData(supabase);
-        const prompt = buildPrompt(classificationData);
+        const taxonomyData = await loadTaxonomyData(supabase);
+        const prompt = buildPrompt(taxonomyData);
         
         // 3. Gemini API로 분석
         console.log('Step 3b: Analyzing image with Gemini...');
@@ -361,27 +391,59 @@ serve(async (req) => {
       const normalizedMark = normalizeMark(it.사용자가_직접_채점한_정오답);
       const classification = it.문제_유형_분류 || {};
       
-      // depth1~4로 taxonomy 조회
+      // Gemini가 반환한 원본 값
+      const rawDepth1 = (classification['1Depth'] || '').trim();
+      const rawDepth2 = (classification['2Depth'] || '').trim();
+      const rawDepth3 = (classification['3Depth'] || '').trim();
+      const rawDepth4 = (classification['4Depth'] || '').trim();
+      
+      // 유효성 검증: DB에 있는 값인지 확인
+      const validDepth1 = taxonomyData.allValues.depth1.includes(rawDepth1) ? rawDepth1 : '';
+      const validDepth2 = taxonomyData.allValues.depth2.includes(rawDepth2) ? rawDepth2 : '';
+      const validDepth3 = taxonomyData.allValues.depth3.includes(rawDepth3) ? rawDepth3 : '';
+      const validDepth4 = taxonomyData.allValues.depth4.includes(rawDepth4) ? rawDepth4 : '';
+      
+      // 유효하지 않은 값이 있으면 경고
+      if (!validDepth1 && rawDepth1) {
+        console.warn(`Invalid depth1: "${rawDepth1}" - not in taxonomy. Valid values: ${taxonomyData.allValues.depth1.slice(0, 3).join(', ')}...`);
+      }
+      if (!validDepth2 && rawDepth2) {
+        console.warn(`Invalid depth2: "${rawDepth2}" - not in taxonomy`);
+      }
+      if (!validDepth3 && rawDepth3) {
+        console.warn(`Invalid depth3: "${rawDepth3}" - not in taxonomy`);
+      }
+      if (!validDepth4 && rawDepth4) {
+        console.warn(`Invalid depth4: "${rawDepth4}" - not in taxonomy`);
+      }
+      
+      // 유효한 값으로만 taxonomy 조회
       const taxonomy = await findTaxonomyByDepth(
         supabase,
-        classification['1Depth'] || '',
-        classification['2Depth'] || '',
-        classification['3Depth'] || '',
-        classification['4Depth'] || ''
+        validDepth1,
+        validDepth2,
+        validDepth3,
+        validDepth4
       );
       
-      // classification에 code, CEFR, 난이도 추가
+      // classification에 code, CEFR, 난이도 추가 (유효한 값만 저장)
       const enrichedClassification = {
-        ...classification,
+        '1Depth': validDepth1 || null,
+        '2Depth': validDepth2 || null,
+        '3Depth': validDepth3 || null,
+        '4Depth': validDepth4 || null,
         code: taxonomy.code,
         CEFR: taxonomy.cefr,
         난이도: taxonomy.difficulty,
+        분류_신뢰도: classification['분류_신뢰도'] || '보통',
       };
       
-      // 매핑 실패 시 신뢰도 하락
-      if (!taxonomy.code && (classification['1Depth'] || classification['2Depth'] || classification['3Depth'] || classification['4Depth'])) {
+      // 유효하지 않은 값이 있거나 매핑 실패 시 신뢰도 하락
+      if (!validDepth1 || !taxonomy.code) {
         enrichedClassification['분류_신뢰도'] = '낮음';
-        console.warn(`Taxonomy mapping failed for depth: ${classification['1Depth']}/${classification['2Depth']}/${classification['3Depth']}/${classification['4Depth']}`);
+        if (!validDepth1) {
+          console.warn(`Invalid classification: depth1="${rawDepth1}" is not in taxonomy. Saving with null.`);
+        }
       }
       
       return {
@@ -443,7 +505,7 @@ serve(async (req) => {
     console.error('Error in analyze-image function:', error);
     
     // 에러 발생 시 세션 상태를 failed로 업데이트 (세션이 생성된 경우에만)
-    if (typeof createdSessionId !== 'undefined') {
+    if (supabase && typeof createdSessionId !== 'undefined') {
       try {
         console.log('Updating session status to failed...');
         await supabase

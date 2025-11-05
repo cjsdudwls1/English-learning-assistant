@@ -113,42 +113,28 @@ function buildPrompt(classificationData: { structure: string; allValues: { depth
 ${structure}
 \`\`\`
 
-### ✅ 사용 가능한 값 목록 (반드시 아래 목록에서만 선택하세요)
-
-**1Depth - 정확히 아래 중 하나만 사용:**
-${allValues.depth1.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
-
-**2Depth - 정확히 아래 중 하나만 사용:**
-${allValues.depth2.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
-
-**3Depth - 정확히 아래 중 하나만 사용:**
-${allValues.depth3.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
-
-**4Depth - 정확히 아래 중 하나만 사용:**
-${allValues.depth4.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
-
 ## ⚠️ 절대 규칙
 
 ### 🚫 금지 사항
-1. 목록에 없는 값을 생성하거나 사용하지 마세요.
+1. 위 계층 구조에 없는 값을 생성하거나 사용하지 마세요.
 2. 공백이나 특수문자(·)를 변경하지 마세요.
-   - ❌ "문장유형" (잘못됨)
-   - ✅ "문장 유형·시제·상" (올바름)
+   - ❌ "문장유형" (잘못됨 - 공백 누락)
+   - ✅ "문장 유형·시제·상" (올바름 - 정확히 일치)
 3. 임의의 값이나 약어를 사용하지 마세요.
-   - ❌ "시제와 동사 활용" (목록에 없음)
-   - ❌ "..." (임의의 값)
-   - ✅ "시제와 상" (목록에 있음)
+   - ❌ "어휘" (잘못됨 - 약어)
+   - ❌ "시제와 동사 활용" (잘못됨 - 목록에 없음)
+   - ✅ "어휘·연결" (올바름 - 계층 구조에 있음)
 
 ### ✅ 필수 사항
-1. 위 목록에서 값을 찾아 **정확히 복사**해서 사용하세요.
+1. 위 계층 구조에서 값을 찾아 **정확히 복사**해서 사용하세요.
 2. 공백, 특수문자(·), 대소문자를 **정확히 일치**시켜야 합니다.
 3. 계층 구조를 따라 depth1 → depth2 → depth3 → depth4 순서로 선택하세요.
 
 ## 📝 작업 절차
 
 1. 문제 텍스트를 읽고 핵심 문법 요소를 파악하세요.
-2. 위 "사용 가능한 값 목록"에서 각 depth에 맞는 값을 찾으세요.
-3. 선택한 값이 목록에 정확히 존재하는지 확인하세요.
+2. 위 계층 구조에서 각 depth에 맞는 값을 찾으세요.
+3. 선택한 값이 계층 구조에 정확히 존재하는지 확인하세요.
 4. JSON 형식으로 출력하세요.
 
 ## 📤 출력 형식
@@ -157,10 +143,10 @@ ${allValues.depth4.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
 \`\`\`json
 {
-  "1Depth": "위 목록의 depth1 값 중 하나를 정확히 복사",
-  "2Depth": "위 목록의 depth2 값 중 하나를 정확히 복사",
-  "3Depth": "위 목록의 depth3 값 중 하나를 정확히 복사",
-  "4Depth": "위 목록의 depth4 값 중 하나를 정확히 복사",
+  "1Depth": "위 계층 구조의 depth1 값 중 하나를 정확히 복사",
+  "2Depth": "위 계층 구조의 depth2 값 중 하나를 정확히 복사",
+  "3Depth": "위 계층 구조의 depth3 값 중 하나를 정확히 복사",
+  "4Depth": "위 계층 구조의 depth4 값 중 하나를 정확히 복사",
   "분류_신뢰도": "높음" | "보통" | "낮음"
 }
 \`\`\`
@@ -168,9 +154,9 @@ ${allValues.depth4.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 ## 🔴 최종 확인
 
 출력하기 전에 다음을 확인하세요:
-- [ ] 선택한 값이 위 "사용 가능한 값 목록"에 정확히 존재하는가?
+- [ ] 선택한 값이 위 계층 구조에 정확히 존재하는가?
 - [ ] 공백과 특수문자(·)가 정확히 일치하는가?
-- [ ] 목록에 없는 값을 사용하지 않았는가?
+- [ ] 계층 구조에 없는 값을 사용하지 않았는가?
 
 위 규칙을 엄격히 준수하여 분류하세요.
 `;
@@ -281,34 +267,56 @@ serve(async (req) => {
           const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
           const classification = JSON.parse(jsonString);
 
-          // Gemini가 반환한 값 (프롬프트 최적화로 정확한 값이 반환되어야 함)
-          const depth1 = (classification['1Depth'] || '').trim();
-          const depth2 = (classification['2Depth'] || '').trim();
-          const depth3 = (classification['3Depth'] || '').trim();
-          const depth4 = (classification['4Depth'] || '').trim();
-
-          // Taxonomy 조회
+          // Gemini가 반환한 원본 값
+          const rawDepth1 = (classification['1Depth'] || '').trim();
+          const rawDepth2 = (classification['2Depth'] || '').trim();
+          const rawDepth3 = (classification['3Depth'] || '').trim();
+          const rawDepth4 = (classification['4Depth'] || '').trim();
+          
+          // 유효성 검증: DB에 있는 값인지 확인
+          const validDepth1 = taxonomyData.allValues.depth1.includes(rawDepth1) ? rawDepth1 : '';
+          const validDepth2 = taxonomyData.allValues.depth2.includes(rawDepth2) ? rawDepth2 : '';
+          const validDepth3 = taxonomyData.allValues.depth3.includes(rawDepth3) ? rawDepth3 : '';
+          const validDepth4 = taxonomyData.allValues.depth4.includes(rawDepth4) ? rawDepth4 : '';
+          
+          // 유효하지 않은 값이 있으면 경고
+          if (!validDepth1 && rawDepth1) {
+            console.warn(`Invalid depth1: "${rawDepth1}" - not in taxonomy. Valid values: ${taxonomyData.allValues.depth1.slice(0, 3).join(', ')}...`);
+          }
+          if (!validDepth2 && rawDepth2) {
+            console.warn(`Invalid depth2: "${rawDepth2}" - not in taxonomy`);
+          }
+          if (!validDepth3 && rawDepth3) {
+            console.warn(`Invalid depth3: "${rawDepth3}" - not in taxonomy`);
+          }
+          if (!validDepth4 && rawDepth4) {
+            console.warn(`Invalid depth4: "${rawDepth4}" - not in taxonomy`);
+          }
+          
+          // 유효한 값으로만 taxonomy 조회
           const taxonomy = await findTaxonomyByDepth(
             supabase,
-            depth1,
-            depth2,
-            depth3,
-            depth4
+            validDepth1,
+            validDepth2,
+            validDepth3,
+            validDepth4
           );
 
           // 분류 신뢰도 결정
           let confidence = classification['분류_신뢰도'] || '보통';
-          if (!taxonomy.code) {
+          if (!validDepth1 || !taxonomy.code) {
             confidence = '낮음';
-            console.warn(`Taxonomy not found for: ${depth1}/${depth2}/${depth3}/${depth4}`);
+            if (!validDepth1) {
+              console.warn(`Invalid classification: depth1="${rawDepth1}" is not in taxonomy. Saving with null.`);
+            }
           }
 
-          // classification 업데이트 (무조건 분류 - taxonomy.code가 없어도 저장)
+          // classification 업데이트 (유효한 값만 저장)
           const enrichedClassification = {
-            '1Depth': depth1,
-            '2Depth': depth2,
-            '3Depth': depth3,
-            '4Depth': depth4,
+            '1Depth': validDepth1 || null,
+            '2Depth': validDepth2 || null,
+            '3Depth': validDepth3 || null,
+            '4Depth': validDepth4 || null,
             'code': taxonomy.code,
             'CEFR': taxonomy.cefr,
             '난이도': taxonomy.difficulty,
@@ -329,7 +337,7 @@ serve(async (req) => {
           if (taxonomy.code) {
             successCount++;
           } else {
-            console.warn(`Classification saved but no taxonomy code found for: ${depth1}/${depth2}/${depth3}/${depth4}`);
+            console.warn(`Classification saved but no taxonomy code found for: ${validDepth1 || 'null'}/${validDepth2 || 'null'}/${validDepth3 || 'null'}/${validDepth4 || 'null'}`);
             successCount++; // 여전히 성공으로 카운트 (분류는 저장됨)
           }
         } catch (error) {
