@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { ProblemItem, SessionWithProblems } from '../types';
+import type { ProblemItem, SessionWithProblems, Taxonomy } from '../types';
 import { isCorrectFromMark, normalizeMark } from './marks';
 
 export async function getCurrentUserId(): Promise<string> {
@@ -685,6 +685,72 @@ export async function quickUpdateLabels(sessionId: string, problemId: string, ma
     .eq('problem_id', problemId);
   
   if (labelUpdateError) throw labelUpdateError;
+}
+
+// Taxonomy 조회 함수들
+
+/**
+ * code로 taxonomy 조회
+ */
+export async function fetchTaxonomyByCode(code: string): Promise<Taxonomy | null> {
+  const { data, error } = await supabase
+    .from('taxonomy')
+    .select('*')
+    .eq('code', code)
+    .single();
+  
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // 레코드를 찾을 수 없음
+      return null;
+    }
+    throw error;
+  }
+  
+  return data as Taxonomy;
+}
+
+/**
+ * depth1~4로 taxonomy 조회하여 code 찾기
+ */
+export async function findTaxonomyByDepth(
+  depth1: string,
+  depth2: string,
+  depth3: string,
+  depth4: string
+): Promise<Taxonomy | null> {
+  const { data, error } = await supabase
+    .from('taxonomy')
+    .select('*')
+    .eq('depth1', depth1)
+    .eq('depth2', depth2)
+    .eq('depth3', depth3)
+    .eq('depth4', depth4)
+    .single();
+  
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // 레코드를 찾을 수 없음
+      return null;
+    }
+    throw error;
+  }
+  
+  return data as Taxonomy;
+}
+
+/**
+ * 모든 taxonomy 목록 조회 (캐싱용)
+ */
+export async function fetchAllTaxonomy(): Promise<Taxonomy[]> {
+  const { data, error } = await supabase
+    .from('taxonomy')
+    .select('*')
+    .order('code');
+  
+  if (error) throw error;
+  
+  return (data || []) as Taxonomy[];
 }
 
 

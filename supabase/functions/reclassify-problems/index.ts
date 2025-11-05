@@ -1,0 +1,277 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
+// Taxonomy 데이터를 DB에서 동적으로 로드하는 함수
+async function loadTaxonomyData(supabase: any): Promise<string> {
+  const { data, error } = await supabase
+    .from('taxonomy')
+    .select('depth1, depth2, depth3, depth4')
+    .order('depth1, depth2, depth3, depth4');
+  
+  if (error) throw error;
+  
+  const structure: any = {};
+  for (const row of data || []) {
+    const d1 = row.depth1 || '';
+    const d2 = row.depth2 || '';
+    const d3 = row.depth3 || '';
+    const d4 = row.depth4 || '';
+    
+    if (!structure[d1]) structure[d1] = {};
+    if (!structure[d1][d2]) structure[d1][d2] = {};
+    if (!structure[d1][d2][d3]) structure[d1][d2][d3] = [];
+    if (d4 && !structure[d1][d2][d3].includes(d4)) {
+      structure[d1][d2][d3].push(d4);
+    }
+  }
+  
+  function formatStructure(obj: any, indent = 0): string {
+    let result = '';
+    const spaces = '  '.repeat(indent);
+    for (const [key, value] of Object.entries(obj)) {
+      result += spaces + key + '\n';
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        result += formatStructure(value, indent + 1);
+      } else if (Array.isArray(value)) {
+        value.forEach((item: string) => {
+          result += spaces + '  ' + item + '\n';
+        });
+      }
+    }
+    return result;
+  }
+  
+  return formatStructure(structure);
+}
+
+// depth1~4로 taxonomy 조회하여 code, CEFR, 난이도 찾기
+async function findTaxonomyByDepth(
+  supabase: any,
+  depth1: string,
+  depth2: string,
+  depth3: string,
+  depth4: string
+): Promise<{ code: string | null; cefr: string | null; difficulty: number | null }> {
+  const { data, error } = await supabase
+    .from('taxonomy')
+    .select('code, cefr, difficulty')
+    .eq('depth1', depth1)
+    .eq('depth2', depth2)
+    .eq('depth3', depth3)
+    .eq('depth4', depth4)
+    .single();
+  
+  if (error || !data) {
+    return { code: null, cefr: null, difficulty: null };
+  }
+  
+  return {
+    code: data.code || null,
+    cefr: data.cefr || null,
+    difficulty: data.difficulty || null,
+  };
+}
+
+function buildPrompt(classificationData: string) {
+  return `
+당신은 영어 문제 분류 전문가입니다. 주어진 문제 텍스트를 분석하여 분류하세요.
+
+## 분류 기준표
+\`\`\`
+${classificationData}
+\`\`\`
+
+**중요**: 분류 시 반드시 위 계층 구조의 정확한 depth1, depth2, depth3, depth4 값만 사용하세요.
+
+## 출력 형식
+다음 JSON 형식으로 출력하세요:
+\`\`\`json
+{
+  "1Depth": "...",
+  "2Depth": "...",
+  "3Depth": "...",
+  "4Depth": "...",
+  "분류_신뢰도": "높음" | "보통" | "낮음"
+}
+\`\`\`
+`;
+}
+
+serve(async (req) => {
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { 
+      status: 405, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
+  }
+
+  try {
+    const { userId, batchSize = 100 } = await req.json();
+
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'Missing required field: userId' }), { 
+        status: 400, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    // Supabase 클라이언트 생성
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API_KEY environment variable is not set');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // 1. 사용자의 모든 문제 조회
+    console.log('Step 1: Fetching user problems');
+    const { data: labels, error: labelsError } = await supabase
+      .from('labels')
+      .select(`
+        id,
+        problem_id,
+        classification,
+        problems!inner (
+          id,
+          stem,
+          sessions!inner (
+            user_id
+          )
+        )
+      `)
+      .eq('problems.sessions.user_id', userId);
+
+    if (labelsError) throw labelsError;
+
+    if (!labels || labels.length === 0) {
+      return new Response(JSON.stringify({ 
+        success: true,
+        message: 'No problems to reclassify',
+        total: 0,
+        processed: 0
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    console.log(`Step 1 completed: Found ${labels.length} problems`);
+
+    // 2. Taxonomy 데이터 로드
+    console.log('Step 2: Loading taxonomy data');
+    const classificationData = await loadTaxonomyData(supabase);
+    const prompt = buildPrompt(classificationData);
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+    // 3. 배치 처리
+    let processed = 0;
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < labels.length; i += batchSize) {
+      const batch = labels.slice(i, i + batchSize);
+      console.log(`Processing batch ${Math.floor(i / batchSize) + 1}: ${batch.length} problems`);
+
+      await Promise.all(batch.map(async (label: any) => {
+        try {
+          const stem = label.problems?.stem;
+          if (!stem || stem.trim() === '') {
+            console.warn(`Skipping problem ${label.problem_id}: empty stem`);
+            return;
+          }
+
+          // Gemini로 재분류
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [{ text: `${prompt}\n\n문제: ${stem}` }] },
+          });
+
+          const responseText = response.text;
+          const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+          const classification = JSON.parse(jsonString);
+
+          // Taxonomy 조회
+          const taxonomy = await findTaxonomyByDepth(
+            supabase,
+            classification['1Depth'] || '',
+            classification['2Depth'] || '',
+            classification['3Depth'] || '',
+            classification['4Depth'] || ''
+          );
+
+          // classification 업데이트
+          const enrichedClassification = {
+            ...classification,
+            code: taxonomy.code,
+            CEFR: taxonomy.cefr,
+            난이도: taxonomy.difficulty,
+          };
+
+          if (!taxonomy.code) {
+            enrichedClassification['분류_신뢰도'] = '낮음';
+          }
+
+          // DB 업데이트
+          const { error: updateError } = await supabase
+            .from('labels')
+            .update({ classification: enrichedClassification })
+            .eq('id', label.id);
+
+          if (updateError) throw updateError;
+
+          successCount++;
+        } catch (error) {
+          console.error(`Error processing label ${label.id}:`, error);
+          failCount++;
+        }
+      }));
+
+      processed += batch.length;
+    }
+
+    console.log(`Reclassification completed: ${successCount} success, ${failCount} failed`);
+
+    return new Response(JSON.stringify({
+      success: true,
+      total: labels.length,
+      processed,
+      successCount,
+      failCount,
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error: any) {
+    console.error('Error in reclassify-problems function:', error);
+    
+    return new Response(JSON.stringify({ 
+      error: error.message || 'Internal server error',
+      details: error.toString()
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});
+
