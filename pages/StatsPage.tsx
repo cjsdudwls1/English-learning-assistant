@@ -23,6 +23,8 @@ export const StatsPage: React.FC = () => {
   const [analyzingSessions, setAnalyzingSessions] = useState<SessionWithProblems[]>([]);
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [pollingActive, setPollingActive] = useState(true);
+  const [isReclassifying, setIsReclassifying] = useState(false);
+  const [reclassificationStatus, setReclassificationStatus] = useState<string | null>(null);
 
   const loadData = async (showLoading: boolean = false) => {
     try {
@@ -126,6 +128,69 @@ export const StatsPage: React.FC = () => {
     };
     traverse(nodes);
     return leafNodes;
+  };
+
+  // 전체 문제 재분류 핸들러
+  const handleReclassifyAll = async () => {
+    if (!confirm('전체 문제를 새로운 분류 체계로 재분류하시겠습니까?\n이 작업은 시간이 걸릴 수 있으며, 백그라운드에서 진행됩니다.')) {
+      return;
+    }
+
+    try {
+      setIsReclassifying(true);
+      setReclassificationStatus('재분류 작업을 시작합니다...');
+      setError(null);
+
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        setError('로그인이 필요합니다.');
+        return;
+      }
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reclassify-problems`;
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          userId: userData.user.id,
+          batchSize: 100, // 배치 크기
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setReclassificationStatus(
+          `재분류 작업이 시작되었습니다. 처리된 문제: ${result.processed || 0}개 / 전체: ${result.total || 0}개. ` +
+          `성공: ${result.successCount || 0}개, 실패: ${result.failCount || 0}개. ` +
+          `새로고침하여 최신 통계를 확인하세요.`
+        );
+        
+        // 3초 후 자동 새로고침
+        setTimeout(() => {
+          loadData(true);
+          setReclassificationStatus(null);
+        }, 3000);
+      } else {
+        throw new Error(result.error || '재분류 작업에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('Error reclassifying problems:', error);
+      setError(error instanceof Error ? error.message : '재분류 중 오류가 발생했습니다.');
+      setReclassificationStatus(null);
+    } finally {
+      setIsReclassifying(false);
+    }
   };
 
   // 유사 문제 생성 핸들러
@@ -306,16 +371,32 @@ export const StatsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
           <div className="text-slate-700 dark:text-slate-300">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
-          <button
-            onClick={handleGenerateSimilarProblems}
-            disabled={selectedNodes.size === 0 || isGeneratingProblems}
-            className="px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
-          >
-            {isGeneratingProblems ? '생성 중...' : '유사 문제 생성'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleReclassifyAll}
+              disabled={isReclassifying}
+              className="px-4 py-2 bg-orange-600 dark:bg-orange-500 text-white rounded-lg hover:bg-orange-700 dark:hover:bg-orange-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+              title="기존 문제들을 새로운 분류 체계로 재분류합니다"
+            >
+              {isReclassifying ? '재분류 중...' : '🔄 전체 문제 재분류'}
+            </button>
+            <button
+              onClick={handleGenerateSimilarProblems}
+              disabled={selectedNodes.size === 0 || isGeneratingProblems}
+              className="px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+            >
+              {isGeneratingProblems ? '생성 중...' : '유사 문제 생성'}
+            </button>
+          </div>
         </div>
+        
+        {reclassificationStatus && (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-sm text-blue-800 dark:text-blue-200">{reclassificationStatus}</p>
+          </div>
+        )}
         
         <HierarchicalStatsTable 
           data={hierarchicalData} 

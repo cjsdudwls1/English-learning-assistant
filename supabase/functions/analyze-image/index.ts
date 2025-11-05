@@ -2,73 +2,95 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 
-const classificationData = `
-문장 유형
-  시제와 동사 활용
-    현재시제
-      현재진행
-      현재완료
-      현재완료진행
-    과거시제
-      과거진행
-      과거완료
-      과거완료진행
-    미래시제
-      will, be going to
-      미래진행
-      미래완료
-  능동태와 수동태
-    능동태
-    수동태
-  조동사
-    can, could
-    may, might
-    must, have to
-    should, ought to
-    would, used to
-문장 내 구조 및 구문
-  일치와 병치
-    주어-동사 일치
-      수일치
-      시제일치
-    병치구조
-  비교구문
-    원급비교
-    비교급
-    최상급
-  관계사절
-    관계대명사
-    관계부사
-  명사절
-    that절
-    의문사절
-    if/whether절
-  부사절
-    시간
-    이유
-    조건
-    양보
-    목적
-    결과
-  가정법
-    현재가정법
-    과거가정법
-    과거완료가정법
-어휘
-  동사구
-    구동사
-    동사+전치사
-    동사+부사
-  명사구
-    관용표현
-    숙어
-  형용사구
-    형용사+전치사
-  부사구
-    부사+전치사
-`;
+// Taxonomy 데이터를 DB에서 동적으로 로드하는 함수
+async function loadTaxonomyData(supabase: any): Promise<string> {
+  console.log('Loading taxonomy data from database...');
+  
+  const { data, error } = await supabase
+    .from('taxonomy')
+    .select('depth1, depth2, depth3, depth4')
+    .order('depth1, depth2, depth3, depth4');
+  
+  if (error) {
+    console.error('Error loading taxonomy:', error);
+    throw error;
+  }
+  
+  // 계층 구조로 변환
+  const structure: any = {};
+  
+  for (const row of data || []) {
+    const d1 = row.depth1 || '';
+    const d2 = row.depth2 || '';
+    const d3 = row.depth3 || '';
+    const d4 = row.depth4 || '';
+    
+    if (!structure[d1]) structure[d1] = {};
+    if (!structure[d1][d2]) structure[d1][d2] = {};
+    if (!structure[d1][d2][d3]) structure[d1][d2][d3] = [];
+    if (d4 && !structure[d1][d2][d3].includes(d4)) {
+      structure[d1][d2][d3].push(d4);
+    }
+  }
+  
+  // 문자열로 변환
+  function formatStructure(obj: any, indent = 0): string {
+    let result = '';
+    const spaces = '  '.repeat(indent);
+    
+    for (const [key, value] of Object.entries(obj)) {
+      result += spaces + key + '\n';
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        result += formatStructure(value, indent + 1);
+      } else if (Array.isArray(value)) {
+        value.forEach((item: string) => {
+          result += spaces + '  ' + item + '\n';
+        });
+      }
+    }
+    
+    return result;
+  }
+  
+  const taxonomyTree = formatStructure(structure);
+  console.log('Taxonomy data loaded:', taxonomyTree.substring(0, 200) + '...');
+  
+  return taxonomyTree;
+}
 
-const prompt = `
+// depth1~4로 taxonomy 조회하여 code, CEFR, 난이도 찾기
+async function findTaxonomyByDepth(
+  supabase: any,
+  depth1: string,
+  depth2: string,
+  depth3: string,
+  depth4: string
+): Promise<{ code: string | null; cefr: string | null; difficulty: number | null }> {
+  const { data, error } = await supabase
+    .from('taxonomy')
+    .select('code, cefr, difficulty')
+    .eq('depth1', depth1)
+    .eq('depth2', depth2)
+    .eq('depth3', depth3)
+    .eq('depth4', depth4)
+    .single();
+  
+  if (error || !data) {
+    if (error && error.code !== 'PGRST116') {
+      console.warn('Taxonomy lookup error:', error);
+    }
+    return { code: null, cefr: null, difficulty: null };
+  }
+  
+  return {
+    code: data.code || null,
+    cefr: data.cefr || null,
+    difficulty: data.difficulty || null,
+  };
+}
+
+function buildPrompt(classificationData: string) {
+  return `
 ### 1. 페르소나 (Persona) ###
 당신은 두 가지 전문성을 겸비한 최고 수준의 AI 전문가입니다:
 1.  **손글씨 OCR 전문가**: 불규칙한 필기, 겹쳐 쓴 글씨, 다양한 필기구의 흔적까지 분석하여 디지털 텍스트로 변환하는 데 특화되어 있습니다. 펜의 압력, 기울기, 획의 연결성과 같은 미세한 특징을 파악하여 문맥 기반으로 모호한 글자를 추론하는 능력이 뛰어납니다.
@@ -79,10 +101,12 @@ const prompt = `
 
 ### 3. 맥락 (Context) ###
 - **입력 데이터 1 (이미지)**: 사용자가 촬영하거나 업로드한 영어 문제 이미지 파일. 이 이미지에는 인쇄된 문제 텍스트, 객관식 보기, 그리고 사용자가 손으로 작성한 답안 및 채점 표시(O, X, △, ✓, 취소선 등)가 포함되어 있습니다.
-- **입력 데이터 2 (분류 기준표)**: 문제 유형을 분류하기 위한 기준이 되는 데이터입니다.
+- **입력 데이터 2 (분류 기준표)**: 문제 유형을 분류하기 위한 기준이 되는 데이터입니다. 아래 계층 구조를 정확히 따르세요.
 \`\`\`
 ${classificationData}
 \`\`\`
+
+**중요**: 분류 시 반드시 위 계층 구조의 정확한 depth1, depth2, depth3, depth4 값만 사용하세요.
 
 ### 4. 단계별 지시 (Step-by-Step Instructions / Chain-of-Thought) ###
 다음 단계를 순서대로, 그리고 신중하게 수행하여 최종 결과물을 도출하세요.
@@ -273,8 +297,13 @@ serve(async (req) => {
     // 백그라운드에서 분석 계속 진행
     (async () => {
       try {
+        // 3. Taxonomy 데이터 로드
+        console.log('Step 3a: Loading taxonomy data from database...');
+        const classificationData = await loadTaxonomyData(supabase);
+        const prompt = buildPrompt(classificationData);
+        
         // 3. Gemini API로 분석
-        console.log('Step 3: Analyzing image with Gemini...');
+        console.log('Step 3b: Analyzing image with Gemini...');
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
     const imagePart = { inlineData: { data: imageBase64, mimeType } };
@@ -327,21 +356,47 @@ serve(async (req) => {
       idByIndex.set(row.index_in_image, row.id);
     }
 
-    const labelsPayload = items.map((it: any, idx: number) => {
+    // 각 문제에 대해 taxonomy 조회하여 code, CEFR, 난이도 추가
+    const labelsPayload = await Promise.all(items.map(async (it: any, idx: number) => {
       const normalizedMark = normalizeMark(it.사용자가_직접_채점한_정오답);
+      const classification = it.문제_유형_분류 || {};
+      
+      // depth1~4로 taxonomy 조회
+      const taxonomy = await findTaxonomyByDepth(
+        supabase,
+        classification['1Depth'] || '',
+        classification['2Depth'] || '',
+        classification['3Depth'] || '',
+        classification['4Depth'] || ''
+      );
+      
+      // classification에 code, CEFR, 난이도 추가
+      const enrichedClassification = {
+        ...classification,
+        code: taxonomy.code,
+        CEFR: taxonomy.cefr,
+        난이도: taxonomy.difficulty,
+      };
+      
+      // 매핑 실패 시 신뢰도 하락
+      if (!taxonomy.code && (classification['1Depth'] || classification['2Depth'] || classification['3Depth'] || classification['4Depth'])) {
+        enrichedClassification['분류_신뢰도'] = '낮음';
+        console.warn(`Taxonomy mapping failed for depth: ${classification['1Depth']}/${classification['2Depth']}/${classification['3Depth']}/${classification['4Depth']}`);
+      }
+      
       return {
         problem_id: idByIndex.get(it.index ?? idx)!,
         user_answer: it.사용자가_기술한_정답?.text || '',
         user_mark: null, // 사용자 검수 전이므로 null
         is_correct: normalizedMark === 'O', // AI 분석 결과 저장
-        classification: it.문제_유형_분류 || {},
+        classification: enrichedClassification,
         confidence: {
           stem: it.문제내용?.confidence_score || 1.0,
           answer: it.사용자가_기술한_정답?.confidence_score || 1.0,
           choices: (it.문제_보기 || []).map((c: any) => c.confidence_score || 1.0),
         },
       };
-    });
+    }));
 
     const { error: labelsError } = await supabase.from('labels').insert(labelsPayload);
     if (labelsError) {

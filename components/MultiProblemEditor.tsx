@@ -1,6 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import type { AnalysisResults, ProblemItem, ProblemClassification } from '../types';
 import { ReportModal } from './ReportModal';
+import { TaxonomyDetailPopup } from './TaxonomyDetailPopup';
+import { supabase } from '../services/supabaseClient';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface MultiProblemEditorProps {
   initial: AnalysisResults;
@@ -14,6 +17,7 @@ interface MultiProblemEditorProps {
 
 export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial, onChange, onSubmit, hideMarking, hideClassification, hideReport, hideSubmit }) => {
   const [items, setItems] = useState<ProblemItem[]>(initial.items);
+  const { language } = useLanguage();
 
   // initial prop이 변경될 때 내부 state를 동기화
   useEffect(() => {
@@ -23,6 +27,10 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
   const [error, setError] = useState<string | null>(null);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportingProblemIndex, setReportingProblemIndex] = useState<number | null>(null);
+  const [taxonomyPopupOpen, setTaxonomyPopupOpen] = useState(false);
+  const [selectedTaxonomyCode, setSelectedTaxonomyCode] = useState<string | null>(null);
+  const [generatingExampleIndex, setGeneratingExampleIndex] = useState<number | null>(null);
+  const [exampleResults, setExampleResults] = useState<Record<number, { wrong_example: string; correct_example: string; explanation: string }>>({});
 
   const marks = ['정답', '오답'];
 
@@ -65,6 +73,76 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
     console.log(`Problem ${reportingProblemIndex} reported:`, reason);
     // 실제 데이터 저장은 하지 않음 (개발용)
     alert('신고가 접수되었습니다. 감사합니다.');
+  };
+
+  const handleGenerateExample = async (problemIndex: number) => {
+    const problem = items[problemIndex];
+    const classification = problem?.문제_유형_분류;
+    const code = classification?.code;
+
+    if (!code) {
+      alert('분류 코드가 없습니다. 먼저 문제를 분류해주세요.');
+      return;
+    }
+
+    try {
+      setGeneratingExampleIndex(problemIndex);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('로그인이 필요합니다.');
+      }
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-example`;
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          code,
+          userId: user.id,
+          language,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`예시 문장 생성 실패: ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.example) {
+        // result.example이 문자열이거나 객체일 수 있음
+        let exampleData;
+        if (typeof result.example === 'string') {
+          try {
+            exampleData = JSON.parse(result.example);
+          } catch {
+            // JSON이 아니면 그냥 텍스트로 처리
+            exampleData = { wrong_example: '', correct_example: result.example, explanation: '' };
+          }
+        } else {
+          exampleData = result.example;
+        }
+
+        setExampleResults(prev => ({
+          ...prev,
+          [problemIndex]: exampleData,
+        }));
+      } else {
+        throw new Error('예시 문장 생성에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('Error generating example:', error);
+      alert(error instanceof Error ? error.message : '예시 문장 생성 중 오류가 발생했습니다.');
+    } finally {
+      setGeneratingExampleIndex(null);
+    }
   };
 
   return (
@@ -127,6 +205,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
             </div>
           </div>
 
+          {/* 문제 유형 분류 */}
           {!hideClassification && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
               <div>
@@ -145,10 +224,62 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
                   onChange={(e) => updateClassification(i, { '3Depth': e.target.value })} />
               </div>
               <div>
-                <label className="block text-sm text-slate-600">4Depth</label>
+                <label className="block text-sm text-slate-600 flex items-center gap-2">
+                  4Depth
+                  {it.문제_유형_분류['4Depth'] && it.문제_유형_분류.code && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTaxonomyCode(it.문제_유형_분류.code || null);
+                        setTaxonomyPopupOpen(true);
+                      }}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-normal"
+                      title="분류 상세 정보 보기"
+                    >
+                      ?
+                    </button>
+                  )}
+                </label>
                 <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['4Depth']}
                   onChange={(e) => updateClassification(i, { '4Depth': e.target.value })} />
               </div>
+            </div>
+          )}
+
+          {/* 예시 문장 생성 버튼 및 결과 */}
+          {!hideClassification && it.문제_유형_분류.code && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => handleGenerateExample(i)}
+                disabled={generatingExampleIndex === i}
+                className="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-900/70 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                {generatingExampleIndex === i ? '생성 중...' : '📝 예시 문장 생성'}
+              </button>
+              
+              {exampleResults[i] && (
+                <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">예시 문장</h4>
+                  {exampleResults[i].wrong_example && (
+                    <div className="mb-2">
+                      <span className="text-red-600 dark:text-red-400 font-medium">❌ 틀린 예시:</span>
+                      <p className="text-slate-700 dark:text-slate-300 ml-2">{exampleResults[i].wrong_example}</p>
+                    </div>
+                  )}
+                  {exampleResults[i].correct_example && (
+                    <div className="mb-2">
+                      <span className="text-green-600 dark:text-green-400 font-medium">✅ 맞는 예시:</span>
+                      <p className="text-slate-700 dark:text-slate-300 ml-2">{exampleResults[i].correct_example}</p>
+                    </div>
+                  )}
+                  {exampleResults[i].explanation && (
+                    <div className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                      <span className="font-medium">설명:</span> {exampleResults[i].explanation}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -168,6 +299,16 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           isOpen={reportModalOpen}
           onClose={() => setReportModalOpen(false)}
           onSubmit={handleReportSubmit}
+        />
+      )}
+      
+      {taxonomyPopupOpen && (
+        <TaxonomyDetailPopup
+          code={selectedTaxonomyCode}
+          onClose={() => {
+            setTaxonomyPopupOpen(false);
+            setSelectedTaxonomyCode(null);
+          }}
         />
       )}
     </div>
