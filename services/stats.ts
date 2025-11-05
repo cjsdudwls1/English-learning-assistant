@@ -60,16 +60,47 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
   // 클라이언트에서 집계
   const statsMap = new Map<string, TypeStatsRow>();
   
+  // taxonomy에서 유효한 값 목록 로드
+  const { data: taxonomyData, error: taxonomyError } = await supabase
+    .from('taxonomy')
+    .select('depth1, depth2, depth3, depth4');
+  
+  if (taxonomyError) throw taxonomyError;
+  
+  // 유효한 값 Set 생성
+  const validDepth1 = new Set<string>();
+  const validDepth2 = new Set<string>();
+  const validDepth3 = new Set<string>();
+  const validDepth4 = new Set<string>();
+  
+  for (const row of taxonomyData || []) {
+    if (row.depth1) validDepth1.add(row.depth1);
+    if (row.depth2) validDepth2.add(row.depth2);
+    if (row.depth3) validDepth3.add(row.depth3);
+    if (row.depth4) validDepth4.add(row.depth4);
+  }
+  
   for (const row of data || []) {
     const classification = row.classification || {};
-    const key = `${classification['1Depth']||''}_${classification['2Depth']||''}_${classification['3Depth']||''}_${classification['4Depth']||''}`;
+    // 유효성 검증: taxonomy에 있는 값만 사용
+    const rawDepth1 = classification['1Depth'] || '';
+    const rawDepth2 = classification['2Depth'] || '';
+    const rawDepth3 = classification['3Depth'] || '';
+    const rawDepth4 = classification['4Depth'] || '';
+    
+    const depth1 = validDepth1.has(rawDepth1) ? rawDepth1 : null;
+    const depth2 = validDepth2.has(rawDepth2) ? rawDepth2 : null;
+    const depth3 = validDepth3.has(rawDepth3) ? rawDepth3 : null;
+    const depth4 = validDepth4.has(rawDepth4) ? rawDepth4 : null;
+    
+    const key = `${depth1 || ''}_${depth2 || ''}_${depth3 || ''}_${depth4 || ''}`;
     
     if (!statsMap.has(key)) {
       statsMap.set(key, {
-        depth1: classification['1Depth'] || null,
-        depth2: classification['2Depth'] || null,
-        depth3: classification['3Depth'] || null,
-        depth4: classification['4Depth'] || null,
+        depth1,
+        depth2,
+        depth3,
+        depth4,
         correct_count: 0,
         incorrect_count: 0,
         total_count: 0,
@@ -94,6 +125,26 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
 // 계층 구조 통계 집계 (모든 depth 레벨)
 export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): Promise<StatsNode[]> {
   const userId = await getCurrentUserId();
+  
+  // taxonomy에서 유효한 값 목록 로드
+  const { data: taxonomyData, error: taxonomyError } = await supabase
+    .from('taxonomy')
+    .select('depth1, depth2, depth3, depth4');
+  
+  if (taxonomyError) throw taxonomyError;
+  
+  // 유효한 값 Set 생성
+  const validDepth1 = new Set<string>();
+  const validDepth2 = new Set<string>();
+  const validDepth3 = new Set<string>();
+  const validDepth4 = new Set<string>();
+  
+  for (const row of taxonomyData || []) {
+    if (row.depth1) validDepth1.add(row.depth1);
+    if (row.depth2) validDepth2.add(row.depth2);
+    if (row.depth3) validDepth3.add(row.depth3);
+    if (row.depth4) validDepth4.add(row.depth4);
+  }
   
   let query = supabase
     .from('labels')
@@ -131,10 +182,16 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
   
   for (const row of data || []) {
     const classification = row.classification || {};
-    const depth1 = classification['1Depth'] || '';
-    const depth2 = classification['2Depth'] || '';
-    const depth3 = classification['3Depth'] || '';
-    const depth4 = classification['4Depth'] || '';
+    // 유효성 검증: taxonomy에 있는 값만 사용
+    const rawDepth1 = classification['1Depth'] || '';
+    const rawDepth2 = classification['2Depth'] || '';
+    const rawDepth3 = classification['3Depth'] || '';
+    const rawDepth4 = classification['4Depth'] || '';
+    
+    const depth1 = validDepth1.has(rawDepth1) ? rawDepth1 : '';
+    const depth2 = validDepth2.has(rawDepth2) ? rawDepth2 : '';
+    const depth3 = validDepth3.has(rawDepth3) ? rawDepth3 : '';
+    const depth4 = validDepth4.has(rawDepth4) ? rawDepth4 : '';
     
     // 1-depth 집계
     if (depth1) {
