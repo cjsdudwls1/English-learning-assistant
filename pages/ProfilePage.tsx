@@ -14,6 +14,7 @@ export const ProfilePage: React.FC = () => {
   const [gender, setGender] = useState<string>('');
   const [age, setAge] = useState<string>('');
   const [grade, setGrade] = useState<string>('');
+  const [language, setLanguage] = useState<string>('');
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -24,7 +25,7 @@ export const ProfilePage: React.FC = () => {
         // 프로필 정보 불러오기
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('email, gender, age, grade')
+          .select('email, gender, age, grade, language')
           .eq('user_id', userId)
           .single();
 
@@ -37,6 +38,7 @@ export const ProfilePage: React.FC = () => {
           setGender(profileData.gender || '');
           setAge(profileData.age ? profileData.age.toString() : '');
           setGrade(profileData.grade || '');
+          setLanguage(profileData.language || '');
         } else {
           // 프로필이 없으면 사용자 정보에서 이메일만 가져오기
           const { data: userData } = await supabase.auth.getUser();
@@ -71,6 +73,7 @@ export const ProfilePage: React.FC = () => {
           gender: gender || null,
           age: age ? parseInt(age, 10) : null,
           grade: grade || null,
+          language: language || null,
         }, {
           onConflict: 'user_id'
         });
@@ -183,6 +186,34 @@ export const ProfilePage: React.FC = () => {
             <option value="고등학교 2학년">고등학교 2학년</option>
             <option value="고등학교 3학년">고등학교 3학년</option>
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">언어</label>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setLanguage('en')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                language === 'en'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage('ko')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                language === 'ko'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              한국어
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-3">
