@@ -72,65 +72,6 @@ async function loadTaxonomyData(supabase: any): Promise<{ structure: string; all
   };
 }
 
-// 유사도 기반으로 가장 가까운 값 찾기 (간단한 문자열 매칭)
-function findClosestValue(input: string, validValues: string[]): string {
-  if (!input || input.trim() === '') return validValues[0] || '';
-  
-  const normalizedInput = input.trim();
-  
-  // 1. 정확히 일치하는 값이 있으면 반환
-  if (validValues.includes(normalizedInput)) return normalizedInput;
-  
-  // 2. 공백 제거 후 비교
-  const inputNoSpace = normalizedInput.replace(/\s+/g, '');
-  for (const value of validValues) {
-    if (value.replace(/\s+/g, '') === inputNoSpace) {
-      return value;
-    }
-  }
-  
-  // 3. 특수문자 제거 후 비교 (예: "문장유형" -> "문장 유형·시제·상")
-  const inputNoSpecial = normalizedInput.replace(/[··\s]/g, '');
-  for (const value of validValues) {
-    const valueNoSpecial = value.replace(/[··\s]/g, '');
-    if (valueNoSpecial.includes(inputNoSpecial) || inputNoSpecial.includes(valueNoSpecial)) {
-      // 단어 단위로 매칭 확인 (너무 짧은 부분 일치는 제외)
-      if (inputNoSpecial.length >= 2 && valueNoSpecial.length >= inputNoSpecial.length) {
-        return value;
-      }
-    }
-  }
-  
-  // 4. 키워드 기반 매칭 (예: "문장유형"이 "문장 유형·시제·상"에 포함)
-  const inputLower = normalizedInput.toLowerCase();
-  const inputKeywords = inputLower.split(/[·\s]/).filter(k => k.length > 1);
-  
-  let bestMatch = '';
-  let bestScore = 0;
-  
-  for (const value of validValues) {
-    const valueLower = value.toLowerCase();
-    let score = 0;
-    
-    // 키워드가 포함되어 있으면 점수 증가
-    for (const keyword of inputKeywords) {
-      if (valueLower.includes(keyword)) {
-        score += keyword.length;
-      }
-    }
-    
-    if (score > bestScore && score >= 2) { // 최소 2글자 이상 매칭
-      bestScore = score;
-      bestMatch = value;
-    }
-  }
-  
-  if (bestMatch) return bestMatch;
-  
-  // 5. 첫 번째 유효한 값 반환 (기본값)
-  return validValues[0] || '';
-}
-
 // depth1~4로 taxonomy 조회하여 code, CEFR, 난이도 찾기
 async function findTaxonomyByDepth(
   supabase: any,
@@ -163,77 +104,75 @@ function buildPrompt(classificationData: { structure: string; allValues: { depth
   const { structure, allValues } = classificationData;
   
   return `
-### 1. 페르소나 (Persona) ###
-당신은 영어 교육 평가 전문가입니다. 다양한 유형의 영어 문제를 이해하고, 교육과정 분류 체계에 따라 문제의 핵심 의도를 파악하여 정확하게 분류할 수 있습니다.
+# 영어 문제 분류 작업
 
-### 2. 과업 (Task) ###
-주어진 영어 문제 텍스트를 분석하여, 아래 분류 기준표에 따라 문제의 유형을 "1Depth"부터 "4Depth"까지 정확하게 분류하세요.
+## 📋 분류 기준표
 
-### 3. 맥락 (Context) ###
-**분류 기준표 계층 구조**:
+### 계층 구조
 \`\`\`
 ${structure}
 \`\`\`
 
-**사용 가능한 분류 값 목록** (반드시 아래 목록의 값만 사용하세요):
+### ✅ 사용 가능한 값 목록 (반드시 아래 목록에서만 선택하세요)
 
-**1Depth 가능한 값** (정확히 일치해야 함):
-${allValues.depth1.map(v => `- "${v}"`).join('\n')}
+**1Depth - 정확히 아래 중 하나만 사용:**
+${allValues.depth1.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
-**2Depth 가능한 값** (정확히 일치해야 함):
-${allValues.depth2.map(v => `- "${v}"`).join('\n')}
+**2Depth - 정확히 아래 중 하나만 사용:**
+${allValues.depth2.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
-**3Depth 가능한 값** (정확히 일치해야 함):
-${allValues.depth3.map(v => `- "${v}"`).join('\n')}
+**3Depth - 정확히 아래 중 하나만 사용:**
+${allValues.depth3.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
-**4Depth 가능한 값** (정확히 일치해야 함):
-${allValues.depth4.map(v => `- "${v}"`).join('\n')}
+**4Depth - 정확히 아래 중 하나만 사용:**
+${allValues.depth4.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
-### 4. 단계별 지시 (Step-by-Step Instructions) ###
+## ⚠️ 절대 규칙
 
-**[1단계: 문제 텍스트 분석]**
-- 주어진 문제 텍스트를 자세히 읽고 분석합니다.
-- 문제의 핵심 문법 요소, 어휘, 구조를 파악합니다.
+### 🚫 금지 사항
+1. 목록에 없는 값을 생성하거나 사용하지 마세요.
+2. 공백이나 특수문자(·)를 변경하지 마세요.
+   - ❌ "문장유형" (잘못됨)
+   - ✅ "문장 유형·시제·상" (올바름)
+3. 임의의 값이나 약어를 사용하지 마세요.
+   - ❌ "시제와 동사 활용" (목록에 없음)
+   - ❌ "..." (임의의 값)
+   - ✅ "시제와 상" (목록에 있음)
 
-**[2단계: 분류 기준표 매칭]**
-- 위 "사용 가능한 분류 값 목록"에서 문제의 핵심 요소와 가장 일치하는 분류를 찾습니다.
-- **절대 규칙**: 
-  - 위 "사용 가능한 분류 값 목록"에 나와있는 정확한 문자열만 사용하세요.
-  - 공백, 특수문자(· 등)를 포함하여 정확히 일치해야 합니다.
-  - 예: "문장 유형·시제·상" (올바름) vs "문장유형" (잘못됨 - 공백과 특수문자 누락)
-  - 예: "시제와 상" (올바름) vs "시제와 동사 활용" (잘못됨 - 목록에 없음)
-- 목록에 없는 값은 절대 생성하지 마세요.
-- "..." 같은 임의의 값은 절대 사용하지 마세요.
+### ✅ 필수 사항
+1. 위 목록에서 값을 찾아 **정확히 복사**해서 사용하세요.
+2. 공백, 특수문자(·), 대소문자를 **정확히 일치**시켜야 합니다.
+3. 계층 구조를 따라 depth1 → depth2 → depth3 → depth4 순서로 선택하세요.
 
-**[3단계: 분류 검증]**
-- 선택한 각 depth 값이 위 "사용 가능한 분류 값 목록"에 정확히 존재하는지 확인합니다.
-- 존재하지 않는 분류라면 다시 검토하여 정확한 분류를 찾습니다.
-- 계층 구조를 따라야 합니다 (depth1 → depth2 → depth3 → depth4).
+## 📝 작업 절차
 
-### 5. 출력 명세 (Output Specification) ###
-다음 JSON 형식으로 출력하세요. **반드시 위 "사용 가능한 분류 값 목록"에 있는 정확한 값만 사용하세요.**
+1. 문제 텍스트를 읽고 핵심 문법 요소를 파악하세요.
+2. 위 "사용 가능한 값 목록"에서 각 depth에 맞는 값을 찾으세요.
+3. 선택한 값이 목록에 정확히 존재하는지 확인하세요.
+4. JSON 형식으로 출력하세요.
+
+## 📤 출력 형식
+
+다음 JSON 형식으로만 출력하세요:
 
 \`\`\`json
 {
-  "1Depth": "위 목록의 depth1 값 중 하나 (정확히 일치)",
-  "2Depth": "위 목록의 depth2 값 중 하나 (정확히 일치)",
-  "3Depth": "위 목록의 depth3 값 중 하나 (정확히 일치)",
-  "4Depth": "위 목록의 depth4 값 중 하나 (정확히 일치)",
+  "1Depth": "위 목록의 depth1 값 중 하나를 정확히 복사",
+  "2Depth": "위 목록의 depth2 값 중 하나를 정확히 복사",
+  "3Depth": "위 목록의 depth3 값 중 하나를 정확히 복사",
+  "4Depth": "위 목록의 depth4 값 중 하나를 정확히 복사",
   "분류_신뢰도": "높음" | "보통" | "낮음"
 }
 \`\`\`
 
-### 6. 제약 및 예외 처리 (Constraints & Error Handling) ###
-- **절대 규칙**: 위 "사용 가능한 분류 값 목록"에 없는 값은 절대 사용하지 마세요.
-- **문자열 정확성**: 공백, 특수문자(· 등)를 포함하여 목록의 값과 정확히 일치해야 합니다.
-- **잘못된 예시**: 
-  - ❌ "문장유형" (공백 누락)
-  - ❌ "시제와 동사 활용" (목록에 없음)
-  - ❌ "..." (임의의 값)
-- **올바른 예시**:
-  - ✅ "문장 유형·시제·상" (목록에 있는 정확한 값)
-  - ✅ "시제와 상" (목록에 있는 정확한 값)
-- **분류 불가능한 경우**: 목록에 정확히 일치하는 분류를 찾을 수 없다면, "분류_신뢰도"를 "낮음"으로 설정하되, 가장 가까운 분류를 사용하세요.
+## 🔴 최종 확인
+
+출력하기 전에 다음을 확인하세요:
+- [ ] 선택한 값이 위 "사용 가능한 값 목록"에 정확히 존재하는가?
+- [ ] 공백과 특수문자(·)가 정확히 일치하는가?
+- [ ] 목록에 없는 값을 사용하지 않았는가?
+
+위 규칙을 엄격히 준수하여 분류하세요.
 `;
 }
 
@@ -342,82 +281,34 @@ serve(async (req) => {
           const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
           const classification = JSON.parse(jsonString);
 
-          // Gemini가 반환한 원본 값
-          const rawDepth1 = (classification['1Depth'] || '').trim();
-          const rawDepth2 = (classification['2Depth'] || '').trim();
-          const rawDepth3 = (classification['3Depth'] || '').trim();
-          const rawDepth4 = (classification['4Depth'] || '').trim();
+          // Gemini가 반환한 값 (프롬프트 최적화로 정확한 값이 반환되어야 함)
+          const depth1 = (classification['1Depth'] || '').trim();
+          const depth2 = (classification['2Depth'] || '').trim();
+          const depth3 = (classification['3Depth'] || '').trim();
+          const depth4 = (classification['4Depth'] || '').trim();
 
-          // DB의 유효한 값 목록으로 검증 및 보정
-          let correctedDepth1 = rawDepth1;
-          let correctedDepth2 = rawDepth2;
-          let correctedDepth3 = rawDepth3;
-          let correctedDepth4 = rawDepth4;
-          let wasCorrected = false;
-
-          // depth1 검증 및 보정
-          if (!taxonomyData.allValues.depth1.includes(rawDepth1)) {
-            correctedDepth1 = findClosestValue(rawDepth1, taxonomyData.allValues.depth1);
-            wasCorrected = true;
-            console.warn(`Corrected depth1: "${rawDepth1}" -> "${correctedDepth1}"`);
-          }
-
-          // depth2 검증 및 보정 (depth1이 유효한 경우에만)
-          if (correctedDepth1 && taxonomyData.allValues.depth2.length > 0) {
-            if (!taxonomyData.allValues.depth2.includes(rawDepth2)) {
-              correctedDepth2 = findClosestValue(rawDepth2, taxonomyData.allValues.depth2);
-              wasCorrected = true;
-              console.warn(`Corrected depth2: "${rawDepth2}" -> "${correctedDepth2}"`);
-            }
-          } else {
-            correctedDepth2 = taxonomyData.allValues.depth2[0] || '';
-          }
-
-          // depth3 검증 및 보정
-          if (correctedDepth2 && taxonomyData.allValues.depth3.length > 0) {
-            if (!taxonomyData.allValues.depth3.includes(rawDepth3)) {
-              correctedDepth3 = findClosestValue(rawDepth3, taxonomyData.allValues.depth3);
-              wasCorrected = true;
-              console.warn(`Corrected depth3: "${rawDepth3}" -> "${correctedDepth3}"`);
-            }
-          } else {
-            correctedDepth3 = taxonomyData.allValues.depth3[0] || '';
-          }
-
-          // depth4 검증 및 보정
-          if (correctedDepth3 && taxonomyData.allValues.depth4.length > 0) {
-            if (!taxonomyData.allValues.depth4.includes(rawDepth4)) {
-              correctedDepth4 = findClosestValue(rawDepth4, taxonomyData.allValues.depth4);
-              wasCorrected = true;
-              console.warn(`Corrected depth4: "${rawDepth4}" -> "${correctedDepth4}"`);
-            }
-          } else {
-            correctedDepth4 = taxonomyData.allValues.depth4[0] || '';
-          }
-
-          // Taxonomy 조회 (보정된 값으로)
+          // Taxonomy 조회
           const taxonomy = await findTaxonomyByDepth(
             supabase,
-            correctedDepth1,
-            correctedDepth2,
-            correctedDepth3,
-            correctedDepth4
+            depth1,
+            depth2,
+            depth3,
+            depth4
           );
 
           // 분류 신뢰도 결정
           let confidence = classification['분류_신뢰도'] || '보통';
-          if (wasCorrected) {
+          if (!taxonomy.code) {
             confidence = '낮음';
-          } else if (!taxonomy.code) {
-            confidence = '낮음';
+            console.warn(`Taxonomy not found for: ${depth1}/${depth2}/${depth3}/${depth4}`);
           }
 
           // classification 업데이트 (무조건 분류 - taxonomy.code가 없어도 저장)
           const enrichedClassification = {
-            '1Depth': correctedDepth1,
-            '2Depth': correctedDepth2,
-            '3Depth': correctedDepth3,
-            '4Depth': correctedDepth4,
+            '1Depth': depth1,
+            '2Depth': depth2,
+            '3Depth': depth3,
+            '4Depth': depth4,
             'code': taxonomy.code,
             'CEFR': taxonomy.cefr,
             '난이도': taxonomy.difficulty,
@@ -438,7 +329,7 @@ serve(async (req) => {
           if (taxonomy.code) {
             successCount++;
           } else {
-            console.warn(`Classification saved but no taxonomy code found for: ${correctedDepth1}/${correctedDepth2}/${correctedDepth3}/${correctedDepth4}`);
+            console.warn(`Classification saved but no taxonomy code found for: ${depth1}/${depth2}/${depth3}/${depth4}`);
             successCount++; // 여전히 성공으로 카운트 (분류는 저장됨)
           }
         } catch (error) {
