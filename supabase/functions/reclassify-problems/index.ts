@@ -72,6 +72,65 @@ async function loadTaxonomyData(supabase: any): Promise<{ structure: string; all
   };
 }
 
+// 유사도 기반으로 가장 가까운 값 찾기 (간단한 문자열 매칭)
+function findClosestValue(input: string, validValues: string[]): string {
+  if (!input || input.trim() === '') return validValues[0] || '';
+  
+  const normalizedInput = input.trim();
+  
+  // 1. 정확히 일치하는 값이 있으면 반환
+  if (validValues.includes(normalizedInput)) return normalizedInput;
+  
+  // 2. 공백 제거 후 비교
+  const inputNoSpace = normalizedInput.replace(/\s+/g, '');
+  for (const value of validValues) {
+    if (value.replace(/\s+/g, '') === inputNoSpace) {
+      return value;
+    }
+  }
+  
+  // 3. 특수문자 제거 후 비교 (예: "문장유형" -> "문장 유형·시제·상")
+  const inputNoSpecial = normalizedInput.replace(/[··\s]/g, '');
+  for (const value of validValues) {
+    const valueNoSpecial = value.replace(/[··\s]/g, '');
+    if (valueNoSpecial.includes(inputNoSpecial) || inputNoSpecial.includes(valueNoSpecial)) {
+      // 단어 단위로 매칭 확인 (너무 짧은 부분 일치는 제외)
+      if (inputNoSpecial.length >= 2 && valueNoSpecial.length >= inputNoSpecial.length) {
+        return value;
+      }
+    }
+  }
+  
+  // 4. 키워드 기반 매칭 (예: "문장유형"이 "문장 유형·시제·상"에 포함)
+  const inputLower = normalizedInput.toLowerCase();
+  const inputKeywords = inputLower.split(/[·\s]/).filter(k => k.length > 1);
+  
+  let bestMatch = '';
+  let bestScore = 0;
+  
+  for (const value of validValues) {
+    const valueLower = value.toLowerCase();
+    let score = 0;
+    
+    // 키워드가 포함되어 있으면 점수 증가
+    for (const keyword of inputKeywords) {
+      if (valueLower.includes(keyword)) {
+        score += keyword.length;
+      }
+    }
+    
+    if (score > bestScore && score >= 2) { // 최소 2글자 이상 매칭
+      bestScore = score;
+      bestMatch = value;
+    }
+  }
+  
+  if (bestMatch) return bestMatch;
+  
+  // 5. 첫 번째 유효한 값 반환 (기본값)
+  return validValues[0] || '';
+}
+
 // depth1~4로 taxonomy 조회하여 code, CEFR, 난이도 찾기
 async function findTaxonomyByDepth(
   supabase: any,
@@ -283,45 +342,105 @@ serve(async (req) => {
           const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
           const classification = JSON.parse(jsonString);
 
-          // 분류 값 검증: taxonomy에 실제로 존재하는지 확인
-          const depth1 = classification['1Depth'] || '';
-          const depth2 = classification['2Depth'] || '';
-          const depth3 = classification['3Depth'] || '';
-          const depth4 = classification['4Depth'] || '';
+          // Gemini가 반환한 원본 값
+          const rawDepth1 = (classification['1Depth'] || '').trim();
+          const rawDepth2 = (classification['2Depth'] || '').trim();
+          const rawDepth3 = (classification['3Depth'] || '').trim();
+          const rawDepth4 = (classification['4Depth'] || '').trim();
 
-          // Taxonomy 조회
-          const taxonomy = await findTaxonomyByDepth(
-            supabase,
-            depth1,
-            depth2,
-            depth3,
-            depth4
-          );
+          // DB의 유효한 값 목록으로 검증 및 보정
+          let correctedDepth1 = rawDepth1;
+          let correctedDepth2 = rawDepth2;
+          let correctedDepth3 = rawDepth3;
+          let correctedDepth4 = rawDepth4;
+          let wasCorrected = false;
 
-          // taxonomy에 존재하지 않는 경우 스킵하거나 재시도
-          if (!taxonomy.code) {
-            console.warn(`Taxonomy not found for depth: ${depth1}/${depth2}/${depth3}/${depth4}. Skipping update.`);
-            failCount++;
-            return; // 이 문제는 스킵하고 다음으로 진행
+          // depth1 검증 및 보정
+          if (!taxonomyData.allValues.depth1.includes(rawDepth1)) {
+            correctedDepth1 = findClosestValue(rawDepth1, taxonomyData.allValues.depth1);
+            wasCorrected = true;
+            console.warn(`Corrected depth1: "${rawDepth1}" -> "${correctedDepth1}"`);
           }
 
-          // classification 업데이트
+          // depth2 검증 및 보정 (depth1이 유효한 경우에만)
+          if (correctedDepth1 && taxonomyData.allValues.depth2.length > 0) {
+            if (!taxonomyData.allValues.depth2.includes(rawDepth2)) {
+              correctedDepth2 = findClosestValue(rawDepth2, taxonomyData.allValues.depth2);
+              wasCorrected = true;
+              console.warn(`Corrected depth2: "${rawDepth2}" -> "${correctedDepth2}"`);
+            }
+          } else {
+            correctedDepth2 = taxonomyData.allValues.depth2[0] || '';
+          }
+
+          // depth3 검증 및 보정
+          if (correctedDepth2 && taxonomyData.allValues.depth3.length > 0) {
+            if (!taxonomyData.allValues.depth3.includes(rawDepth3)) {
+              correctedDepth3 = findClosestValue(rawDepth3, taxonomyData.allValues.depth3);
+              wasCorrected = true;
+              console.warn(`Corrected depth3: "${rawDepth3}" -> "${correctedDepth3}"`);
+            }
+          } else {
+            correctedDepth3 = taxonomyData.allValues.depth3[0] || '';
+          }
+
+          // depth4 검증 및 보정
+          if (correctedDepth3 && taxonomyData.allValues.depth4.length > 0) {
+            if (!taxonomyData.allValues.depth4.includes(rawDepth4)) {
+              correctedDepth4 = findClosestValue(rawDepth4, taxonomyData.allValues.depth4);
+              wasCorrected = true;
+              console.warn(`Corrected depth4: "${rawDepth4}" -> "${correctedDepth4}"`);
+            }
+          } else {
+            correctedDepth4 = taxonomyData.allValues.depth4[0] || '';
+          }
+
+          // Taxonomy 조회 (보정된 값으로)
+          const taxonomy = await findTaxonomyByDepth(
+            supabase,
+            correctedDepth1,
+            correctedDepth2,
+            correctedDepth3,
+            correctedDepth4
+          );
+
+          // 분류 신뢰도 결정
+          let confidence = classification['분류_신뢰도'] || '보통';
+          if (wasCorrected) {
+            confidence = '낮음';
+          } else if (!taxonomy.code) {
+            confidence = '낮음';
+          }
+
+          // classification 업데이트 (무조건 분류 - taxonomy.code가 없어도 저장)
           const enrichedClassification = {
-            ...classification,
-            code: taxonomy.code,
-            CEFR: taxonomy.cefr,
-            난이도: taxonomy.difficulty,
+            '1Depth': correctedDepth1,
+            '2Depth': correctedDepth2,
+            '3Depth': correctedDepth3,
+            '4Depth': correctedDepth4,
+            'code': taxonomy.code,
+            'CEFR': taxonomy.cefr,
+            '난이도': taxonomy.difficulty,
+            '분류_신뢰도': confidence,
           };
 
-          // DB 업데이트
+          // DB 업데이트 (무조건 수행)
           const { error: updateError } = await supabase
             .from('labels')
             .update({ classification: enrichedClassification })
             .eq('id', label.id);
 
-          if (updateError) throw updateError;
+          if (updateError) {
+            console.error(`Failed to update label ${label.id}:`, updateError);
+            throw updateError;
+          }
 
-          successCount++;
+          if (taxonomy.code) {
+            successCount++;
+          } else {
+            console.warn(`Classification saved but no taxonomy code found for: ${correctedDepth1}/${correctedDepth2}/${correctedDepth3}/${correctedDepth4}`);
+            successCount++; // 여전히 성공으로 카운트 (분류는 저장됨)
+          }
         } catch (error) {
           console.error(`Error processing label ${label.id}:`, error);
           failCount++;
