@@ -26,22 +26,30 @@ export interface Translations {
   };
   
   // 통계 페이지
-  stats: {
-    title: string;
-    total: string;
-    correct: string;
-    incorrect: string;
-    accuracy: string;
-    category: string;
-    reclassifyAll: string;
-    reclassifying: string;
-    generateSimilar: string;
-    generating: string;
-    selectCategory: string;
-    selectLeafCategory: string;
-    generatedProblems: string;
-    close: string;
-  };
+    stats: {
+      title: string;
+      statsByType: string;
+      periodSetting: string;
+      startDate: string;
+      endDate: string;
+      oneMonth: string;
+      threeMonths: string;
+      sixMonths: string;
+      thisYear: string;
+      total: string;
+      correct: string;
+      incorrect: string;
+      accuracy: string;
+      category: string;
+      reclassifyAll: string;
+      reclassifying: string;
+      generateSimilar: string;
+      generating: string;
+      selectCategory: string;
+      selectLeafCategory: string;
+      generatedProblems: string;
+      close: string;
+    };
   
   // 최근 문제 페이지
   recent: {
@@ -97,20 +105,21 @@ export interface Translations {
   };
   
   // 로그인
-  login: {
-    login: string;
-    signup: string;
-    email: string;
-    password: string;
-    name: string;
-    age: string;
-    grade: string;
-    language: string;
-    korean: string;
-    english: string;
-    selectLanguage: string;
-    processing: string;
-  };
+    login: {
+      login: string;
+      signup: string;
+      email: string;
+      password: string;
+      name: string;
+      age: string;
+      grade: string;
+      gender: string;
+      language: string;
+      korean: string;
+      english: string;
+      selectLanguage: string;
+      processing: string;
+    };
   
   // 헤더
   header: {
@@ -184,6 +193,14 @@ export const translations: Record<Language, Translations> = {
     },
     stats: {
       title: '통계',
+      statsByType: '유형별 정오답 통계',
+      periodSetting: '기간 설정:',
+      startDate: '시작일:',
+      endDate: '종료일:',
+      oneMonth: '1개월',
+      threeMonths: '3개월',
+      sixMonths: '6개월',
+      thisYear: '올 한 해',
       total: '전체',
       correct: '정답',
       incorrect: '오답',
@@ -261,6 +278,7 @@ export const translations: Record<Language, Translations> = {
       name: '이름',
       age: '나이',
       grade: '학년',
+      gender: '성별',
       language: '언어',
       korean: '한국어',
       english: 'English',
@@ -330,6 +348,14 @@ export const translations: Record<Language, Translations> = {
     },
     stats: {
       title: 'Statistics',
+      statsByType: 'Statistics by Type',
+      periodSetting: 'Period Setting:',
+      startDate: 'Start Date:',
+      endDate: 'End Date:',
+      oneMonth: '1 Month',
+      threeMonths: '3 Months',
+      sixMonths: '6 Months',
+      thisYear: 'This Year',
       total: 'Total',
       correct: 'Correct',
       incorrect: 'Incorrect',
@@ -407,6 +433,7 @@ export const translations: Record<Language, Translations> = {
       name: 'Name',
       age: 'Age',
       grade: 'Grade',
+      gender: 'Gender',
       language: 'Language',
       korean: '한국어',
       english: 'English',
