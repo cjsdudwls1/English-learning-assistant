@@ -403,29 +403,29 @@ export const StatsPage: React.FC = () => {
       ))}
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
-        <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-200">유형별 정오답 통계</h2>
+        <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-200">{t.stats.statsByType}</h2>
         
         {/* 기간 설정 UI */}
         <div className="mb-6 p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
           <div className="flex flex-wrap gap-2 items-center mb-3">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">기간 설정:</span>
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.stats.periodSetting}</span>
             <button
               onClick={() => handleSetDateRange(1)}
               className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
             >
-              1개월
+              {t.stats.oneMonth}
             </button>
             <button
               onClick={() => handleSetDateRange(3)}
               className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
             >
-              3개월
+              {t.stats.threeMonths}
             </button>
             <button
               onClick={() => handleSetDateRange(6)}
               className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
             >
-              6개월
+              {t.stats.sixMonths}
             </button>
             <button
               onClick={() => {
@@ -436,20 +436,20 @@ export const StatsPage: React.FC = () => {
               }}
               className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
             >
-              올 한 해
+              {t.stats.thisYear}
             </button>
             {(startDate || endDate) && (
               <button
                 onClick={handleClearFilter}
                 className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
               >
-                전체
+                {t.stats.total}
               </button>
             )}
           </div>
           <div className="flex gap-3 items-center">
             <div>
-              <label className="text-sm text-slate-600 mr-2">시작일:</label>
+              <label className="text-sm text-slate-600 mr-2">{t.stats.startDate}</label>
               <DatePicker
                 selected={startDate}
                 onChange={(date) => setStartDate(date)}
@@ -459,7 +459,7 @@ export const StatsPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="text-sm text-slate-600 mr-2">종료일:</label>
+              <label className="text-sm text-slate-600 mr-2">{t.stats.endDate}</label>
               <DatePicker
                 selected={endDate}
                 onChange={(date) => setEndDate(date)}
