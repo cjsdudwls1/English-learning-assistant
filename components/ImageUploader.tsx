@@ -116,7 +116,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
             </button>
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {imageFiles.length > 0
-                ? `${imageFiles.length} ${language === 'ko' ? '개 파일 선택됨' : 'file(s) selected'}`
+                ? `${imageFiles.length} ${t.upload.filesSelected}`
                 : t.upload.noFileSelected}
             </p>
           </div>
