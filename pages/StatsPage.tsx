@@ -266,14 +266,33 @@ export const StatsPage: React.FC = () => {
           });
 
           if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { error: errorText };
+            }
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
           }
 
           const result = await response.json();
+          
+          if (!result.success) {
+            console.error('Error from generate-example:', result.error || result.details);
+            throw new Error(result.error || result.details || 'Failed to generate example');
+          }
+          
           if (result.success && result.example) {
             const example = result.example;
+            // 필수 필드 확인
+            if (!example.wrong_example && !example.correct_example) {
+              console.warn('Example missing required fields:', example);
+              return null;
+            }
             return `❌ ${example.wrong_example || ''}\n✅ ${example.correct_example || ''}\n\n${example.explanation || ''}`;
           }
+          
           return null;
         } catch (error) {
           console.error('Error generating example for node:', error);
@@ -282,6 +301,15 @@ export const StatsPage: React.FC = () => {
       });
 
       const examples = (await Promise.all(examplePromises)).filter(Boolean) as string[];
+      
+      if (examples.length === 0) {
+        setError(language === 'ko' 
+          ? '예시 문장을 생성할 수 없습니다. 선택한 카테고리에 대한 taxonomy 정보가 없거나 AI 응답에 문제가 있을 수 있습니다.'
+          : 'Unable to generate example sentences. The selected category may not have taxonomy information or there may be an issue with the AI response.');
+        setIsGeneratingExamples(false);
+        return;
+      }
+      
       setExampleSentences(examples);
       setShowExampleModal(true);
     } catch (e) {

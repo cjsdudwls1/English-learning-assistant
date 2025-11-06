@@ -75,25 +75,81 @@ serve(async (req) => {
     const userGrade = profile?.grade || '중학생'; // 기본값: 중학생
 
     // 3. Gemini로 예시 문장 생성
-    console.log('Step 3: Generating example with Gemini');
+    console.log('Step 3: Generating example with Gemini', { language });
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
-    const prompt = `
+    // 언어에 따라 프롬프트 생성
+    const isEnglish = language === 'en';
+    const coreRule = isEnglish 
+      ? (taxonomy.core_rule_en || taxonomy.core_rule_ko || 'N/A')
+      : (taxonomy.core_rule_ko || taxonomy.core_rule_en || 'N/A');
+    const definition = isEnglish
+      ? (taxonomy.definition_en || taxonomy.definition_ko || 'N/A')
+      : (taxonomy.definition_ko || taxonomy.definition_en || 'N/A');
+    
+    const depth1Display = isEnglish ? (taxonomy.depth1_en || taxonomy.depth1) : taxonomy.depth1;
+    const depth2Display = isEnglish ? (taxonomy.depth2_en || taxonomy.depth2) : taxonomy.depth2;
+    const depth3Display = isEnglish ? (taxonomy.depth3_en || taxonomy.depth3) : taxonomy.depth3;
+    const depth4Display = isEnglish ? (taxonomy.depth4_en || taxonomy.depth4) : taxonomy.depth4;
+
+    const prompt = isEnglish
+      ? `
+You are an English education expert. Generate example sentences appropriate for the user's English learning level.
+
+## Classification Information
+- **Classification Code**: ${taxonomy.code}
+- **1Depth**: ${depth1Display}
+- **2Depth**: ${depth2Display || 'N/A'}
+- **3Depth**: ${depth3Display || 'N/A'}
+- **4Depth**: ${depth4Display || 'N/A'}
+- **Core Rule**: ${coreRule}
+- **Definition**: ${definition}
+
+## User Information
+- **Age**: ${userAge} years old
+- **Grade**: ${userGrade}
+- **Preferred Language**: English
+
+## Requirements
+Generate example sentences in the following format:
+
+1. **Wrong Sentence** (❌): A sentence showing a common error in this classification
+2. **Correct Sentence** (✅): A sentence using correct grammar
+3. **Explanation**: A brief explanation of why it's wrong and why it's correct
+
+**Important Notes**:
+- Use vocabulary and difficulty level appropriate for the user's age (${userAge} years old) and grade (${userGrade})
+- Provide examples that clearly demonstrate the core rule
+- Use simple, easy-to-understand sentences
+- Include emojis (❌, ✅)
+- All output (wrong_example, correct_example, explanation) must be in English
+
+## Output Format
+Output in the following JSON format:
+\`\`\`json
+{
+  "wrong_example": "Wrong sentence in English",
+  "correct_example": "Correct sentence in English",
+  "explanation": "Brief explanation in English"
+}
+\`\`\`
+`
+      : `
 당신은 영어 교육 전문가입니다. 사용자의 영어 학습 레벨에 맞는 예시 문장을 생성해주세요.
 
 ## 분류 정보
 - **분류 코드**: ${taxonomy.code}
-- **1Depth**: ${taxonomy.depth1} (${taxonomy.depth1_en})
-- **2Depth**: ${taxonomy.depth2} (${taxonomy.depth2_en})
-- **3Depth**: ${taxonomy.depth3} (${taxonomy.depth3_en})
-- **4Depth**: ${taxonomy.depth4} (${taxonomy.depth4_en})
-- **핵심 규칙**: ${language === 'ko' ? (taxonomy.core_rule_ko || taxonomy.core_rule_en || 'N/A') : (taxonomy.core_rule_en || taxonomy.core_rule_ko || 'N/A')}
-- **정의**: ${language === 'ko' ? (taxonomy.definition_ko || taxonomy.definition_en || 'N/A') : (taxonomy.definition_en || taxonomy.definition_ko || 'N/A')}
+- **1Depth**: ${depth1Display}
+- **2Depth**: ${depth2Display || 'N/A'}
+- **3Depth**: ${depth3Display || 'N/A'}
+- **4Depth**: ${depth4Display || 'N/A'}
+- **핵심 규칙**: ${coreRule}
+- **정의**: ${definition}
 
 ## 사용자 정보
 - **연령**: ${userAge}세
 - **학년**: ${userGrade}
-- **선호 언어**: ${language === 'ko' ? '한국어' : 'English'}
+- **선호 언어**: 한국어
 
 ## 요구사항
 다음 형식으로 예시 문장을 생성해주세요:
@@ -125,15 +181,49 @@ serve(async (req) => {
     });
 
     const responseText = response.text;
-    console.log('Step 3 completed: Gemini response received');
+    console.log('Step 3 completed: Gemini response received, length:', responseText.length);
 
     // JSON 파싱
-    const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-    const result = JSON.parse(jsonString);
+    let jsonString = responseText.trim();
+    // ```json 또는 ```로 감싸진 경우 제거
+    jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    let result;
+    try {
+      result = JSON.parse(jsonString);
+    } catch (parseError) {
+      console.error('JSON parsing error:', parseError);
+      console.error('Response text:', responseText);
+      // JSON 파싱 실패 시 텍스트에서 JSON 부분만 추출 시도
+      const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          result = JSON.parse(jsonMatch[0]);
+        } catch (e) {
+          throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+        }
+      } else {
+        throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+      }
+    }
+
+    // 결과 검증
+    if (!result || typeof result !== 'object') {
+      throw new Error('Invalid response format from AI');
+    }
+
+    // 필수 필드 확인
+    if (!result.wrong_example && !result.correct_example) {
+      throw new Error('AI response missing required fields: wrong_example or correct_example');
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 
-      example: result 
+      example: {
+        wrong_example: result.wrong_example || '',
+        correct_example: result.correct_example || '',
+        explanation: result.explanation || ''
+      }
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
