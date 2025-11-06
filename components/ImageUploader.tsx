@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { ImageRotator } from './ImageRotator';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
@@ -18,6 +18,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
   const { language } = useLanguage();
   const t = getTranslation(language);
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -83,7 +84,14 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
   const handleClearAll = useCallback(() => {
     setImageFiles([]);
     onImagesSelect([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [onImagesSelect]);
+
+  const handleButtonClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   return (
     <div>
@@ -91,12 +99,27 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
       <div className="space-y-4">
         <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center bg-slate-50/50 dark:bg-slate-900/30">
           <input
+            ref={fileInputRef}
             type="file"
             accept="image/*"
             multiple
             onChange={handleFileChange}
-            className="mb-4"
+            className="hidden"
           />
+          <div className="flex flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={handleButtonClick}
+              className="px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors font-medium"
+            >
+              {t.upload.selectFile}
+            </button>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {imageFiles.length > 0
+                ? `${imageFiles.length} ${language === 'ko' ? '개 파일 선택됨' : 'file(s) selected'}`
+                : t.upload.noFileSelected}
+            </p>
+          </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
             {t.upload.multipleImages}
           </p>
