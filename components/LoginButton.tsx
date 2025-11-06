@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 export const LoginButton: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -230,13 +232,16 @@ export const LoginButton: React.FC = () => {
 };
 
 export const LogoutButton: React.FC = () => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
+  
   const handleLogout = async () => {
     await supabase.auth.signOut();
     window.location.reload();
   };
   return (
     <button onClick={handleLogout} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-md font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
-      로그아웃
+      {t.header.logout}
     </button>
   );
 };

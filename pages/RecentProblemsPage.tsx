@@ -195,7 +195,7 @@ export const RecentProblemsPage: React.FC = () => {
                 />
                 <img 
                   src={session.image_url} 
-                  alt="문제 이미지" 
+                  alt={language === 'ko' ? '문제 이미지' : 'Problem Image'} 
                   className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80"
                   onClick={() => handleSessionImageClick(session.id, session.image_url)}
                 />

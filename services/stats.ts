@@ -123,28 +123,62 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
 }
 
 // 계층 구조 통계 집계 (모든 depth 레벨)
-export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): Promise<StatsNode[]> {
+export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, language: 'ko' | 'en' = 'ko'): Promise<StatsNode[]> {
   const userId = await getCurrentUserId();
   
-  // taxonomy에서 유효한 값 목록 로드
+  // taxonomy에서 유효한 값 목록 및 언어별 매핑 로드
   const { data: taxonomyData, error: taxonomyError } = await supabase
     .from('taxonomy')
-    .select('depth1, depth2, depth3, depth4');
+    .select('depth1, depth2, depth3, depth4, depth1_en, depth2_en, depth3_en, depth4_en');
   
   if (taxonomyError) throw taxonomyError;
   
-  // 유효한 값 Set 생성
+  // 유효한 값 Set 생성 (한국어 값으로 검증)
   const validDepth1 = new Set<string>();
   const validDepth2 = new Set<string>();
   const validDepth3 = new Set<string>();
   const validDepth4 = new Set<string>();
   
+  // 한국어 -> 영어 매핑 맵 생성
+  const depth1Map = new Map<string, string>();
+  const depth2Map = new Map<string, string>();
+  const depth3Map = new Map<string, string>();
+  const depth4Map = new Map<string, string>();
+  
   for (const row of taxonomyData || []) {
-    if (row.depth1) validDepth1.add(row.depth1);
-    if (row.depth2) validDepth2.add(row.depth2);
-    if (row.depth3) validDepth3.add(row.depth3);
-    if (row.depth4) validDepth4.add(row.depth4);
+    if (row.depth1) {
+      validDepth1.add(row.depth1);
+      if (row.depth1_en) {
+        depth1Map.set(row.depth1, row.depth1_en);
+      }
+    }
+    if (row.depth2) {
+      validDepth2.add(row.depth2);
+      if (row.depth2_en) {
+        depth2Map.set(row.depth2, row.depth2_en);
+      }
+    }
+    if (row.depth3) {
+      validDepth3.add(row.depth3);
+      if (row.depth3_en) {
+        depth3Map.set(row.depth3, row.depth3_en);
+      }
+    }
+    if (row.depth4) {
+      validDepth4.add(row.depth4);
+      if (row.depth4_en) {
+        depth4Map.set(row.depth4, row.depth4_en);
+      }
+    }
   }
+  
+  // 한국어 값을 언어에 맞게 변환하는 함수
+  const translateDepth = (koValue: string, map: Map<string, string>): string => {
+    if (language === 'en' && koValue && map.has(koValue)) {
+      return map.get(koValue) || koValue;
+    }
+    return koValue;
+  };
   
   let query = supabase
     .from('labels')
@@ -188,14 +222,25 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
     const rawDepth3 = classification['3Depth'] || '';
     const rawDepth4 = classification['4Depth'] || '';
     
-    const depth1 = validDepth1.has(rawDepth1) ? rawDepth1 : '';
-    const depth2 = validDepth2.has(rawDepth2) ? rawDepth2 : '';
-    const depth3 = validDepth3.has(rawDepth3) ? rawDepth3 : '';
-    const depth4 = validDepth4.has(rawDepth4) ? rawDepth4 : '';
+    const koDepth1 = validDepth1.has(rawDepth1) ? rawDepth1 : '';
+    const koDepth2 = validDepth2.has(rawDepth2) ? rawDepth2 : '';
+    const koDepth3 = validDepth3.has(rawDepth3) ? rawDepth3 : '';
+    const koDepth4 = validDepth4.has(rawDepth4) ? rawDepth4 : '';
+    
+    // 언어에 맞게 변환
+    const depth1 = translateDepth(koDepth1, depth1Map);
+    const depth2 = translateDepth(koDepth2, depth2Map);
+    const depth3 = translateDepth(koDepth3, depth3Map);
+    const depth4 = translateDepth(koDepth4, depth4Map);
+    
+    // 키는 한국어 값으로 사용 (중복 방지)
+    const key1 = koDepth1;
+    const key2 = koDepth1 && koDepth2 ? `${koDepth1}_${koDepth2}` : '';
+    const key3 = koDepth1 && koDepth2 && koDepth3 ? `${koDepth1}_${koDepth2}_${koDepth3}` : '';
+    const key4 = koDepth1 && koDepth2 && koDepth3 && koDepth4 ? `${koDepth1}_${koDepth2}_${koDepth3}_${koDepth4}` : '';
     
     // 1-depth 집계
     if (depth1) {
-      const key1 = depth1;
       if (!statsMap.has(key1)) {
         statsMap.set(key1, {
           depth1,
@@ -218,8 +263,7 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
     }
     
     // 1-2-depth 집계
-    if (depth1 && depth2) {
-      const key2 = `${depth1}_${depth2}`;
+    if (depth1 && depth2 && key2) {
       if (!statsMap.has(key2)) {
         statsMap.set(key2, {
           depth1,
@@ -243,8 +287,7 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
     }
     
     // 1-2-3-depth 집계
-    if (depth1 && depth2 && depth3) {
-      const key3 = `${depth1}_${depth2}_${depth3}`;
+    if (depth1 && depth2 && depth3 && key3) {
       if (!statsMap.has(key3)) {
         statsMap.set(key3, {
           depth1,
@@ -269,8 +312,7 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date): 
     }
     
     // 1-2-3-4-depth 집계
-    if (depth1 && depth2 && depth3 && depth4) {
-      const key4 = `${depth1}_${depth2}_${depth3}_${depth4}`;
+    if (depth1 && depth2 && depth3 && depth4 && key4) {
       if (!statsMap.has(key4)) {
         statsMap.set(key4, {
           depth1,
