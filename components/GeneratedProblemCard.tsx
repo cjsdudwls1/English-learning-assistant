@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
+import { startProblemSolving, completeProblemSolving } from '../services/db';
 
 interface Choice {
   text: string;
@@ -22,20 +25,82 @@ interface GeneratedProblem {
 interface GeneratedProblemCardProps {
   problem: GeneratedProblem;
   index: number;
+  problemId?: string; // generated_problems 테이블의 id
+  onNext?: () => void;
+  isActive?: boolean; // 현재 표시 중인 문제인지
 }
 
 export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({ 
   problem, 
-  index 
+  index,
+  problemId,
+  onNext,
+  isActive = true
 }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
+  const [timeSpent, setTimeSpent] = useState<number>(0);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const startTimeRef = useRef<number | null>(null);
+  const intervalRef = useRef<number | null>(null);
+  
+  // 문제 시작 시 타이머 시작
+  useEffect(() => {
+    if (isActive && !isCompleted && problemId) {
+      startTimeRef.current = Date.now();
+      
+      // 타이머 시작
+      intervalRef.current = window.setInterval(() => {
+        if (startTimeRef.current) {
+          const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+          setTimeSpent(elapsed);
+        }
+      }, 1000);
+      
+      // DB에 시작 시간 저장
+      startProblemSolving(problemId).catch(console.error);
+      
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+      };
+    }
+  }, [isActive, isCompleted, problemId]);
 
-  const handleChoiceClick = (choiceIndex: number) => {
-    if (selectedIndex !== null) return; // 이미 선택한 경우 무시
+  const correctIndex = problem.correct_answer_index !== undefined
+    ? problem.correct_answer_index
+    : problem.choices.findIndex(c => c.is_correct);
+
+  const handleChoiceClick = async (choiceIndex: number) => {
+    if (selectedIndex !== null || isCompleted) return; // 이미 선택한 경우 무시
     
     setSelectedIndex(choiceIndex);
     setShowExplanation(true);
+    setIsCompleted(true);
+    
+    // 타이머 중지
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    // 시간 계산 및 DB 저장
+    if (startTimeRef.current && problemId) {
+      const elapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      setTimeSpent(elapsedSeconds);
+      
+      const isCorrect = choiceIndex === correctIndex;
+      
+      // DB에 완료 시간 저장
+      try {
+        await completeProblemSolving(problemId, isCorrect, elapsedSeconds);
+      } catch (error) {
+        console.error('Error saving problem solving time:', error);
+      }
+    }
   };
 
   const isCorrect = selectedIndex !== null && 
@@ -43,16 +108,22 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
       ? selectedIndex === problem.correct_answer_index
       : problem.choices[selectedIndex]?.is_correct);
 
-  const correctIndex = problem.correct_answer_index !== undefined
-    ? problem.correct_answer_index
-    : problem.choices.findIndex(c => c.is_correct);
-
+  // 비활성 문제는 표시하지 않음
+  if (!isActive) {
+    return null;
+  }
+  
   return (
     <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-900/30">
-      <div className="mb-2">
+      <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
-          문제 {index + 1}
+          {t.practice.problem} {index + 1}
         </span>
+        {timeSpent > 0 && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {t.practice.timeSpent}: {Math.floor(timeSpent / 60)}:{(timeSpent % 60).toString().padStart(2, '0')}
+          </span>
+        )}
         {problem.classification && (
           <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
             ({problem.classification.depth1} 
@@ -104,7 +175,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
                         <span className="ml-auto text-red-600 dark:text-red-400 font-bold">✗</span>
                       )}
                       {showCorrect && !isSelected && (
-                        <span className="ml-auto text-green-600 dark:text-green-400 font-bold">정답</span>
+                        <span className="ml-auto text-green-600 dark:text-green-400 font-bold">{t.practice.answer}</span>
                       )}
                     </>
                   )}
@@ -122,7 +193,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
           {problem.explanation && (
             <div className="p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg">
               <p className="text-sm font-semibold text-green-800 dark:text-green-200 mb-2">
-                ✓ 정답 해설:
+                ✓ {t.practice.explanation}:
               </p>
               <p className="text-sm text-green-700 dark:text-green-300">
                 {problem.explanation}
@@ -142,7 +213,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
                   ? 'text-green-800 dark:text-green-200'
                   : 'text-red-800 dark:text-red-200'
               }`}>
-                {isCorrect ? '✓ 선택하신 답 해설:' : '✗ 선택하신 답 오답 해설:'}
+                {isCorrect ? `✓ ${t.practice.selectedAnswer}:` : `✗ ${t.practice.wrongExplanation}:`}
               </p>
               <p className={`text-sm ${
                 isCorrect 
@@ -152,10 +223,22 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
                 {problem.wrong_explanations[selectedIndex.toString()] || 
                  (isCorrect 
                    ? problem.explanation 
-                   : '이 선택지가 왜 오답인지에 대한 설명이 없습니다.')}
+                   : t.practice.noExplanation)}
               </p>
             </div>
           )}
+        </div>
+      )}
+      
+      {/* 다음 문제 버튼 */}
+      {isCompleted && onNext && (
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={onNext}
+            className="px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
+          >
+            {t.practice.nextProblem}
+          </button>
         </div>
       )}
     </div>

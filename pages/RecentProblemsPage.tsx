@@ -5,8 +5,12 @@ import { ImageModal } from '../components/ImageModal';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import { AnalyzingCard } from '../components/AnalyzingCard';
 import type { SessionWithProblems } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 export const RecentProblemsPage: React.FC = () => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<SessionWithProblems[]>([]);
   const [analyzingSessions, setAnalyzingSessions] = useState<SessionWithProblems[]>([]);
@@ -59,23 +63,29 @@ export const RecentProblemsPage: React.FC = () => {
   }, [pollingActive]);
 
   const handleDelete = async (sessionId: string) => {
-    if (!window.confirm('이 세션을 삭제하시겠습니까?')) return;
+    const confirmMessage = language === 'ko' 
+      ? '이 세션을 삭제하시겠습니까?'
+      : 'Are you sure you want to delete this session?';
+    if (!window.confirm(confirmMessage)) return;
     
     try {
       await deleteSession(sessionId);
       await loadData();
     } catch (e) {
-      alert(e instanceof Error ? e.message : '삭제 실패');
+      alert(e instanceof Error ? e.message : (language === 'ko' ? '삭제 실패' : 'Delete failed'));
     }
   };
 
   const handleBulkDelete = async () => {
     if (selectedSessions.size === 0) {
-      alert('삭제할 항목을 선택해주세요.');
+      alert(language === 'ko' ? '삭제할 항목을 선택해주세요.' : 'Please select items to delete.');
       return;
     }
 
-    if (!window.confirm(`${selectedSessions.size}개의 세션을 삭제하시겠습니까?`)) return;
+    const confirmMessage = language === 'ko' 
+      ? `${selectedSessions.size}개의 세션을 삭제하시겠습니까?`
+      : `Are you sure you want to delete ${selectedSessions.size} session(s)?`;
+    if (!window.confirm(confirmMessage)) return;
 
     try {
       await Promise.all(Array.from(selectedSessions).map(id => deleteSession(id)));
@@ -121,7 +131,7 @@ export const RecentProblemsPage: React.FC = () => {
     return sessions.slice(0, visibleSessionCount);
   }, [sessions, visibleSessionCount]);
 
-  if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0) return <div className="text-center text-slate-600 py-10">불러오는 중...</div>;
+  if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0) return <div className="text-center text-slate-600 py-10">{t.common.loading}</div>;
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
 
   return (
@@ -147,7 +157,7 @@ export const RecentProblemsPage: React.FC = () => {
 
       <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold whitespace-nowrap">최근 업로드한 문제</h2>
+          <h2 className="text-2xl font-bold whitespace-nowrap">{t.recent.title}</h2>
           <div className="flex gap-2">
             <button
               onClick={toggleSelectAll}
@@ -172,7 +182,7 @@ export const RecentProblemsPage: React.FC = () => {
           </div>
         </div>
         {sessions.length === 0 ? (
-          <p className="text-slate-500 text-center py-4">아직 업로드한 문제가 없습니다.</p>
+          <p className="text-slate-500 text-center py-4">{t.recent.noProblems}</p>
         ) : (
           <div className="space-y-3">
             {displayedSessions.map((session) => (
@@ -201,11 +211,13 @@ export const RecentProblemsPage: React.FC = () => {
                   </p>
                   {session.problem_count === 0 ? (
                     <p className="text-orange-600 font-medium mt-1">
-                      🔍 AI 분석 중... 잠시 후 새로고침해주세요
+                      {language === 'ko' ? '🔍 AI 분석 중... 잠시 후 새로고침해주세요' : '🔍 AI analyzing... Please refresh later'}
                     </p>
                   ) : (
                     <p className="text-slate-700 mt-1">
-                      문제 {session.problem_count}개 | 정답 {session.correct_count}개 | 오답 {session.incorrect_count}개
+                      {language === 'ko' 
+                        ? `문제 ${session.problem_count}개 | 정답 ${session.correct_count}개 | 오답 ${session.incorrect_count}개`
+                        : `${t.recent.problemCount} ${session.problem_count} | ${t.stats.correct}: ${session.correct_count} | ${t.stats.incorrect}: ${session.incorrect_count}`}
                     </p>
                   )}
                 </div>
@@ -219,7 +231,7 @@ export const RecentProblemsPage: React.FC = () => {
                         : 'bg-indigo-600 hover:bg-indigo-700'
                     }`}
                   >
-                    상세보기
+                    {t.recent.viewDetails}
                   </button>
                 </div>
               </div>
@@ -230,7 +242,7 @@ export const RecentProblemsPage: React.FC = () => {
                   onClick={() => setVisibleSessionCount(prev => Math.min(prev + 5, sessions.length))}
                   className="px-4 py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
                 >
-                  더보기 ({sessions.length - visibleSessionCount}개)
+                  {t.recent.loadMore} ({sessions.length - visibleSessionCount}{language === 'ko' ? '개' : ''})
                 </button>
               </div>
             )}

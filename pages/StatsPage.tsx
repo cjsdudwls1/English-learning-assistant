@@ -9,8 +9,14 @@ import { AnalyzingCard } from '../components/AnalyzingCard';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import { GeneratedProblemCard } from '../components/GeneratedProblemCard';
 import type { SessionWithProblems } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
+import { TaxonomyDetailPopup } from '../components/TaxonomyDetailPopup';
+import { findTaxonomyByDepth } from '../services/db';
 
 export const StatsPage: React.FC = () => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [rows, setRows] = useState<TypeStatsRow[]>([]);
   const [hierarchicalData, setHierarchicalData] = useState<StatsNode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +31,10 @@ export const StatsPage: React.FC = () => {
   const [pollingActive, setPollingActive] = useState(true);
   const [isReclassifying, setIsReclassifying] = useState(false);
   const [reclassificationStatus, setReclassificationStatus] = useState<string | null>(null);
+  const [selectedTaxonomyCode, setSelectedTaxonomyCode] = useState<string | null>(null);
+  const [isGeneratingExamples, setIsGeneratingExamples] = useState(false);
+  const [exampleSentences, setExampleSentences] = useState<string[]>([]);
+  const [showExampleModal, setShowExampleModal] = useState(false);
 
   const loadData = async (showLoading: boolean = false) => {
     try {
@@ -159,6 +169,7 @@ export const StatsPage: React.FC = () => {
         body: JSON.stringify({
           userId: userData.user.id,
           batchSize: 100, // 배치 크기
+          language: language
         }),
       });
 
@@ -193,10 +204,98 @@ export const StatsPage: React.FC = () => {
     }
   };
 
+  // 예시 문장 생성 핸들러
+  const handleGenerateExampleSentences = async () => {
+    if (selectedNodes.size === 0) {
+      alert(t.example.selectCategory);
+      return;
+    }
+
+    try {
+      setIsGeneratingExamples(true);
+      setError(null);
+
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        setError(language === 'ko' ? '로그인이 필요합니다.' : 'Login required.');
+        return;
+      }
+
+      // 선택된 노드들 중 최하위 depth만 필터링
+      const allLeafNodes = getLeafNodes(hierarchicalData);
+      const selectedLeafNodes = allLeafNodes.filter(node => {
+        const key = getNodeKey(node);
+        return selectedNodes.has(key);
+      });
+
+      if (selectedLeafNodes.length === 0) {
+        alert(t.example.selectCategory);
+        setIsGeneratingExamples(false);
+        return;
+      }
+
+      // 각 선택된 depth에 대해 예시 문장 생성
+      const examplePromises = selectedLeafNodes.map(async (node) => {
+        try {
+          const taxonomy = await findTaxonomyByDepth(
+            node.depth1 || '',
+            node.depth2 || '',
+            node.depth3 || '',
+            node.depth4 || '',
+            language
+          );
+
+          if (!taxonomy?.code) {
+            return null;
+          }
+
+          const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-example`;
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token}`,
+            },
+            body: JSON.stringify({
+              code: taxonomy.code,
+              userId: userData.user.id,
+              language: language
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const result = await response.json();
+          if (result.success && result.example) {
+            const example = result.example;
+            return `❌ ${example.wrong_example || ''}\n✅ ${example.correct_example || ''}\n\n${example.explanation || ''}`;
+          }
+          return null;
+        } catch (error) {
+          console.error('Error generating example for node:', error);
+          return null;
+        }
+      });
+
+      const examples = (await Promise.all(examplePromises)).filter(Boolean) as string[];
+      setExampleSentences(examples);
+      setShowExampleModal(true);
+    } catch (e) {
+      console.error('Error generating examples:', e);
+      setError(e instanceof Error ? e.message : (language === 'ko' ? '예시 문장 생성 실패' : 'Failed to generate example sentences'));
+    } finally {
+      setIsGeneratingExamples(false);
+    }
+  };
+
   // 유사 문제 생성 핸들러
   const handleGenerateSimilarProblems = async () => {
     if (selectedNodes.size === 0) {
-      alert('문제 유형을 선택해주세요.');
+      alert(t.stats.selectCategory);
       return;
     }
 
@@ -218,7 +317,7 @@ export const StatsPage: React.FC = () => {
       });
 
       if (selectedLeafNodes.length === 0) {
-        alert('최하위 depth의 문제 유형을 선택해주세요.');
+        alert(t.stats.selectLeafCategory);
         setIsGeneratingProblems(false);
         return;
       }
@@ -242,7 +341,8 @@ export const StatsPage: React.FC = () => {
         },
         body: JSON.stringify({
           classifications,
-          userId: userData.user.id
+          userId: userData.user.id,
+          language: language
         })
       });
 
@@ -255,8 +355,9 @@ export const StatsPage: React.FC = () => {
       
       if (result.success) {
         setGeneratedProblems(result.problems || []);
+        setCurrentProblemIndex(0); // 첫 번째 문제부터 시작
       } else {
-        throw new Error(result.error || '유사 문제 생성 실패');
+        throw new Error(result.error || (language === 'ko' ? '유사 문제 생성 실패' : 'Failed to generate similar problems'));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : '유사 문제 생성 실패');
@@ -372,22 +473,29 @@ export const StatsPage: React.FC = () => {
         </div>
 
         <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
-          <div className="text-slate-700 dark:text-slate-300">전체: {totals.total} / 정답: {totals.correct} / 오답: {totals.incorrect}</div>
+          <div className="text-slate-700 dark:text-slate-300">{t.stats.total}: {totals.total} / {t.stats.correct}: {totals.correct} / {t.stats.incorrect}: {totals.incorrect}</div>
           <div className="flex gap-2">
             <button
               onClick={handleReclassifyAll}
               disabled={isReclassifying}
               className="px-4 py-2 bg-orange-600 dark:bg-orange-500 text-white rounded-lg hover:bg-orange-700 dark:hover:bg-orange-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
-              title="기존 문제들을 새로운 분류 체계로 재분류합니다"
+              title={language === 'ko' ? '기존 문제들을 새로운 분류 체계로 재분류합니다' : 'Reclassify all problems with the new classification system'}
             >
-              {isReclassifying ? '재분류 중...' : '🔄 전체 문제 재분류'}
+              {isReclassifying ? t.stats.reclassifying : t.stats.reclassifyAll}
+            </button>
+            <button
+              onClick={handleGenerateExampleSentences}
+              disabled={selectedNodes.size === 0 || isGeneratingExamples}
+              className="px-4 py-2 bg-green-600 dark:bg-green-500 text-white rounded-lg hover:bg-green-700 dark:hover:bg-green-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+            >
+              {isGeneratingExamples ? t.example.generating : t.example.generate}
             </button>
             <button
               onClick={handleGenerateSimilarProblems}
               disabled={selectedNodes.size === 0 || isGeneratingProblems}
               className="px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
             >
-              {isGeneratingProblems ? '생성 중...' : '유사 문제 생성'}
+              {isGeneratingProblems ? t.stats.generating : t.stats.generateSimilar}
             </button>
           </div>
         </div>
@@ -404,7 +512,73 @@ export const StatsPage: React.FC = () => {
           onNumberClick={handleNodeClick}
           selectedNodes={selectedNodes}
           onNodeSelect={handleNodeSelect}
+          onQuestionClick={async (node) => {
+            if (node.depth4) {
+              try {
+                const taxonomy = await findTaxonomyByDepth(
+                  node.depth1 || '',
+                  node.depth2 || '',
+                  node.depth3 || '',
+                  node.depth4 || '',
+                  language
+                );
+                if (taxonomy?.code) {
+                  setSelectedTaxonomyCode(taxonomy.code);
+                } else {
+                  alert(language === 'ko' ? '분류 정보를 찾을 수 없습니다.' : 'Classification information not found.');
+                }
+              } catch (error) {
+                console.error('Error loading taxonomy:', error);
+                alert(language === 'ko' ? '분류 정보를 불러오는 중 오류가 발생했습니다.' : 'Error loading classification information.');
+              }
+            }
+          }}
         />
+        
+        {/* Taxonomy 정보 모달 */}
+        {selectedTaxonomyCode && (
+          <TaxonomyDetailPopup
+            code={selectedTaxonomyCode}
+            onClose={() => setSelectedTaxonomyCode(null)}
+          />
+        )}
+        
+        {/* 예시 문장 모달 */}
+        {showExampleModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
+                    {t.example.generate}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setShowExampleModal(false);
+                      setExampleSentences([]);
+                    }}
+                    className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  >
+                    {t.common.close}
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  {exampleSentences.length > 0 ? (
+                    exampleSentences.map((example, idx) => (
+                      <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                        <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{example}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 dark:text-slate-400">
+                      {language === 'ko' ? '생성된 예시 문장이 없습니다.' : 'No example sentences generated.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 생성된 유사 문제 표시 */}
@@ -412,24 +586,42 @@ export const StatsPage: React.FC = () => {
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
-              생성된 유사 문제 ({generatedProblems.length}개)
+              {t.stats.generatedProblems} ({generatedProblems.length}{language === 'ko' ? '개' : ''})
             </h3>
             <button
               onClick={() => setGeneratedProblems([])}
               className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
             >
-              닫기
+              {t.common.close}
             </button>
           </div>
 
           <div className="space-y-4 md:max-h-[70vh] md:overflow-auto">
-            {generatedProblems.map((problem, idx) => (
+            {generatedProblems.length > 0 && (
               <GeneratedProblemCard
-                key={idx}
-                problem={problem}
-                index={idx}
+                key={currentProblemIndex}
+                problem={generatedProblems[currentProblemIndex]}
+                index={currentProblemIndex}
+                problemId={generatedProblems[currentProblemIndex].id}
+                isActive={true}
+                onNext={() => {
+                  if (currentProblemIndex < generatedProblems.length - 1) {
+                    setCurrentProblemIndex(currentProblemIndex + 1);
+                  } else {
+                    // 모든 문제 완료
+                    setGeneratedProblems([]);
+                    setCurrentProblemIndex(0);
+                  }
+                }}
               />
-            ))}
+            )}
+            {generatedProblems.length > 1 && (
+              <div className="text-center text-sm text-slate-500 dark:text-slate-400">
+                {language === 'ko' 
+                  ? `문제 ${currentProblemIndex + 1} / ${generatedProblems.length}`
+                  : `Problem ${currentProblemIndex + 1} / ${generatedProblems.length}`}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import type { StatsNode } from '../services/stats';
+import { TaxonomyDetailPopup } from './TaxonomyDetailPopup';
+import { findTaxonomyByDepth } from '../services/db';
+import type { Taxonomy } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 interface HierarchicalStatsTableProps {
   data: StatsNode[];
@@ -7,6 +12,7 @@ interface HierarchicalStatsTableProps {
   onNumberClick?: (node: StatsNode, isCorrect: boolean) => void;
   selectedNodes?: Set<string>;
   onNodeSelect?: (node: StatsNode, selected: boolean) => void;
+  onQuestionClick?: (node: StatsNode) => void;
 }
 
 interface StatsRowProps {
@@ -16,9 +22,10 @@ interface StatsRowProps {
   onNumberClick?: (node: StatsNode, isCorrect: boolean) => void;
   selectedNodes?: Set<string>;
   onNodeSelect?: (node: StatsNode, selected: boolean) => void;
+  onQuestionClick?: (node: StatsNode) => void;
 }
 
-const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumberClick, selectedNodes, onNodeSelect }) => {
+const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumberClick, selectedNodes, onNodeSelect, onQuestionClick }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const indent = level * 20;
@@ -104,6 +111,19 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
             <span className="text-slate-800 dark:text-slate-200">
               {node.depth4 || node.depth3 || node.depth2 || node.depth1}
             </span>
+            {/* 4depth 행에만 '?' 버튼 표시 */}
+            {node.depth4 && !hasChildren && onQuestionClick && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onQuestionClick(node);
+                }}
+                className="ml-2 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600 flex items-center justify-center text-sm font-bold transition-colors"
+                title="분류 정보 보기"
+              >
+                ?
+              </button>
+            )}
           </div>
         </td>
         <td className="p-2">
@@ -157,6 +177,7 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
           onNumberClick={onNumberClick}
           selectedNodes={selectedNodes}
           onNodeSelect={onNodeSelect}
+          onQuestionClick={onQuestionClick}
         />
       ))}
     </>
@@ -168,17 +189,21 @@ export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({
   onImageClick,
   onNumberClick,
   selectedNodes,
-  onNodeSelect
+  onNodeSelect,
+  onQuestionClick
 }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
+  
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="bg-slate-100 dark:bg-slate-800">
-            <th className="p-2 text-slate-800 dark:text-slate-200">카테고리</th>
-            <th className="p-2 text-slate-800 dark:text-slate-200">정답</th>
-            <th className="p-2 text-slate-800 dark:text-slate-200">오답</th>
-            <th className="p-2 text-slate-800 dark:text-slate-200">정답률</th>
+            <th className="p-2 text-slate-800 dark:text-slate-200">{t.stats.category}</th>
+            <th className="p-2 text-slate-800 dark:text-slate-200">{t.stats.correct}</th>
+            <th className="p-2 text-slate-800 dark:text-slate-200">{t.stats.incorrect}</th>
+            <th className="p-2 text-slate-800 dark:text-slate-200">{t.stats.accuracy}</th>
           </tr>
         </thead>
         <tbody>
@@ -191,6 +216,7 @@ export const HierarchicalStatsTable: React.FC<HierarchicalStatsTableProps> = ({
               onNumberClick={onNumberClick}
               selectedNodes={selectedNodes}
               onNodeSelect={onNodeSelect}
+              onQuestionClick={onQuestionClick}
             />
           ))}
         </tbody>
