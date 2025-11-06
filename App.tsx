@@ -212,7 +212,7 @@ const App: React.FC = () => {
         </Routes>
       </main>
       <footer className="text-center py-6 text-slate-500 dark:text-slate-400 text-sm bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-        <p>고객지원: <a href="mailto:mearidj@gmail.com" className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">mearidj@gmail.com</a></p>
+        <p>{t.app.customerSupport}: <a href="mailto:mearidj@gmail.com" className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">mearidj@gmail.com</a></p>
       </footer>
     </div>
   );

@@ -1,6 +1,8 @@
 
 import React, { useState, useCallback } from 'react';
 import { ImageRotator } from './ImageRotator';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 interface ImageFile {
   file: File;
@@ -13,6 +15,8 @@ interface ImageUploaderProps {
 }
 
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,7 +87,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4 text-slate-700 dark:text-slate-300">1. 문제 이미지 업로드</h2>
+      <h2 className="text-xl font-semibold mb-4 text-slate-700 dark:text-slate-300">1. {t.upload.sectionTitle}</h2>
       <div className="space-y-4">
         <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center bg-slate-50/50 dark:bg-slate-900/30">
           <input
@@ -94,7 +98,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
             className="mb-4"
           />
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-            여러 이미지를 한번에 선택할 수 있습니다
+            {t.upload.multipleImages}
           </p>
         </div>
         
@@ -102,13 +106,13 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                선택된 이미지: {imageFiles.length}개
+                {t.upload.selectedImages}: {imageFiles.length}{language === 'ko' ? '개' : ''}
               </p>
               <button 
                 onClick={handleClearAll}
                 className="px-3 py-1 text-sm bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors"
               >
-                전체 삭제
+                {t.upload.clearAll}
               </button>
             </div>
             
@@ -118,7 +122,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
                   <button
                     onClick={() => handleRemove(index)}
                     className="absolute top-2 right-2 w-6 h-6 bg-red-500 dark:bg-red-600 text-white rounded-full flex items-center justify-center hover:bg-red-600 dark:hover:bg-red-700 z-10 transition-colors"
-                    title="삭제"
+                    title={t.upload.delete}
                   >
                     ×
                   </button>
@@ -137,7 +141,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
             </div>
             
             <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
-              회전 버튼을 사용하여 각 이미지 방향을 조정할 수 있습니다
+              {t.upload.rotateHint}
             </p>
           </div>
         )}

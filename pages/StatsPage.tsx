@@ -43,7 +43,7 @@ export const StatsPage: React.FC = () => {
       }
       const [statsData, hierarchicalStatsData, analyzing, pendingSessions] = await Promise.all([
         fetchStatsByType(startDate || undefined, endDate || undefined),
-        fetchHierarchicalStats(startDate || undefined, endDate || undefined),
+        fetchHierarchicalStats(startDate || undefined, endDate || undefined, language),
         fetchAnalyzingSessions(),
         fetchPendingLabelingSessions(),
       ]);
@@ -72,7 +72,7 @@ export const StatsPage: React.FC = () => {
 
   useEffect(() => {
     loadData(true); // 초기 로드 시에만 loading 표시
-  }, [startDate, endDate]);
+  }, [startDate, endDate, language]);
 
   // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 3초마다 상태 확인 (loading 표시 없음)
   useEffect(() => {

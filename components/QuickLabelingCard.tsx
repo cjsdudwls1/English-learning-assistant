@@ -104,15 +104,19 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
         {/* 이미지 썸네일 */}
         <img 
           src={imageUrl} 
-          alt="문제 이미지" 
+          alt={language === 'ko' ? '문제 이미지' : 'Problem Image'} 
           className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 flex-shrink-0"
         />
         
         {/* 헤더 */}
         <div className="flex-1">
-          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">AI 분석 완료</h3>
+          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">
+            {language === 'ko' ? 'AI 분석 완료' : 'AI Analysis Complete'}
+          </h3>
           <p className="text-slate-600 dark:text-slate-400">
-            AI가 분석한 문제 {problems.length}개를 확인하고 검수해주세요.
+            {language === 'ko' 
+              ? `AI가 분석한 문제 ${problems.length}개를 확인하고 검수해주세요.`
+              : `Please review and verify ${problems.length} problem(s) analyzed by AI.`}
           </p>
         </div>
       </div>
