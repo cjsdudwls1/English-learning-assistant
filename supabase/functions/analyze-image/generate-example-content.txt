@@ -1,0 +1,153 @@
+﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
+serve(async (req) => {
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { 
+      status: 405, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
+  }
+
+  try {
+    const { code, userId, language } = await req.json();
+
+    if (!code || !userId) {
+      return new Response(JSON.stringify({ error: 'Missing required fields: code, userId' }), { 
+        status: 400, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    // Supabase 클라이언트 생성
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API_KEY environment variable is not set');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // 1. Taxonomy 정보 조회
+    console.log('Step 1: Fetching taxonomy for code:', code);
+    const { data: taxonomy, error: taxonomyError } = await supabase
+      .from('taxonomy')
+      .select('*')
+      .eq('code', code)
+      .single();
+
+    if (taxonomyError || !taxonomy) {
+      console.error('Taxonomy not found:', taxonomyError);
+      return new Response(JSON.stringify({ error: 'Taxonomy not found' }), { 
+        status: 404, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    // 2. 사용자 프로필 정보 조회 (연령, 학년)
+    console.log('Step 2: Fetching user profile');
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('age, grade')
+      .eq('user_id', userId)
+      .single();
+
+    const userAge = profile?.age ? parseInt(profile.age) || 14 : 14; // 기본값: 14세
+    const userGrade = profile?.grade || '중학생'; // 기본값: 중학생
+
+    // 3. Gemini로 예시 문장 생성
+    console.log('Step 3: Generating example with Gemini');
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+    const prompt = `
+당신은 영어 교육 전문가입니다. 사용자의 영어 학습 레벨에 맞는 예시 문장을 생성해주세요.
+
+## 분류 정보
+- **분류 코드**: ${taxonomy.code}
+- **1Depth**: ${taxonomy.depth1} (${taxonomy.depth1_en})
+- **2Depth**: ${taxonomy.depth2} (${taxonomy.depth2_en})
+- **3Depth**: ${taxonomy.depth3} (${taxonomy.depth3_en})
+- **4Depth**: ${taxonomy.depth4} (${taxonomy.depth4_en})
+- **핵심 규칙**: ${language === 'ko' ? (taxonomy.core_rule_ko || taxonomy.core_rule_en || 'N/A') : (taxonomy.core_rule_en || taxonomy.core_rule_ko || 'N/A')}
+- **정의**: ${language === 'ko' ? (taxonomy.definition_ko || taxonomy.definition_en || 'N/A') : (taxonomy.definition_en || taxonomy.definition_ko || 'N/A')}
+
+## 사용자 정보
+- **연령**: ${userAge}세
+- **학년**: ${userGrade}
+- **선호 언어**: ${language === 'ko' ? '한국어' : 'English'}
+
+## 요구사항
+다음 형식으로 예시 문장을 생성해주세요:
+
+1. **틀린 문장** (❌): 이 분류에서 자주 발생하는 오류를 보여주는 문장
+2. **맞는 문장** (✅): 올바른 문법을 사용한 문장
+3. **설명**: 왜 틀렸는지, 왜 맞는지 간단히 설명
+
+**주의사항**:
+- 사용자의 연령(${userAge}세)과 학년(${userGrade})에 맞는 어휘와 난이도 사용
+- 핵심 규칙을 명확히 보여주는 예시
+- 이해하기 쉬운 문장
+- 이모지 포함 (❌, ✅)
+
+## 출력 형식
+다음 JSON 형식으로 출력하세요:
+\`\`\`json
+{
+  "wrong_example": "틀린 문장",
+  "correct_example": "맞는 문장",
+  "explanation": "간단한 설명"
+}
+\`\`\`
+`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [{ text: prompt }] },
+    });
+
+    const responseText = response.text;
+    console.log('Step 3 completed: Gemini response received');
+
+    // JSON 파싱
+    const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const result = JSON.parse(jsonString);
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      example: result 
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error: any) {
+    console.error('Error in generate-example function:', error);
+    
+    return new Response(JSON.stringify({ 
+      error: error.message || 'Internal server error',
+      details: error.toString()
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});
+

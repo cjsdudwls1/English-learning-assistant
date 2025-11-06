@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchSessionProblems, updateProblemLabels } from '../services/db';
 import type { ProblemItem } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 interface QuickLabelingCardProps {
   sessionId: string;
@@ -14,6 +16,8 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   imageUrl, 
   onSave 
 }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const navigate = useNavigate();
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [labels, setLabels] = useState<Record<string, 'O' | 'X'>>({});
@@ -175,7 +179,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                         : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                     }`}
                   >
-                    정답
+                    {t.labeling.correct}
                   </button>
                   <button
                     onClick={() => handleMarkChange(problem.index, 'X')}
@@ -185,7 +189,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                         : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                     }`}
                   >
-                    오답
+                    {t.labeling.incorrect}
                   </button>
                 </div>
               </div>
@@ -200,14 +204,14 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           onClick={() => navigate(`/session/${sessionId}`)}
           className="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
         >
-          상세보기
+          {t.labeling.viewDetails}
         </button>
         <button
           onClick={handleSave}
           disabled={saving}
           className="px-6 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
-          {saving ? '저장 중...' : '최종 저장'}
+          {saving ? t.labeling.saving : t.labeling.finalSave}
         </button>
       </div>
     </div>

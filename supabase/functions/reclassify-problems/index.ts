@@ -10,11 +10,16 @@ const corsHeaders = {
 };
 
 // Taxonomy 데이터를 DB에서 동적으로 로드하는 함수
-async function loadTaxonomyData(supabase: any): Promise<{ structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }> {
+async function loadTaxonomyData(supabase: any, language: 'ko' | 'en' = 'ko'): Promise<{ structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }> {
+  const depth1Col = language === 'en' ? 'depth1_en' : 'depth1';
+  const depth2Col = language === 'en' ? 'depth2_en' : 'depth2';
+  const depth3Col = language === 'en' ? 'depth3_en' : 'depth3';
+  const depth4Col = language === 'en' ? 'depth4_en' : 'depth4';
+  
   const { data, error } = await supabase
     .from('taxonomy')
-    .select('depth1, depth2, depth3, depth4')
-    .order('depth1, depth2, depth3, depth4');
+    .select(`${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`)
+    .order(`${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`);
   
   if (error) throw error;
   
@@ -27,10 +32,10 @@ async function loadTaxonomyData(supabase: any): Promise<{ structure: string; all
   };
   
   for (const row of data || []) {
-    const d1 = row.depth1 || '';
-    const d2 = row.depth2 || '';
-    const d3 = row.depth3 || '';
-    const d4 = row.depth4 || '';
+    const d1 = row[depth1Col] || '';
+    const d2 = row[depth2Col] || '';
+    const d3 = row[depth3Col] || '';
+    const d4 = row[depth4Col] || '';
     
     if (d1) allValues.depth1.add(d1);
     if (d2) allValues.depth2.add(d2);
@@ -78,15 +83,21 @@ async function findTaxonomyByDepth(
   depth1: string,
   depth2: string,
   depth3: string,
-  depth4: string
+  depth4: string,
+  language: 'ko' | 'en' = 'ko'
 ): Promise<{ code: string | null; cefr: string | null; difficulty: number | null }> {
+  const depth1Col = language === 'en' ? 'depth1_en' : 'depth1';
+  const depth2Col = language === 'en' ? 'depth2_en' : 'depth2';
+  const depth3Col = language === 'en' ? 'depth3_en' : 'depth3';
+  const depth4Col = language === 'en' ? 'depth4_en' : 'depth4';
+  
   const { data, error } = await supabase
     .from('taxonomy')
     .select('code, cefr, difficulty')
-    .eq('depth1', depth1)
-    .eq('depth2', depth2)
-    .eq('depth3', depth3)
-    .eq('depth4', depth4)
+    .eq(depth1Col, depth1)
+    .eq(depth2Col, depth2)
+    .eq(depth3Col, depth3)
+    .eq(depth4Col, depth4)
     .single();
   
   if (error || !data) {
@@ -176,7 +187,7 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, batchSize = 100 } = await req.json();
+    const { userId, batchSize = 100, language } = await req.json();
 
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Missing required field: userId' }), { 
@@ -236,7 +247,10 @@ serve(async (req) => {
 
     // 2. Taxonomy 데이터 로드
     console.log('Step 2: Loading taxonomy data');
-    const taxonomyData = await loadTaxonomyData(supabase);
+    // 언어 설정 (기본값: ko)
+    const userLanguage: 'ko' | 'en' = language === 'en' ? 'en' : 'ko';
+    
+    const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
     const prompt = buildPrompt(taxonomyData);
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
@@ -299,7 +313,8 @@ serve(async (req) => {
             validDepth1,
             validDepth2,
             validDepth3,
-            validDepth4
+            validDepth4,
+            userLanguage
           );
 
           // 분류 신뢰도 결정

@@ -24,7 +24,10 @@ serve(async (req) => {
 
   try {
     console.log('generate-similar-problems Edge Function called');
-    const { classifications, userId } = await req.json();
+    const { classifications, userId, language } = await req.json();
+    
+    // 언어 설정 (기본값: ko)
+    const userLanguage: 'ko' | 'en' = language === 'en' ? 'en' : 'ko';
     
     if (!classifications || !userId) {
       console.log('Missing required fields');
@@ -70,7 +73,49 @@ serve(async (req) => {
       const classificationPath = [depth1, depth2, depth3, depth4].filter(Boolean).join(' > ');
       
       // Gemini API에 요청할 프롬프트 생성
-      const prompt = `다음 분류에 해당하는 영어 문제 ${problemCount}개를 생성해주세요.
+      const promptLanguage = userLanguage === 'en' ? 'English' : 'Korean';
+      const prompt = userLanguage === 'en' 
+        ? `Generate ${problemCount} English problems for the following classification:
+
+Classification: ${classificationPath}
+
+Each problem should be returned as a JSON array in the following format:
+[
+  {
+    "stem": "Problem text (in English)",
+    "choices": [
+      {"text": "Choice 1", "is_correct": false},
+      {"text": "Choice 2", "is_correct": true},
+      {"text": "Choice 3", "is_correct": false},
+      {"text": "Choice 4", "is_correct": false},
+      {"text": "Choice 5", "is_correct": false}
+    ],
+    "explanation": "Answer explanation: why this is the correct answer (in English)",
+    "wrong_explanations": {
+      "0": "Wrong answer explanation: why choice 1 is incorrect",
+      "1": "This is the correct answer",
+      "2": "Wrong answer explanation: why choice 3 is incorrect",
+      "3": "Wrong answer explanation: why choice 4 is incorrect",
+      "4": "Wrong answer explanation: why choice 5 is incorrect"
+    },
+    "classification": {
+      "depth1": "${depth1}",
+      "depth2": "${depth2 || ''}",
+      "depth3": "${depth3 || ''}",
+      "depth4": "${depth4 || ''}"
+    }
+  }
+]
+
+Important:
+1. All problems must match the ${classificationPath} classification.
+2. Each problem must have exactly 5 choices (5-choice multiple choice).
+3. There must be only one correct answer (is_correct: true).
+4. The explanation field should contain the answer explanation in English.
+5. The wrong_explanations object should contain wrong answer explanations for each choice index (the correct index should say "This is the correct answer").
+6. Problem difficulty should be at middle school level.
+7. Return only JSON format without any additional explanation.`
+        : `다음 분류에 해당하는 영어 문제 ${problemCount}개를 생성해주세요.
 
 분류: ${classificationPath}
 
@@ -106,7 +151,7 @@ serve(async (req) => {
 1. 모든 문제는 ${classificationPath} 분류에 맞아야 합니다.
 2. 각 문제는 정확히 5개의 선택지를 가져야 합니다 (5지선다형).
 3. 정답은 하나만 있어야 합니다 (is_correct: true).
-4. explanation 필드에는 정답 해설을 한국어로 작성하세요.
+4. explanation 필드에는 정답 해설을 ${promptLanguage === 'English' ? '영어로' : '한국어로'} 작성하세요.
 5. wrong_explanations 객체에는 각 선택지 인덱스를 키로 하여 오답 해설을 작성하세요 (정답 인덱스는 "이 선택지는 정답입니다"로 표시).
 6. 문제 난이도는 중학교 수준으로 작성해주세요.
 7. JSON 형식만 반환하고 다른 설명은 추가하지 마세요.`;
@@ -172,18 +217,24 @@ serve(async (req) => {
         source_classification: p.source_classification
       }));
 
-      const { error: insertError } = await supabase
+      const { data: insertedProblems, error: insertError } = await supabase
         .from('generated_problems')
-        .insert(problemsToSave);
+        .insert(problemsToSave)
+        .select('id');
 
       if (insertError) {
         console.error('Failed to save generated problems:', insertError);
         // 저장 실패해도 문제 생성은 계속 진행
+        allProblems.push(...processedProblems);
       } else {
         console.log(`Saved ${problemsToSave.length} problems to database`);
+        // 저장된 문제에 id 추가
+        const problemsWithId = processedProblems.map((p: any, idx: number) => ({
+          ...p,
+          id: insertedProblems?.[idx]?.id
+        }));
+        allProblems.push(...problemsWithId);
       }
-
-      allProblems.push(...processedProblems);
       console.log(`Generated ${processedProblems.length} problems for ${classificationPath}`);
     }
 
