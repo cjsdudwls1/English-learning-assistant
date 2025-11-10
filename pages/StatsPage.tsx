@@ -10,12 +10,15 @@ import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import { GeneratedProblemCard } from '../components/GeneratedProblemCard';
 import type { SessionWithProblems } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { getTranslation } from '../utils/translations';
 import { TaxonomyDetailPopup } from '../components/TaxonomyDetailPopup';
 import { findTaxonomyByDepth } from '../services/db';
+import { StatsOverviewCharts } from '../components/StatsOverviewCharts';
 
 export const StatsPage: React.FC = () => {
   const { language } = useLanguage();
+  const { theme } = useTheme();
   const t = getTranslation(language);
   const [rows, setRows] = useState<TypeStatsRow[]>([]);
   const [hierarchicalData, setHierarchicalData] = useState<StatsNode[]>([]);
@@ -35,6 +38,7 @@ export const StatsPage: React.FC = () => {
   const [isGeneratingExamples, setIsGeneratingExamples] = useState(false);
   const [exampleSentences, setExampleSentences] = useState<string[]>([]);
   const [showExampleModal, setShowExampleModal] = useState(false);
+  const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
 
   const loadData = async (showLoading: boolean = false) => {
     try {
@@ -406,6 +410,29 @@ export const StatsPage: React.FC = () => {
     return { correct, incorrect, total };
   }, [rows]);
 
+  const chartLabels = useMemo(
+    () => ({
+      overview: t.stats.chartOverview,
+      correctVsIncorrect: t.stats.correctVsIncorrectChart,
+      categoryDistribution: t.stats.categoryDistributionChart,
+      noData: t.stats.noData,
+      correct: t.stats.correct,
+      incorrect: t.stats.incorrect,
+      total: t.stats.total,
+      unclassified: t.stats.unclassified,
+    }),
+    [
+      t.stats.chartOverview,
+      t.stats.correctVsIncorrectChart,
+      t.stats.categoryDistributionChart,
+      t.stats.noData,
+      t.stats.correct,
+      t.stats.incorrect,
+      t.stats.total,
+      t.stats.unclassified,
+    ]
+  );
+
   if (loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">불러오는 중...</div>;
   if (error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{error}</div>;
 
@@ -526,6 +553,18 @@ export const StatsPage: React.FC = () => {
               {isGeneratingProblems ? t.stats.generating : t.stats.generateSimilar}
             </button>
           </div>
+        </div>
+
+        <div className="mt-6">
+          <h3 className="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4">
+            {chartLabels.overview}
+          </h3>
+          <StatsOverviewCharts
+            rows={rows}
+            totals={totals}
+            theme={theme}
+            labels={chartLabels}
+          />
         </div>
         
         {reclassificationStatus && (
