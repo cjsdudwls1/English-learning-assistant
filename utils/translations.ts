@@ -85,6 +85,7 @@ export interface Translations {
     wrongExplanation: string;
     noExplanation: string;
     timeSpent: string;
+    summaryTitle: string;
   };
   
   // 세션 상세

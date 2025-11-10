@@ -23,7 +23,7 @@ export interface StatsNode {
   sessionIds?: string[]; // 해당 카테고리의 세션 ID들
 }
 
-export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promise<TypeStatsRow[]> {
+export async function fetchStatsByType(startDate?: Date, endDate?: Date, language: 'ko' | 'en' = 'ko'): Promise<TypeStatsRow[]> {
   const userId = await getCurrentUserId();
   
   let query = supabase
@@ -63,7 +63,7 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
   // taxonomy에서 유효한 값 목록 로드
   const { data: taxonomyData, error: taxonomyError } = await supabase
     .from('taxonomy')
-    .select('depth1, depth2, depth3, depth4');
+    .select('depth1, depth2, depth3, depth4, depth1_en, depth2_en, depth3_en, depth4_en');
   
   if (taxonomyError) throw taxonomyError;
   
@@ -72,13 +72,29 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
   const validDepth2 = new Set<string>();
   const validDepth3 = new Set<string>();
   const validDepth4 = new Set<string>();
+  const depth1Map = new Map<string, string>();
+  const depth2Map = new Map<string, string>();
+  const depth3Map = new Map<string, string>();
+  const depth4Map = new Map<string, string>();
   
   for (const row of taxonomyData || []) {
     if (row.depth1) validDepth1.add(row.depth1);
     if (row.depth2) validDepth2.add(row.depth2);
     if (row.depth3) validDepth3.add(row.depth3);
     if (row.depth4) validDepth4.add(row.depth4);
+    if (row.depth1 && row.depth1_en) depth1Map.set(row.depth1, row.depth1_en);
+    if (row.depth2 && row.depth2_en) depth2Map.set(row.depth2, row.depth2_en);
+    if (row.depth3 && row.depth3_en) depth3Map.set(row.depth3, row.depth3_en);
+    if (row.depth4 && row.depth4_en) depth4Map.set(row.depth4, row.depth4_en);
   }
+  
+  const translateDepth = (koValue: string, map: Map<string, string>): string => {
+    if (!koValue) return koValue;
+    if (language === 'en') {
+      return map.get(koValue) || koValue;
+    }
+    return koValue;
+  };
   
   for (const row of data || []) {
     const classification = row.classification || {};
@@ -88,12 +104,17 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date): Promis
     const rawDepth3 = classification['3Depth'] || '';
     const rawDepth4 = classification['4Depth'] || '';
     
-    const depth1 = validDepth1.has(rawDepth1) ? rawDepth1 : null;
-    const depth2 = validDepth2.has(rawDepth2) ? rawDepth2 : null;
-    const depth3 = validDepth3.has(rawDepth3) ? rawDepth3 : null;
-    const depth4 = validDepth4.has(rawDepth4) ? rawDepth4 : null;
+    const koDepth1 = validDepth1.has(rawDepth1) ? rawDepth1 : '';
+    const koDepth2 = validDepth2.has(rawDepth2) ? rawDepth2 : '';
+    const koDepth3 = validDepth3.has(rawDepth3) ? rawDepth3 : '';
+    const koDepth4 = validDepth4.has(rawDepth4) ? rawDepth4 : '';
     
-    const key = `${depth1 || ''}_${depth2 || ''}_${depth3 || ''}_${depth4 || ''}`;
+    const depth1 = koDepth1 ? translateDepth(koDepth1, depth1Map) : null;
+    const depth2 = koDepth2 ? translateDepth(koDepth2, depth2Map) : null;
+    const depth3 = koDepth3 ? translateDepth(koDepth3, depth3Map) : null;
+    const depth4 = koDepth4 ? translateDepth(koDepth4, depth4Map) : null;
+    
+    const key = `${(depth1 || '')}_${(depth2 || '')}_${(depth3 || '')}_${(depth4 || '')}`;
     
     if (!statsMap.has(key)) {
       statsMap.set(key, {
