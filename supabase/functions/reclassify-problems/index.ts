@@ -1,115 +1,10 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-};
-
-// Taxonomy 데이터를 DB에서 동적으로 로드하는 함수
-async function loadTaxonomyData(supabase: any, language: 'ko' | 'en' = 'ko'): Promise<{ structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }> {
-  const depth1Col = language === 'en' ? 'depth1_en' : 'depth1';
-  const depth2Col = language === 'en' ? 'depth2_en' : 'depth2';
-  const depth3Col = language === 'en' ? 'depth3_en' : 'depth3';
-  const depth4Col = language === 'en' ? 'depth4_en' : 'depth4';
-  
-  const { data, error } = await supabase
-    .from('taxonomy')
-    .select(`${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`)
-    .order(`${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`);
-  
-  if (error) throw error;
-  
-  const structure: any = {};
-  const allValues: { depth1: Set<string>; depth2: Set<string>; depth3: Set<string>; depth4: Set<string> } = {
-    depth1: new Set(),
-    depth2: new Set(),
-    depth3: new Set(),
-    depth4: new Set(),
-  };
-  
-  for (const row of data || []) {
-    const d1 = row[depth1Col] || '';
-    const d2 = row[depth2Col] || '';
-    const d3 = row[depth3Col] || '';
-    const d4 = row[depth4Col] || '';
-    
-    if (d1) allValues.depth1.add(d1);
-    if (d2) allValues.depth2.add(d2);
-    if (d3) allValues.depth3.add(d3);
-    if (d4) allValues.depth4.add(d4);
-    
-    if (!structure[d1]) structure[d1] = {};
-    if (!structure[d1][d2]) structure[d1][d2] = {};
-    if (!structure[d1][d2][d3]) structure[d1][d2][d3] = [];
-    if (d4 && !structure[d1][d2][d3].includes(d4)) {
-      structure[d1][d2][d3].push(d4);
-    }
-  }
-  
-  function formatStructure(obj: any, indent = 0): string {
-    let result = '';
-    const spaces = '  '.repeat(indent);
-    for (const [key, value] of Object.entries(obj)) {
-      result += spaces + key + '\n';
-      if (typeof value === 'object' && !Array.isArray(value)) {
-        result += formatStructure(value, indent + 1);
-      } else if (Array.isArray(value)) {
-        value.forEach((item: string) => {
-          result += spaces + '  ' + item + '\n';
-        });
-      }
-    }
-    return result;
-  }
-  
-  return {
-    structure: formatStructure(structure),
-    allValues: {
-      depth1: Array.from(allValues.depth1).sort(),
-      depth2: Array.from(allValues.depth2).sort(),
-      depth3: Array.from(allValues.depth3).sort(),
-      depth4: Array.from(allValues.depth4).sort(),
-    },
-  };
-}
-
-// depth1~4로 taxonomy 조회하여 code, CEFR, 난이도 찾기
-async function findTaxonomyByDepth(
-  supabase: any,
-  depth1: string,
-  depth2: string,
-  depth3: string,
-  depth4: string,
-  language: 'ko' | 'en' = 'ko'
-): Promise<{ code: string | null; cefr: string | null; difficulty: number | null }> {
-  const depth1Col = language === 'en' ? 'depth1_en' : 'depth1';
-  const depth2Col = language === 'en' ? 'depth2_en' : 'depth2';
-  const depth3Col = language === 'en' ? 'depth3_en' : 'depth3';
-  const depth4Col = language === 'en' ? 'depth4_en' : 'depth4';
-  
-  const { data, error } = await supabase
-    .from('taxonomy')
-    .select('code, cefr, difficulty')
-    .eq(depth1Col, depth1)
-    .eq(depth2Col, depth2)
-    .eq(depth3Col, depth3)
-    .eq(depth4Col, depth4)
-    .single();
-  
-  if (error || !data) {
-    return { code: null, cefr: null, difficulty: null };
-  }
-  
-  return {
-    code: data.code || null,
-    cefr: data.cefr || null,
-    difficulty: data.difficulty || null,
-  };
-}
+import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
+import { requireEnv } from '../_shared/env.ts'
+import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
+import { loadTaxonomyData, findTaxonomyByDepth } from '../_shared/taxonomy.ts'
 
 function buildPrompt(classificationData: { structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }) {
   const { structure, allValues } = classificationData;
@@ -174,42 +69,23 @@ ${structure}
 }
 
 serve(async (req) => {
-  // OPTIONS 요청 처리
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return handleOptions();
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { 
-      status: 405, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    });
+    return errorResponse('Method not allowed', 405);
   }
 
   try {
     const { userId, batchSize = 100, language } = await req.json();
 
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'Missing required field: userId' }), { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
+      return errorResponse('Missing required field: userId', 400);
     }
 
-    // Supabase 클라이언트 생성
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing Supabase environment variables');
-    }
-
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createServiceSupabaseClient();
+    const geminiApiKey = requireEnv('GEMINI_API_KEY');
 
     // 1. 사용자의 모든 문제 조회
     console.log('Step 1: Fetching user problems');
@@ -366,27 +242,18 @@ serve(async (req) => {
 
     console.log(`Reclassification completed: ${successCount} success, ${failCount} failed`);
 
-    return new Response(JSON.stringify({
+    return jsonResponse({
       success: true,
       total: labels.length,
       processed,
       successCount,
       failCount,
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error: any) {
     console.error('Error in reclassify-problems function:', error);
     
-    return new Response(JSON.stringify({ 
-      error: error.message || 'Internal server error',
-      details: error.toString()
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return errorResponse(error.message || 'Internal server error', 500, error.toString());
   }
 });
 
