@@ -49,7 +49,7 @@ export const StatsPage: React.FC = () => {
         setLoading(true);
       }
       const [statsData, hierarchicalStatsData, analyzing, pendingSessions] = await Promise.all([
-        fetchStatsByType(startDate || undefined, endDate || undefined),
+        fetchStatsByType(startDate || undefined, endDate || undefined, language),
         fetchHierarchicalStats(startDate || undefined, endDate || undefined, language),
         fetchAnalyzingSessions(),
         fetchPendingLabelingSessions(),
@@ -485,7 +485,7 @@ export const StatsPage: React.FC = () => {
     ]
   );
 
-  if (loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">불러오는 중...</div>;
+  if (loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">{t.common.loading}</div>;
   if (error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{error}</div>;
 
   return (
@@ -559,7 +559,7 @@ export const StatsPage: React.FC = () => {
               <label className="text-sm text-slate-600 mr-2">{t.stats.startDate}</label>
               <DatePicker
                 selected={startDate}
-                onChange={(date) => setStartDate(date)}
+                onChange={(date: Date | null) => setStartDate(date)}
                 dateFormat="yyyy-MM-dd"
                 className="px-3 py-1 border rounded"
                 maxDate={endDate || new Date()}
@@ -569,7 +569,7 @@ export const StatsPage: React.FC = () => {
               <label className="text-sm text-slate-600 mr-2">{t.stats.endDate}</label>
               <DatePicker
                 selected={endDate}
-                onChange={(date) => setEndDate(date)}
+                onChange={(date: Date | null) => setEndDate(date)}
                 dateFormat="yyyy-MM-dd"
                 className="px-3 py-1 border rounded"
                 minDate={startDate}

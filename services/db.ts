@@ -252,7 +252,11 @@ export async function saveProblemReport(problemId: string, reportText: string): 
     .single();
 
   if (ownershipError) throw ownershipError;
-  if (!ownership || ownership.sessions.user_id !== userId) {
+  const ownershipSessions: any = (ownership as any)?.sessions;
+  const ownershipSessionUserId = Array.isArray(ownershipSessions)
+    ? ownershipSessions[0]?.user_id
+    : ownershipSessions?.user_id;
+  if (!ownership || ownershipSessionUserId !== userId) {
     throw new Error('이 문제에 대한 접근 권한이 없습니다.');
   }
 
@@ -276,7 +280,11 @@ export async function fetchProblemReport(problemId: string): Promise<string | nu
     .single();
 
   if (problemError) throw problemError;
-  if (!problemRow || problemRow.sessions.user_id !== userId) {
+  const problemSessions: any = (problemRow as any)?.sessions;
+  const problemSessionUserId = Array.isArray(problemSessions)
+    ? problemSessions[0]?.user_id
+    : problemSessions?.user_id;
+  if (!problemRow || problemSessionUserId !== userId) {
     throw new Error('이 문제에 대한 접근 권한이 없습니다.');
   }
 
@@ -800,6 +808,29 @@ export async function findTaxonomyByDepth(
   
   if (error) {
     if (error.code === 'PGRST116') {
+      if (language === 'en') {
+        let queryEn = supabase.from('taxonomy').select('*');
+        if (depth1) {
+          queryEn = queryEn.eq('depth1_en', depth1);
+        }
+        if (depth2) {
+          queryEn = queryEn.eq('depth2_en', depth2);
+        }
+        if (depth3) {
+          queryEn = queryEn.eq('depth3_en', depth3);
+        }
+        if (depth4) {
+          queryEn = queryEn.eq('depth4_en', depth4);
+        }
+        const { data: dataEn, error: errorEn } = await queryEn.single();
+        if (errorEn) {
+          if (errorEn.code === 'PGRST116') {
+            return null;
+          }
+          throw errorEn;
+        }
+        return dataEn as Taxonomy;
+      }
       // 레코드를 찾을 수 없음
       return null;
     }
