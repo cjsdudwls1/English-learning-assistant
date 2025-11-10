@@ -84,7 +84,6 @@ export interface Translations {
     selectedAnswer: string;
     wrongExplanation: string;
     noExplanation: string;
-    nextProblem: string;
     timeSpent: string;
   };
   
@@ -249,11 +248,8 @@ export const translations: Record<Language, Translations> = {
       selectedAnswer: '선택하신 답 해설',
       wrongExplanation: '선택하신 답 오답 해설',
       noExplanation: '이 선택지가 왜 오답인지에 대한 설명이 없습니다.',
-      nextProblem: '다음 문제',
       timeSpent: '소요 시간',
-      viewResults: '결과 보기',
       summaryTitle: '유사 문제 풀이 결과',
-      answerLocked: '답안을 저장했습니다. 다음 문제 버튼을 눌러주세요.',
     },
     session: {
       title: '세션 상세',
@@ -413,11 +409,8 @@ export const translations: Record<Language, Translations> = {
       selectedAnswer: 'Your Answer Explanation',
       wrongExplanation: 'Wrong Answer Explanation',
       noExplanation: 'No explanation available for why this choice is incorrect.',
-      nextProblem: 'Next Problem',
       timeSpent: 'Time Spent',
-      viewResults: 'View Results',
       summaryTitle: 'Practice Summary',
-      answerLocked: 'Your answer has been recorded. Click the button to proceed.',
     },
     session: {
       title: 'Session Details',

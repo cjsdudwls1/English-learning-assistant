@@ -13,6 +13,7 @@ interface GeneratedProblem {
   choices: Choice[];
   explanation?: string;
   wrong_explanations?: Record<string, string>;
+  wrong_explanation?: Record<string, string>;
   correct_answer_index?: number;
   classification?: {
     depth1?: string;
@@ -37,7 +38,6 @@ interface GeneratedProblemCardProps {
   mode?: 'practice' | 'review';
   onResult?: (result: GeneratedProblemResult) => void;
   result?: GeneratedProblemResult;
-  isLast?: boolean;
 }
 
 export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({ 
@@ -49,7 +49,6 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
   mode = 'practice',
   onResult,
   result,
-  isLast = false,
 }) => {
   const { language } = useLanguage();
   const t = getTranslation(language);
@@ -59,6 +58,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
   const [hasRecorded, setHasRecorded] = useState(false);
+  const [hasAutoAdvanced, setHasAutoAdvanced] = useState(false);
   
   // 문제 시작 시 타이머 시작
   useEffect(() => {
@@ -94,6 +94,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
       setIsCompleted(false);
       setTimeSpent(0);
       setHasRecorded(false);
+      setHasAutoAdvanced(false);
       startTimeRef.current = null;
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -141,28 +142,39 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
       intervalRef.current = null;
     }
     
-    // 시간 계산 및 DB 저장
-    if (startTimeRef.current && problemId) {
-      const elapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
-      setTimeSpent(elapsedSeconds);
-      
-      const isCorrect = choiceIndex === correctIndex;
-      
-      if (!hasRecorded) {
-        // DB에 완료 시간 저장
-        try {
-          await completeProblemSolving(problemId, isCorrect, elapsedSeconds);
-          setHasRecorded(true);
-        } catch (error) {
-          console.error('Error saving problem solving time:', error);
-        }
-      }
+    const now = Date.now();
+    const elapsedSeconds = startTimeRef.current
+      ? Math.max(0, Math.floor((now - startTimeRef.current) / 1000))
+      : timeSpent;
+    setTimeSpent(elapsedSeconds);
 
-      onResult?.({
-        selectedIndex: choiceIndex,
-        isCorrect,
-        timeSpentSeconds: elapsedSeconds,
-      });
+    const isCorrect = choiceIndex === correctIndex;
+
+    // 시간 계산 및 DB 저장
+    if (!hasRecorded && problemId) {
+      try {
+        await completeProblemSolving(problemId, isCorrect, elapsedSeconds);
+        setHasRecorded(true);
+      } catch (error) {
+        console.error('Error saving problem solving time:', error);
+      }
+    }
+
+    onResult?.({
+      selectedIndex: choiceIndex,
+      isCorrect,
+      timeSpentSeconds: elapsedSeconds,
+    });
+
+    if (!hasAutoAdvanced && onNext) {
+      setHasAutoAdvanced(true);
+      window.setTimeout(() => {
+        try {
+          onNext();
+        } catch (error) {
+          console.error('Error advancing to next problem:', error);
+        }
+      }, 200);
     }
   };
 
@@ -243,6 +255,11 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
       return null;
     }
 
+    const explanationMap =
+      problem.wrong_explanations ??
+      problem.wrong_explanation ??
+      {};
+
     return (
       <div className="mt-4 space-y-3">
         {problem.explanation && (
@@ -274,9 +291,9 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
                 ? 'text-green-700 dark:text-green-300'
                 : 'text-red-700 dark:text-red-300'
             }`}>
-              {problem.wrong_explanations[reviewSelectedIndex.toString()] || 
+              {explanationMap[reviewSelectedIndex.toString()] ||
                (reviewIsCorrect 
-                 ? problem.explanation 
+                 ? problem.explanation
                  : t.practice.noExplanation)}
             </p>
           </div>
@@ -322,16 +339,6 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
       {mode === 'review' && explanationContent}
 
       {/* 다음 문제 버튼 */}
-      {mode === 'practice' && isCompleted && onNext && (
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={onNext}
-            className="px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
-          >
-            {isLast ? t.practice.viewResults : t.practice.nextProblem}
-          </button>
-        </div>
-      )}
     </div>
   );
 };
