@@ -40,7 +40,7 @@ export const StatsPage: React.FC = () => {
   const [exampleSentences, setExampleSentences] = useState<string[]>([]);
   const [showExampleModal, setShowExampleModal] = useState(false);
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
-  const [quizResults, setQuizResults] = useState<GeneratedProblemResult[]>([]);
+  const [quizResults, setQuizResults] = useState<(GeneratedProblemResult | null)[]>([]);
   const [showResultSummary, setShowResultSummary] = useState(false);
 
   const loadData = async (showLoading: boolean = false) => {
@@ -391,7 +391,7 @@ export const StatsPage: React.FC = () => {
       if (result.success) {
         setGeneratedProblems(result.problems || []);
         setCurrentProblemIndex(0); // 첫 번째 문제부터 시작
-        setQuizResults([]);
+        setQuizResults(new Array(result.problems?.length || 0).fill(null));
         setShowResultSummary(false);
       } else {
         throw new Error(result.error || (language === 'ko' ? '유사 문제 생성 실패' : 'Failed to generate similar problems'));
@@ -436,8 +436,8 @@ export const StatsPage: React.FC = () => {
       return null;
     }
 
-    const validResults = quizResults.filter(Boolean);
-    const correctCount = validResults.filter(result => result?.isCorrect).length;
+    const validResults = quizResults.filter((result): result is GeneratedProblemResult => Boolean(result));
+    const correctCount = validResults.filter(result => result.isCorrect).length;
     const totalCount = generatedProblems.length;
     const totalTime = validResults.reduce((sum, result) => sum + (result?.timeSpentSeconds || 0), 0);
 
@@ -725,7 +725,6 @@ export const StatsPage: React.FC = () => {
                 isActive={true}
                 onNext={handleNextProblem}
                 onResult={(result) => handleProblemResult(currentProblemIndex, result)}
-                isLast={currentProblemIndex === generatedProblems.length - 1}
               />
               {generatedProblems.length > 1 && (
                 <div className="text-center text-sm text-slate-500 dark:text-slate-400">
@@ -758,7 +757,7 @@ export const StatsPage: React.FC = () => {
                     index={idx}
                     problemId={problem.id}
                     mode="review"
-                    result={quizResults[idx]}
+                    result={quizResults[idx] ?? undefined}
                   />
                 ))}
               </div>
