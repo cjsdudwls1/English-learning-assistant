@@ -26,30 +26,35 @@ export interface Translations {
   };
   
   // 통계 페이지
-    stats: {
-      title: string;
-      statsByType: string;
-      periodSetting: string;
-      startDate: string;
-      endDate: string;
-      oneMonth: string;
-      threeMonths: string;
-      sixMonths: string;
-      thisYear: string;
-      total: string;
-      correct: string;
-      incorrect: string;
-      accuracy: string;
-      category: string;
-      reclassifyAll: string;
-      reclassifying: string;
-      generateSimilar: string;
-      generating: string;
-      selectCategory: string;
-      selectLeafCategory: string;
-      generatedProblems: string;
-      close: string;
-    };
+  stats: {
+    title: string;
+    statsByType: string;
+    periodSetting: string;
+    startDate: string;
+    endDate: string;
+    oneMonth: string;
+    threeMonths: string;
+    sixMonths: string;
+    thisYear: string;
+    total: string;
+    correct: string;
+    incorrect: string;
+    accuracy: string;
+    category: string;
+    reclassifyAll: string;
+    reclassifying: string;
+    generateSimilar: string;
+    generating: string;
+    selectCategory: string;
+    selectLeafCategory: string;
+    generatedProblems: string;
+    close: string;
+    chartOverview: string;
+    correctVsIncorrectChart: string;
+    categoryDistributionChart: string;
+    noData: string;
+    unclassified: string;
+  };
   
   // 최근 문제 페이지
   recent: {
@@ -215,6 +220,11 @@ export const translations: Record<Language, Translations> = {
       selectLeafCategory: '최하위 depth의 문제 유형을 선택해주세요.',
       generatedProblems: '생성된 유사 문제',
       close: '닫기',
+      chartOverview: '차트로 보는 통계',
+      correctVsIncorrectChart: '정오답 비율',
+      categoryDistributionChart: '상위 유형별 정오답',
+      noData: '표시할 데이터가 없습니다.',
+      unclassified: '미분류',
     },
     recent: {
       title: '최근 업로드한 문제',
@@ -371,6 +381,11 @@ export const translations: Record<Language, Translations> = {
       selectLeafCategory: 'Please select a leaf category (lowest depth).',
       generatedProblems: 'Generated Similar Problems',
       close: 'Close',
+      chartOverview: 'Statistics Overview',
+      correctVsIncorrectChart: 'Correct vs Incorrect',
+      categoryDistributionChart: 'Top Categories',
+      noData: 'No data available.',
+      unclassified: 'Unclassified',
     },
     recent: {
       title: 'Recently Uploaded Problems',
