@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
@@ -8,6 +8,7 @@ import { fetchAnalyzingSessions, fetchPendingLabelingSessions } from '../service
 import { AnalyzingCard } from '../components/AnalyzingCard';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import { GeneratedProblemCard } from '../components/GeneratedProblemCard';
+import type { GeneratedProblemResult } from '../components/GeneratedProblemCard';
 import type { SessionWithProblems } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -39,6 +40,8 @@ export const StatsPage: React.FC = () => {
   const [exampleSentences, setExampleSentences] = useState<string[]>([]);
   const [showExampleModal, setShowExampleModal] = useState(false);
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
+  const [quizResults, setQuizResults] = useState<GeneratedProblemResult[]>([]);
+  const [showResultSummary, setShowResultSummary] = useState(false);
 
   const loadData = async (showLoading: boolean = false) => {
     try {
@@ -388,6 +391,8 @@ export const StatsPage: React.FC = () => {
       if (result.success) {
         setGeneratedProblems(result.problems || []);
         setCurrentProblemIndex(0); // 첫 번째 문제부터 시작
+        setQuizResults([]);
+        setShowResultSummary(false);
       } else {
         throw new Error(result.error || (language === 'ko' ? '유사 문제 생성 실패' : 'Failed to generate similar problems'));
       }
@@ -402,6 +407,53 @@ export const StatsPage: React.FC = () => {
   const handleNodeClick = () => {
     // 숫자 클릭 시 아무 동작도 하지 않음 (유사 문제 생성은 체크박스 선택 후 버튼 클릭)
   };
+
+  const handleProblemResult = useCallback((problemIndex: number, result: GeneratedProblemResult) => {
+    setQuizResults(prev => {
+      const next = [...prev];
+      next[problemIndex] = result;
+      return next;
+    });
+  }, []);
+
+  const handleNextProblem = useCallback(() => {
+    if (currentProblemIndex < generatedProblems.length - 1) {
+      setCurrentProblemIndex(prev => prev + 1);
+    } else {
+      setShowResultSummary(true);
+    }
+  }, [currentProblemIndex, generatedProblems.length]);
+
+  const handleCloseGeneratedProblems = useCallback(() => {
+    setGeneratedProblems([]);
+    setQuizResults([]);
+    setCurrentProblemIndex(0);
+    setShowResultSummary(false);
+  }, []);
+
+  const summaryStats = useMemo(() => {
+    if (!showResultSummary || generatedProblems.length === 0) {
+      return null;
+    }
+
+    const validResults = quizResults.filter(Boolean);
+    const correctCount = validResults.filter(result => result?.isCorrect).length;
+    const totalCount = generatedProblems.length;
+    const totalTime = validResults.reduce((sum, result) => sum + (result?.timeSpentSeconds || 0), 0);
+
+    return {
+      correctCount,
+      incorrectCount: totalCount - correctCount,
+      totalCount,
+      totalTime,
+    };
+  }, [generatedProblems.length, quizResults, showResultSummary]);
+
+  const formatSeconds = useCallback((seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
 
   const totals = useMemo(() => {
     const correct = rows.reduce((s, r) => s + (r.correct_count || 0), 0);
@@ -656,40 +708,62 @@ export const StatsPage: React.FC = () => {
               {t.stats.generatedProblems} ({generatedProblems.length}{language === 'ko' ? '개' : ''})
             </h3>
             <button
-              onClick={() => setGeneratedProblems([])}
+              onClick={handleCloseGeneratedProblems}
               className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
             >
               {t.common.close}
             </button>
           </div>
 
-          <div className="space-y-4 md:max-h-[70vh] md:overflow-auto">
-            {generatedProblems.length > 0 && (
+          {!showResultSummary && (
+            <div className="space-y-4 md:max-h-[70vh] md:overflow-auto">
               <GeneratedProblemCard
                 key={currentProblemIndex}
                 problem={generatedProblems[currentProblemIndex]}
                 index={currentProblemIndex}
                 problemId={generatedProblems[currentProblemIndex].id}
                 isActive={true}
-                onNext={() => {
-                  if (currentProblemIndex < generatedProblems.length - 1) {
-                    setCurrentProblemIndex(currentProblemIndex + 1);
-                  } else {
-                    // 모든 문제 완료
-                    setGeneratedProblems([]);
-                    setCurrentProblemIndex(0);
-                  }
-                }}
+                onNext={handleNextProblem}
+                onResult={(result) => handleProblemResult(currentProblemIndex, result)}
+                isLast={currentProblemIndex === generatedProblems.length - 1}
               />
-            )}
-            {generatedProblems.length > 1 && (
-              <div className="text-center text-sm text-slate-500 dark:text-slate-400">
-                {language === 'ko' 
-                  ? `문제 ${currentProblemIndex + 1} / ${generatedProblems.length}`
-                  : `Problem ${currentProblemIndex + 1} / ${generatedProblems.length}`}
+              {generatedProblems.length > 1 && (
+                <div className="text-center text-sm text-slate-500 dark:text-slate-400">
+                  {language === 'ko' 
+                    ? `문제 ${currentProblemIndex + 1} / ${generatedProblems.length}`
+                    : `Problem ${currentProblemIndex + 1} / ${generatedProblems.length}`}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showResultSummary && summaryStats && (
+            <div className="space-y-4 md:max-h-[70vh] md:overflow-auto">
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-lg flex flex-wrap items-center justify-between gap-3">
+                <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+                  {t.practice.summaryTitle}
+                </h4>
+                <div className="flex flex-wrap gap-4 text-sm text-slate-600 dark:text-slate-300">
+                  <span>{t.practice.correct}: {summaryStats.correctCount}</span>
+                  <span>{t.practice.incorrect}: {summaryStats.incorrectCount}</span>
+                  <span>{t.practice.timeSpent}: {formatSeconds(summaryStats.totalTime)}</span>
+                </div>
               </div>
-            )}
-          </div>
+
+              <div className="space-y-4">
+                {generatedProblems.map((problem, idx) => (
+                  <GeneratedProblemCard
+                    key={problem.id ?? idx}
+                    problem={problem}
+                    index={idx}
+                    problemId={problem.id}
+                    mode="review"
+                    result={quizResults[idx]}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
