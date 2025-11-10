@@ -1,66 +1,37 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-};
+import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
+import { requireEnv } from '../_shared/env.ts'
+import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
+import { fetchTaxonomyByCode } from '../_shared/taxonomy.ts'
 
 serve(async (req) => {
-  // OPTIONS 요청 처리
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return handleOptions();
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { 
-      status: 405, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    });
+    return errorResponse('Method not allowed', 405);
   }
 
   try {
     const { code, userId, language } = await req.json();
 
     if (!code || !userId) {
-      return new Response(JSON.stringify({ error: 'Missing required fields: code, userId' }), { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
+      return errorResponse('Missing required fields: code, userId', 400);
     }
 
-    // Supabase 클라이언트 생성
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing Supabase environment variables');
-    }
-
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createServiceSupabaseClient();
+    const geminiApiKey = requireEnv('GEMINI_API_KEY');
 
     // 1. Taxonomy 정보 조회
     console.log('Step 1: Fetching taxonomy for code:', code);
-    const { data: taxonomy, error: taxonomyError } = await supabase
-      .from('taxonomy')
-      .select('*')
-      .eq('code', code)
-      .single();
+    const taxonomy = await fetchTaxonomyByCode(supabase, code);
 
-    if (taxonomyError || !taxonomy) {
-      console.error('Taxonomy not found:', taxonomyError);
-      return new Response(JSON.stringify({ error: 'Taxonomy not found' }), { 
-        status: 404, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
+    if (!taxonomy) {
+      console.error('Taxonomy not found for code:', code);
+      return errorResponse('Taxonomy not found', 404);
     }
 
     // 2. 사용자 프로필 정보 조회 (연령, 학년)
@@ -70,6 +41,10 @@ serve(async (req) => {
       .select('age, grade')
       .eq('user_id', userId)
       .single();
+
+    if (profileError && profileError.code !== 'PGRST116') {
+      throw profileError;
+    }
 
     const userAge = profile?.age ? parseInt(profile.age) || 14 : 14; // 기본값: 14세
     const userGrade = profile?.grade || '중학생'; // 기본값: 중학생
@@ -217,27 +192,18 @@ Output in the following JSON format:
       throw new Error('AI response missing required fields: wrong_example or correct_example');
     }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
+    return jsonResponse({
+      success: true,
       example: {
         wrong_example: result.wrong_example || '',
         correct_example: result.correct_example || '',
-        explanation: result.explanation || ''
-      }
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        explanation: result.explanation || '',
+      },
     });
   } catch (error: any) {
     console.error('Error in generate-example function:', error);
-    
-    return new Response(JSON.stringify({ 
-      error: error.message || 'Internal server error',
-      details: error.toString()
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+
+    return errorResponse(error.message || 'Internal server error', 500, error.toString());
   }
 });
 

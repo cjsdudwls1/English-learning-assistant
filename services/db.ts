@@ -1,34 +1,12 @@
 import { supabase } from './supabaseClient';
 import type { ProblemItem, SessionWithProblems, Taxonomy } from '../types';
 import { isCorrectFromMark, normalizeMark } from './marks';
+import { getCurrentUserId } from './db/auth';
+import { findTaxonomyByDepth, fetchTaxonomyByCode, fetchAllTaxonomy } from './db/taxonomy';
 
-export async function getCurrentUserId(): Promise<string> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) {
-    throw new Error('로그인이 필요합니다.');
-  }
-  return data.user.id;
-}
-
-export async function uploadProblemImage(file: File): Promise<string> {
-  const userId = await getCurrentUserId();
-  const timestamp = Date.now();
-  const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-  
-  // 사용자 이메일 가져오기
-  const { data: userData } = await supabase.auth.getUser();
-  const email = userData.user?.email || userId; // 이메일이 없으면 fallback to userId
-  const emailLocal = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_'); // @ 앞부분 추출 및 sanitize
-  const path = `${emailLocal}/${timestamp}_${safeName}`;
-  
-  const { data, error } = await supabase.storage.from('problem-images').upload(path, file, {
-    cacheControl: '3600',
-    upsert: false,
-  });
-  if (error) throw error;
-  const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(data.path);
-  return urlData.publicUrl;
-}
+export { getCurrentUserId } from './db/auth';
+export { uploadProblemImage } from './db/storage';
+export { findTaxonomyByDepth, fetchTaxonomyByCode, fetchAllTaxonomy } from './db/taxonomy';
 
 export async function createSession(imageUrl: string): Promise<string> {
   const userId = await getCurrentUserId();
@@ -544,8 +522,10 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
       };
     })
     .filter((session) => {
-      // 분석 중인 세션: problem_count === 0 (문제가 아직 저장되지 않음) 또는 status === 'processing'
-      return session.problem_count === 0 || session.status === 'processing';
+      const status = session.status ?? 'pending';
+      const isActiveStatus = status === 'processing' || status === 'pending';
+      // 분석 중으로 간주: 문제 데이터가 아직 없고, 상태가 진행 중일 때만
+      return session.problem_count === 0 && isActiveStatus;
     });
   
   return analyzingSessions;
@@ -697,162 +677,6 @@ export async function quickUpdateLabels(sessionId: string, problemId: string, ma
 
 // Taxonomy 조회 함수들
 
-/**
- * code로 taxonomy 조회
- */
-export async function fetchTaxonomyByCode(code: string): Promise<Taxonomy | null> {
-  const { data, error } = await supabase
-    .from('taxonomy')
-    .select('*')
-    .eq('code', code)
-    .single();
-  
-  if (error) {
-    if (error.code === 'PGRST116') {
-      // 레코드를 찾을 수 없음
-      return null;
-    }
-    throw error;
-  }
-  
-  return data as Taxonomy;
-}
-
-/**
- * 영어 값을 한국어 값으로 역변환하는 헬퍼 함수
- */
-async function convertEnglishToKorean(
-  enDepth1: string,
-  enDepth2: string,
-  enDepth3: string,
-  enDepth4: string
-): Promise<{ depth1: string; depth2: string; depth3: string; depth4: string }> {
-  // taxonomy에서 모든 매핑 정보 로드
-  const { data: taxonomyData } = await supabase
-    .from('taxonomy')
-    .select('depth1, depth2, depth3, depth4, depth1_en, depth2_en, depth3_en, depth4_en');
-  
-  // 영어 -> 한국어 역매핑 맵 생성
-  const enToKo1 = new Map<string, string>();
-  const enToKo2 = new Map<string, string>();
-  const enToKo3 = new Map<string, string>();
-  const enToKo4 = new Map<string, string>();
-  
-  for (const row of taxonomyData || []) {
-    if (row.depth1 && row.depth1_en) {
-      enToKo1.set(row.depth1_en, row.depth1);
-    }
-    if (row.depth2 && row.depth2_en) {
-      enToKo2.set(row.depth2_en, row.depth2);
-    }
-    if (row.depth3 && row.depth3_en) {
-      enToKo3.set(row.depth3_en, row.depth3);
-    }
-    if (row.depth4 && row.depth4_en) {
-      enToKo4.set(row.depth4_en, row.depth4);
-    }
-  }
-  
-  return {
-    depth1: enToKo1.get(enDepth1) || enDepth1,
-    depth2: enToKo2.get(enDepth2) || enDepth2,
-    depth3: enToKo3.get(enDepth3) || enDepth3,
-    depth4: enToKo4.get(enDepth4) || enDepth4,
-  };
-}
-
-/**
- * depth1~4로 taxonomy 조회하여 code 찾기
- * @param language 'ko'일 때는 한국어 컬럼으로, 'en'일 때는 영어 값을 한국어로 변환 후 조회
- */
-export async function findTaxonomyByDepth(
-  depth1: string,
-  depth2: string,
-  depth3: string,
-  depth4: string,
-  language: 'ko' | 'en' = 'ko'
-): Promise<Taxonomy | null> {
-  let koDepth1 = depth1;
-  let koDepth2 = depth2;
-  let koDepth3 = depth3;
-  let koDepth4 = depth4;
-  
-  // 영어 모드일 때는 영어 값을 한국어 값으로 변환
-  if (language === 'en') {
-    const converted = await convertEnglishToKorean(depth1, depth2, depth3, depth4);
-    koDepth1 = converted.depth1;
-    koDepth2 = converted.depth2;
-    koDepth3 = converted.depth3;
-    koDepth4 = converted.depth4;
-  }
-  
-  // 한국어 컬럼으로 조회 (taxonomy는 항상 한국어 컬럼으로 저장됨)
-  let query = supabase
-    .from('taxonomy')
-    .select('*');
-  
-  if (koDepth1) {
-    query = query.eq('depth1', koDepth1);
-  }
-  if (koDepth2) {
-    query = query.eq('depth2', koDepth2);
-  }
-  if (koDepth3) {
-    query = query.eq('depth3', koDepth3);
-  }
-  if (koDepth4) {
-    query = query.eq('depth4', koDepth4);
-  }
-  
-  const { data, error } = await query.single();
-  
-  if (error) {
-    if (error.code === 'PGRST116') {
-      if (language === 'en') {
-        let queryEn = supabase.from('taxonomy').select('*');
-        if (depth1) {
-          queryEn = queryEn.eq('depth1_en', depth1);
-        }
-        if (depth2) {
-          queryEn = queryEn.eq('depth2_en', depth2);
-        }
-        if (depth3) {
-          queryEn = queryEn.eq('depth3_en', depth3);
-        }
-        if (depth4) {
-          queryEn = queryEn.eq('depth4_en', depth4);
-        }
-        const { data: dataEn, error: errorEn } = await queryEn.single();
-        if (errorEn) {
-          if (errorEn.code === 'PGRST116') {
-            return null;
-          }
-          throw errorEn;
-        }
-        return dataEn as Taxonomy;
-      }
-      // 레코드를 찾을 수 없음
-      return null;
-    }
-    throw error;
-  }
-  
-  return data as Taxonomy;
-}
-
-/**
- * 모든 taxonomy 목록 조회 (캐싱용)
- */
-export async function fetchAllTaxonomy(): Promise<Taxonomy[]> {
-  const { data, error } = await supabase
-    .from('taxonomy')
-    .select('*')
-    .order('code');
-  
-  if (error) throw error;
-  
-  return (data || []) as Taxonomy[];
-}
 
 /**
  * 문제 풀이 시간 추적 시작

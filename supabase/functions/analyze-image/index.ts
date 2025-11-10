@@ -1,6 +1,10 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
+import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
+import { requireEnv } from '../_shared/env.ts'
+import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
+import { loadTaxonomyData, findTaxonomyByDepth } from '../_shared/taxonomy.ts'
 
 // Taxonomy 데이터를 DB에서 동적으로 로드하는 함수
 async function loadTaxonomyData(supabase: any, language: 'ko' | 'en' = 'ko'): Promise<{ structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }> {
@@ -221,89 +225,53 @@ function normalizeMark(raw: unknown): 'O' | 'X' {
 }
 
 serve(async (req) => {
-  // CORS 헤더
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
-    'Access-Control-Max-Age': '86400',
-  };
-
-  // OPTIONS 요청 처리
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return handleOptions();
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { 
-      status: 405, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    });
+    return errorResponse('Method not allowed', 405);
   }
 
-  let supabase: ReturnType<typeof createClient> | undefined;
+  let supabase = createServiceSupabaseClient();
   let createdSessionId: string | undefined;
 
   try {
-    console.log('Edge Function called:', { 
-      method: req.method, 
+    console.log('Edge Function called:', {
+      method: req.method,
       url: req.url,
-      hasBody: !!req.body 
+      hasBody: !!req.body,
     });
 
     const { imageBase64, mimeType, userId, fileName, language } = await req.json();
-    console.log('Request data:', { 
-      hasImageBase64: !!imageBase64, 
+    console.log('Request data:', {
+      hasImageBase64: !!imageBase64,
       mimeType,
       userId,
       fileName,
-      language
+      language,
     });
-    
-    // 언어 설정 (기본값: ko)
+
+    if (!imageBase64 || !userId) {
+      console.log('Missing required fields');
+      return errorResponse('Missing required fields: imageBase64, userId', 400);
+    }
+
+    const geminiApiKey = requireEnv('GEMINI_API_KEY');
+
     let userLanguage: 'ko' | 'en' = language === 'en' ? 'en' : 'ko';
-    
-    // 프로필에서 언어 설정 가져오기 (language가 없으면)
+
     if (!language) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('language')
         .eq('user_id', userId)
         .single();
-      
-      if (profile?.language && (profile.language === 'ko' || profile.language === 'en')) {
+
+      if (profile?.language === 'ko' || profile?.language === 'en') {
         userLanguage = profile.language as 'ko' | 'en';
       }
     }
-
-    if (!imageBase64 || !userId) {
-      console.log('Missing required fields');
-      return new Response(JSON.stringify({ error: 'Missing required fields: imageBase64, userId' }), { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
-    }
-
-    // Supabase 클라이언트 생성
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    
-    console.log('Environment variables:', {
-      hasSupabaseUrl: !!supabaseUrl,
-      hasSupabaseServiceKey: !!supabaseServiceKey,
-      hasGeminiApiKey: !!geminiApiKey
-    });
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing Supabase environment variables');
-    }
-
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
-    }
-
-    supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // 1. 이미지를 Storage에 업로드
     console.log('Step 1: Upload image to storage...');
@@ -346,13 +314,10 @@ serve(async (req) => {
     console.log('Step 2 completed: Session created with ID', createdSessionId);
 
     // 세션 생성 후 즉시 sessionId 반환 (분석은 백그라운드에서 계속)
-    const response = new Response(JSON.stringify({ 
-      success: true, 
+    const response = jsonResponse({
+      success: true,
       sessionId: createdSessionId,
-      message: 'Session created, analysis in progress'
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      message: 'Session created, analysis in progress',
     });
 
     // 백그라운드에서 분석 계속 진행
@@ -449,7 +414,7 @@ serve(async (req) => {
       }
       
       // 유효한 값으로만 taxonomy 조회
-      const taxonomy = await findTaxonomyByDepth(
+          const taxonomy = await findTaxonomyByDepth(
         supabase,
         validDepth1,
         validDepth2,
@@ -550,12 +515,6 @@ serve(async (req) => {
       }
     }
     
-    return new Response(JSON.stringify({ 
-      error: error.message || 'Internal server error',
-      details: error.toString()
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return errorResponse(error.message || 'Internal server error', 500, error.toString());
   }
 });
