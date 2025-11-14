@@ -873,11 +873,28 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
                   },
                   cutout: '60%', // 중앙 공간을 더 크게 만들어 텍스트가 잘 보이도록
                   maintainAspectRatio: true,
+                  layout: {
+                    padding: {
+                      top: 0,
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                    },
+                  },
                 }}
               />
-              {/* 중앙 표시 - 정확한 중앙 정렬 */}
+              {/* 도넛차트 구멍 중앙에 정확히 위치 - 차트의 실제 중앙 (legend를 제외한 차트 영역) */}
               {doughnutCenterData && (
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center pointer-events-none z-10">
+                <div 
+                  className="absolute flex flex-col items-center justify-center pointer-events-none z-10"
+                  style={{
+                    // Chart.js는 차트를 컨테이너의 중앙에 배치하지만, legend가 bottom에 있으면 차트가 위로 올라감
+                    // 차트의 실제 중앙을 계산: 컨테이너 높이에서 legend 높이를 빼고, 그 중앙에 위치
+                    left: '50%',
+                    top: 'calc(50% - 1.5rem)', // legend가 bottom에 있으므로 약간 위로 조정
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                >
                   <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-1 text-center whitespace-nowrap">
                     {doughnutCenterData.label}
                   </span>
