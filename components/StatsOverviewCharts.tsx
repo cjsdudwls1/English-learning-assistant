@@ -871,28 +871,30 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
                     animateScale: true,
                     duration: 800,
                   },
+                  cutout: '60%', // 중앙 공간을 더 크게 만들어 텍스트가 잘 보이도록
+                  maintainAspectRatio: true,
                 }}
               />
-              {/* 중앙 표시 */}
+              {/* 중앙 표시 - 정확한 중앙 정렬 */}
               {doughnutCenterData && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center pointer-events-none z-10">
+                  <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-1 text-center whitespace-nowrap">
                     {doughnutCenterData.label}
                   </span>
-                  <span className="text-3xl font-bold text-slate-800 dark:text-slate-100">
+                  <span className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100 text-center">
                     {doughnutCenterData.value}
                   </span>
                   {doughnutCenterData.subValues && (
-                    <div className="mt-2 flex gap-4 text-xs">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: palette.correct }} />
-                        <span className="text-slate-600 dark:text-slate-400">
+                    <div className="mt-2 flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs sm:text-sm">
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: palette.correct }} />
+                        <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           {labels.correct}: {doughnutCenterData.subValues[0].value}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: palette.incorrect }} />
-                        <span className="text-slate-600 dark:text-slate-400">
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: palette.incorrect }} />
+                        <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           {labels.incorrect}: {doughnutCenterData.subValues[1].value}
                         </span>
                       </div>
