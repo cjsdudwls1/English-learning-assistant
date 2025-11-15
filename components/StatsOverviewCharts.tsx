@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -86,65 +86,6 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
   const [drillDownState, setDrillDownState] = useState<DrillDownState>({ type: 'overview' });
   const [doughnutChartRef, setDoughnutChartRef] = useState<any>(null);
   const [barChartRef, setBarChartRef] = useState<any>(null);
-  const [chartCenterPosition, setChartCenterPosition] = useState<{ top: string; left: string } | null>(null);
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-
-  // 차트의 실제 중앙 위치 계산
-  useEffect(() => {
-    if (!doughnutChartRef || !chartContainerRef.current) return;
-
-    const updateCenterPosition = () => {
-      try {
-        const chart = doughnutChartRef;
-        if (!chart || !chart.canvas) return;
-
-        // Chart.js의 chartArea는 실제 차트가 그려지는 영역
-        const chartArea = chart.chartArea;
-        if (!chartArea) return;
-
-        const container = chartContainerRef.current;
-        if (!container) return;
-
-        const containerRect = container.getBoundingClientRect();
-        const canvasRect = chart.canvas.getBoundingClientRect();
-
-        // 차트 영역의 중앙 계산 (chartArea 기준)
-        const chartCenterX = canvasRect.left + (chartArea.left + chartArea.right) / 2;
-        const chartCenterY = canvasRect.top + (chartArea.top + chartArea.bottom) / 2;
-
-        // 컨테이너 기준 상대 위치 계산
-        const relativeX = chartCenterX - containerRect.left;
-        const relativeY = chartCenterY - containerRect.top;
-
-        setChartCenterPosition({
-          left: `${relativeX}px`,
-          top: `${relativeY}px`,
-        });
-      } catch (error) {
-        console.error('Error calculating chart center:', error);
-        // 폴백: 컨테이너 중앙 사용
-        setChartCenterPosition({
-          left: '50%',
-          top: '50%',
-        });
-      }
-    };
-
-    // 차트가 렌더링된 후 위치 계산
-    const timer = setTimeout(updateCenterPosition, 100);
-    
-    // 리사이즈 이벤트 리스너 추가
-    window.addEventListener('resize', updateCenterPosition);
-    
-    // 애니메이션 완료 후 위치 재계산
-    const animationTimer = setTimeout(updateCenterPosition, 900);
-
-    return () => {
-      clearTimeout(timer);
-      clearTimeout(animationTimer);
-      window.removeEventListener('resize', updateCenterPosition);
-    };
-  }, [doughnutChartRef, doughnutData, drillDownState]);
 
   // 뒤로가기 핸들러
   const handleBack = useCallback(() => {
@@ -890,7 +831,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
             {doughnutTitle}
           </h3>
           {doughnutData ? (
-            <div ref={chartContainerRef} className="relative h-64">
+            <div className="relative h-64">
               <Doughnut
                 ref={setDoughnutChartRef}
                 data={doughnutData}
@@ -929,37 +870,6 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
                     animateRotate: true,
                     animateScale: true,
                     duration: 800,
-                    onComplete: () => {
-                      // 애니메이션 완료 후 위치 재계산
-                      setTimeout(() => {
-                        if (doughnutChartRef && chartContainerRef.current) {
-                          try {
-                            const chart = doughnutChartRef;
-                            if (!chart || !chart.canvas) return;
-
-                            const chartArea = chart.chartArea;
-                            if (!chartArea) return;
-
-                            const container = chartContainerRef.current;
-                            const containerRect = container.getBoundingClientRect();
-                            const canvasRect = chart.canvas.getBoundingClientRect();
-
-                            const chartCenterX = canvasRect.left + (chartArea.left + chartArea.right) / 2;
-                            const chartCenterY = canvasRect.top + (chartArea.top + chartArea.bottom) / 2;
-
-                            const relativeX = chartCenterX - containerRect.left;
-                            const relativeY = chartCenterY - containerRect.top;
-
-                            setChartCenterPosition({
-                              left: `${relativeX}px`,
-                              top: `${relativeY}px`,
-                            });
-                          } catch (error) {
-                            console.error('Error calculating chart center:', error);
-                          }
-                        }
-                      }, 50);
-                    },
                   },
                   cutout: '60%', // 중앙 공간을 더 크게 만들어 텍스트가 잘 보이도록
                   maintainAspectRatio: true,
@@ -973,13 +883,15 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
                   },
                 }}
               />
-              {/* 도넛차트 구멍 중앙에 정확히 위치 - Chart.js의 chartArea를 사용하여 실제 차트 중앙 계산 */}
+              {/* 도넛차트 구멍 중앙에 정확히 위치 - 차트의 실제 중앙 (legend를 제외한 차트 영역) */}
               {doughnutCenterData && (
                 <div 
                   className="absolute flex flex-col items-center justify-center pointer-events-none z-10"
                   style={{
-                    left: chartCenterPosition?.left || '50%',
-                    top: chartCenterPosition?.top || '50%',
+                    // Chart.js는 차트를 컨테이너의 중앙에 배치하지만, legend가 bottom에 있으면 차트가 위로 올라감
+                    // 차트의 실제 중앙을 계산: 컨테이너 높이에서 legend 높이를 빼고, 그 중앙에 위치
+                    left: '50%',
+                    top: 'calc(50% - 1.5rem)', // legend가 bottom에 있으므로 약간 위로 조정
                     transform: 'translate(-50%, -50%)',
                   }}
                 >
