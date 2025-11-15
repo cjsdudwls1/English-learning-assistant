@@ -1,6 +1,5 @@
 [build]
-  base = "English-learning-assistant"
-  command = "npm run build"
+  command = "cd English-learning-assistant && npm install && npm run build"
   publish = "English-learning-assistant/dist"
   
 [build.environment]
