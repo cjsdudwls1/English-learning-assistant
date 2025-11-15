@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AI 영어 문제 분석기</string>
+    <string name="title_activity_main">AI 영어 문제 분석기</string>
+    <string name="package_name">com.cheon.ai.englishanalyzer</string>
+    <string name="custom_url_scheme">com.cheon.ai.englishanalyzer</string>
+</resources>
