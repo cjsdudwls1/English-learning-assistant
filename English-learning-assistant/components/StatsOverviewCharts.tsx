@@ -24,7 +24,7 @@ type DrillDownState =
   | { type: 'all' } // 전체 카테고리 구성
   | { type: 'filtered', filter: FilterType }
   | { type: 'category', filter?: FilterType, category: string } // filter가 없으면 정오답 모두 표시
-  | { type: 'depth', filter: FilterType, category: string, depth: number, depth2Value?: string, depth3Value?: string };
+  | { type: 'depth', filter?: FilterType, category: string, depth: number, depth2Value?: string, depth3Value?: string, depth4Value?: string };
 
 interface StatsOverviewChartsProps {
   rows: TypeStatsRow[];
@@ -100,9 +100,9 @@ const isDepth4 = (state: DrillDownState): boolean => {
   return state.type === 'depth' && state.depth === 4;
 };
 
-// 헬퍼 함수: 최종 depth인지 확인 (depth 2, 3, 4 모두 최종 depth일 수 있음)
+// 헬퍼 함수: 최종 depth인지 확인 (depth 4만 최종 depth)
 const isFinalDepth = (state: DrillDownState): boolean => {
-  return state.type === 'depth';
+  return state.type === 'depth' && state.depth === 4;
 };
 
 // 헬퍼 함수: 카운트 가져오기
@@ -162,7 +162,7 @@ const generateChartKey = (type: string, state: DrillDownState): string => {
     return `${type}-${state.type}-${state.category}`;
   }
   if (state.type === 'depth') {
-    return `${type}-${state.type}-${state.depth}-${state.depth2Value || ''}-${state.depth3Value || ''}`;
+    return `${type}-${state.type}-${state.depth}-${state.depth2Value || ''}-${state.depth3Value || ''}-${state.depth4Value || ''}`;
   }
   return `${type}-${state.type}`;
 };
@@ -181,7 +181,7 @@ const getCurrentCategoryLabel = (state: DrillDownState, labels: StatsOverviewCha
   if (state.type === 'depth') {
     if (state.depth === 2 && state.depth2Value) return state.depth2Value;
     if (state.depth === 3 && state.depth3Value) return state.depth3Value;
-    if (state.depth === 4 && state.depth3Value) return state.depth3Value;
+    if (state.depth === 4 && state.depth4Value) return state.depth4Value;
     return state.category;
   }
   return '';
@@ -318,7 +318,8 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           filter: drillDownState.filter, 
           category: drillDownState.category, 
           depth: 3,
-          depth2Value: drillDownState.depth2Value
+          depth2Value: drillDownState.depth2Value,
+          depth3Value: drillDownState.depth3Value
         });
       } else if (drillDownState.depth === 3) {
         setDrillDownState({ 
@@ -404,7 +405,8 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           category: drillDownState.category,
           depth: 4,
           depth2Value: drillDownState.depth2Value,
-          depth3Value: drillDownState.depth3Value
+          depth3Value: drillDownState.depth3Value,
+          depth4Value: clickedLabel
         });
       }
     }
@@ -589,7 +591,8 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           category: drillDownState.category,
           depth: 4,
           depth2Value: drillDownState.depth2Value,
-          depth3Value: drillDownState.depth3Value
+          depth3Value: drillDownState.depth3Value,
+          depth4Value: clickedLabel
         });
       }
     }
@@ -611,7 +614,12 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
       return rows;
     }
     
-    const filter = drillDownState.filter;
+    // depth 타입에서 filter가 없으면 정오답 모두 포함
+    if (drillDownState.type === 'depth' && !drillDownState.filter) {
+      return rows;
+    }
+    
+    const filter = drillDownState.filter || null;
     return rows.filter(row => getCount(row, filter) > 0);
   }, [rows, drillDownState]);
 
@@ -724,6 +732,9 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
     if (drillDownState.depth3Value) {
       filteredDepthRows = filteredDepthRows.filter(row => row.depth3 === drillDownState.depth3Value);
     }
+    if (drillDownState.depth4Value) {
+      filteredDepthRows = filteredDepthRows.filter(row => row.depth4 === drillDownState.depth4Value);
+    }
 
     // depth 2일 때는 depth3, depth 3일 때는 depth4, depth 4일 때는 더 이상 없음
     const depthKey = drillDownState.depth === 2 ? 'depth3' : 'depth4';
@@ -796,7 +807,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
     }
     
     // depth 2, 3일 때는 기존 로직 사용
-    const filter = drillDownState.filter;
+    const filter = drillDownState.filter || null;
     const depthMap = aggregateData(
       filteredDepthRows,
       filter,
@@ -897,6 +908,9 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
       if (drillDownState.depth3Value) {
         filteredDepthRows = filteredDepthRows.filter(row => row.depth3 === drillDownState.depth3Value);
       }
+      if (drillDownState.depth4Value) {
+        filteredDepthRows = filteredDepthRows.filter(row => row.depth4 === drillDownState.depth4Value);
+      }
 
       const depthKey = drillDownState.depth === 2 ? 'depth3' : 'depth4';
       filteredDepthRows.forEach(row => {
@@ -995,6 +1009,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
       const parts = [drillDownState.category];
       if (drillDownState.depth2Value) parts.push(drillDownState.depth2Value);
       if (drillDownState.depth3Value) parts.push(drillDownState.depth3Value);
+      if (drillDownState.depth4Value) parts.push(drillDownState.depth4Value);
       return parts.join(' > ');
     }
     return '';
