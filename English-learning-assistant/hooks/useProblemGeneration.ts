@@ -130,15 +130,16 @@ export function useProblemGeneration({
     const totalExpected = Object.values(expectedProblemCounts).reduce((sum, count) => sum + count, 0);
     if (totalExpected === 0) return;
 
-    // 10초 후 Realtime으로 문제를 받지 못하면 폴링 시작
+    // 10초 후 예상된 문제 수를 받지 못하면 폴링 시작 (Realtime 실패 시 폴백)
     const pollingTimeout = setTimeout(async () => {
       if (receivedProblems.length >= totalExpected || !isGenerating) {
         console.log('[Polling] Skipping polling - problems already received or generation stopped');
         return;
       }
 
-      if (receivedProblems.length === 0 && realtimeSubscription) {
-        console.warn('[Polling] No problems received via Realtime after 10 seconds - switching to polling mode');
+      // Realtime으로 일부 문제를 받았어도, 예상된 수에 못 미치면 폴링 시작
+      if (receivedProblems.length < totalExpected && realtimeSubscription) {
+        console.warn(`[Polling] Only received ${receivedProblems.length}/${totalExpected} problems via Realtime after 10 seconds - switching to polling mode`);
         
         const startPolling = async () => {
           const startTime = generationStartTimeRef.current || Date.now();
@@ -166,11 +167,13 @@ export function useProblemGeneration({
             }
 
             try {
+              // 생성 시작 시간보다 약간 이전부터 조회 (Edge Function이 백그라운드에서 실행되므로)
+              const queryStartTime = new Date(startTime - 2000).toISOString();
               const { data: problems, error: pollError } = await supabase
                 .from('generated_problems')
                 .select('id, stem, choices, correct_answer_index, problem_type, classification, correct_answer, guidelines, is_correct, explanation, is_editable, created_at')
                 .eq('user_id', userId)
-                .gte('created_at', new Date(startTime - 1000).toISOString())
+                .gte('created_at', queryStartTime)
                 .order('created_at', { ascending: true });
               
               if (pollError) {
