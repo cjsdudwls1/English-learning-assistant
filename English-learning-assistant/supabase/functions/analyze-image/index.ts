@@ -1,10 +1,50 @@
 // @ts-nocheck
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
-import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
-import { requireEnv } from '../_shared/env.ts'
-import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
-import { loadTaxonomyData, findTaxonomyByDepth } from '../_shared/taxonomy.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { parseApiError } from '../_shared/errorHandling.ts'
+
+// EdgeRuntime 타입 정의 (Supabase Edge Functions에서 제공)
+declare const EdgeRuntime: {
+  waitUntil(promise: Promise<any>): void;
+};
+
+// 공유 유틸리티 함수들
+function requireEnv(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) {
+    throw new Error(`${name} environment variable is not set`);
+  }
+  return value;
+}
+
+function createServiceSupabaseClient() {
+  const supabaseUrl = requireEnv('SUPABASE_URL');
+  const supabaseServiceKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+  'Access-Control-Max-Age': '86400',
+};
+
+function jsonResponse<T>(body: T, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+}
+
+function errorResponse(message: string, status = 500, details?: unknown): Response {
+  return jsonResponse({ error: message, details }, status);
+}
+
+function handleOptions(): Response {
+  return new Response(null, { status: 200, headers: CORS_HEADERS });
+}
 
 // Taxonomy 데이터를 DB에서 동적으로 로드하는 함수
 async function loadTaxonomyData(supabase: any, language: 'ko' | 'en' = 'ko'): Promise<{ structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }> {
@@ -224,7 +264,261 @@ function normalizeMark(raw: unknown): 'O' | 'X' {
   return 'X';
 }
 
-serve(async (req) => {
+// 백그라운드 작업 함수: Gemini API 호출 및 DB 저장
+async function analyzeImageInBackground(
+  sessionId: string,
+  imageBase64: string,
+  mimeType: string,
+  userLanguage: 'ko' | 'en',
+  geminiApiKey: string
+): Promise<void> {
+  const supabase = createServiceSupabaseClient();
+  
+  try {
+    // 3. Taxonomy 데이터 로드
+    console.log('[Background] Step 3a: Loading taxonomy data from database...', { language: userLanguage });
+    const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
+    const prompt = buildPrompt(taxonomyData, userLanguage);
+    
+    // 3. Gemini API로 분석 (재시도 로직 적용)
+    console.log('[Background] Step 3b: Analyzing image with Gemini...');
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+    const imagePart = { inlineData: { data: imageBase64, mimeType } };
+    const textPart = { text: prompt };
+
+    let responseText: string;
+    
+    // 재시도 설정
+    const MAX_RETRIES = 5; // 최대 5번까지 재시도
+    const BASE_DELAY = 5000; // 기본 5초 대기 (서버 복구 시간 고려)
+
+    let attempt = 0;
+    while (attempt < MAX_RETRIES) {
+      try {
+        const timeoutMs = 50000; // 50초 타임아웃
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Gemini API request timeout')), timeoutMs);
+        });
+        
+        const apiPromise = ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: { parts: [textPart, imagePart] },
+        });
+        
+        console.log(`[Background] Attempt ${attempt + 1}/${MAX_RETRIES}: Starting Gemini API call with ${timeoutMs/1000}s timeout...`);
+        const startTime = Date.now();
+        
+        const response = await Promise.race([apiPromise, timeoutPromise]);
+        const elapsedTime = Date.now() - startTime;
+        
+        console.log(`[Background] Gemini API call completed in ${elapsedTime}ms`);
+        responseText = response.text;
+        console.log('[Background] Step 3 completed: Gemini response received, length:', responseText.length);
+        
+        // 성공했으면 반복문 탈출
+        break;
+      } catch (apiError: any) {
+        attempt++;
+        
+        // 에러 정보 상세 로깅
+        console.error(`[Background] Gemini API error (attempt ${attempt}/${MAX_RETRIES}):`, apiError);
+        console.error(`[Background] Error type:`, typeof apiError);
+        console.error(`[Background] Error keys:`, apiError ? Object.keys(apiError) : 'N/A');
+        if (apiError?.error) {
+          console.error(`[Background] Nested error:`, apiError.error);
+        }
+        
+        // 에러 정보 파싱 (공통 유틸리티 사용)
+        const parsedError = parseApiError(apiError);
+        const errorMessage = parsedError.message;
+        const errorCode = parsedError.code;
+        const errorStatus = parsedError.status;
+        
+        console.log(`[Background] Parsed error - code: ${errorCode}, status: ${errorStatus}, message: ${errorMessage.substring(0, 100)}`);
+        
+        const isRateLimit = errorCode === 429 || errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit') || errorMessage.toLowerCase().includes('quota');
+        const isServerOverload = errorCode === 503 || errorMessage.includes('503') || errorMessage.toLowerCase().includes('overloaded') || errorMessage.toLowerCase().includes('unavailable') || errorStatus === 'UNAVAILABLE';
+        const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('Timeout') || errorMessage.includes('TIMEOUT') || errorCode === 504;
+        
+        console.log(`[Background] Error classification - RateLimit: ${isRateLimit}, ServerOverload: ${isServerOverload}, Timeout: ${isTimeout}`);
+        
+        // 마지막 시도였거나, 재시도할 가치가 없는 에러라면 throw
+        if (attempt >= MAX_RETRIES || (!isRateLimit && !isServerOverload && !isTimeout)) {
+          console.error(`[Background] Gemini API failed after ${attempt} attempts:`, { code: errorCode, status: errorStatus, message: errorMessage });
+          throw new Error(`Gemini API error: ${errorMessage}`);
+        }
+        
+        // 429, 503, 또는 타임아웃이면 잠시 대기 후 재시도 (Exponential Backoff)
+        // 1번째: 5초, 2번째: 10초, 3번째: 20초, 4번째: 40초 대기
+        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+        console.warn(`[Background] Hit rate limit/overload/timeout (code: ${errorCode}, status: ${errorStatus}). Retrying in ${delay/1000}s... (Attempt ${attempt}/${MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    // JSON 파싱
+    const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    let result: any;
+    try {
+      result = JSON.parse(jsonString);
+    } catch (parseError) {
+      console.error('[Background] JSON parsing error:', parseError);
+      console.error('[Background] Response text:', responseText.substring(0, 500));
+      throw new Error(`Failed to parse AI response as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+    }
+
+    if (!result || !Array.isArray(result.items)) {
+      throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
+    }
+
+    console.log(`[Background] Step 3 completed: Parsed ${result.items.length} items from analysis`);
+
+    // 4. 문제 저장
+    console.log('[Background] Step 4: Save problems to database...');
+    const items = result.items;
+    const problemsPayload = items.map((it: any, idx: number) => ({
+      session_id: sessionId,
+      index_in_image: it.index ?? idx,
+      stem: it.문제내용?.text || '',
+      choices: (it.문제_보기 || []).map((c: any) => ({ text: c.text, confidence: c.confidence_score })),
+    }));
+
+    const { data: problems, error: problemsError } = await supabase
+      .from('problems')
+      .insert(problemsPayload)
+      .select('id, index_in_image');
+
+    if (problemsError) {
+      console.error('[Background] Step 4 error: Problems insert error:', problemsError);
+      throw problemsError;
+    }
+
+    console.log(`[Background] Step 4 completed: Inserted ${problems?.length || 0} problems`);
+
+    // 5. AI 분석 결과를 labels에 저장 (user_mark는 null로 - 사용자 검수 대기)
+    console.log('[Background] Step 5: Save AI analysis results to labels (pending user review)...');
+    const idByIndex = new Map<number, string>();
+    for (const row of problems || []) {
+      idByIndex.set(row.index_in_image, row.id);
+    }
+
+    // 각 문제에 대해 taxonomy 조회하여 code, CEFR, 난이도 추가
+    const labelsPayload = await Promise.all(items.map(async (it: any, idx: number) => {
+      const normalizedMark = normalizeMark(it.사용자가_직접_채점한_정오답);
+      const classification = it.문제_유형_분류 || {};
+      
+      // Gemini가 반환한 원본 값
+      const rawDepth1 = (classification['1Depth'] || '').trim();
+      const rawDepth2 = (classification['2Depth'] || '').trim();
+      const rawDepth3 = (classification['3Depth'] || '').trim();
+      const rawDepth4 = (classification['4Depth'] || '').trim();
+      
+      // 유효성 검증: DB에 있는 값인지 확인
+      const validDepth1 = taxonomyData.allValues.depth1.includes(rawDepth1) ? rawDepth1 : '';
+      const validDepth2 = taxonomyData.allValues.depth2.includes(rawDepth2) ? rawDepth2 : '';
+      const validDepth3 = taxonomyData.allValues.depth3.includes(rawDepth3) ? rawDepth3 : '';
+      const validDepth4 = taxonomyData.allValues.depth4.includes(rawDepth4) ? rawDepth4 : '';
+      
+      // 유효하지 않은 값이 있으면 경고
+      if (!validDepth1 && rawDepth1) {
+        console.warn(`[Background] Invalid depth1: "${rawDepth1}" - not in taxonomy. Valid values: ${taxonomyData.allValues.depth1.slice(0, 3).join(', ')}...`);
+      }
+      if (!validDepth2 && rawDepth2) {
+        console.warn(`[Background] Invalid depth2: "${rawDepth2}" - not in taxonomy`);
+      }
+      if (!validDepth3 && rawDepth3) {
+        console.warn(`[Background] Invalid depth3: "${rawDepth3}" - not in taxonomy`);
+      }
+      if (!validDepth4 && rawDepth4) {
+        console.warn(`[Background] Invalid depth4: "${rawDepth4}" - not in taxonomy`);
+      }
+      
+      // 유효한 값으로만 taxonomy 조회
+      const taxonomy = await findTaxonomyByDepth(
+        supabase,
+        validDepth1,
+        validDepth2,
+        validDepth3,
+        validDepth4,
+        userLanguage
+      );
+      
+      // classification에 code, CEFR, 난이도 추가 (유효한 값만 저장)
+      const enrichedClassification = {
+        '1Depth': validDepth1 || null,
+        '2Depth': validDepth2 || null,
+        '3Depth': validDepth3 || null,
+        '4Depth': validDepth4 || null,
+        code: taxonomy.code,
+        CEFR: taxonomy.cefr,
+        난이도: taxonomy.difficulty,
+        분류_신뢰도: classification['분류_신뢰도'] || '보통',
+      };
+      
+      // 유효하지 않은 값이 있거나 매핑 실패 시 신뢰도 하락
+      if (!validDepth1 || !taxonomy.code) {
+        enrichedClassification['분류_신뢰도'] = '낮음';
+        if (!validDepth1) {
+          console.warn(`[Background] Invalid classification: depth1="${rawDepth1}" is not in taxonomy. Saving with null.`);
+        }
+      }
+      
+      return {
+        problem_id: idByIndex.get(it.index ?? idx)!,
+        user_answer: it.사용자가_기술한_정답?.text || '',
+        user_mark: null, // 사용자 검수 전이므로 null
+        is_correct: normalizedMark === 'O', // AI 분석 결과 저장
+        classification: enrichedClassification,
+        confidence: {
+          stem: it.문제내용?.confidence_score || 1.0,
+          answer: it.사용자가_기술한_정답?.confidence_score || 1.0,
+          choices: (it.문제_보기 || []).map((c: any) => c.confidence_score || 1.0),
+        },
+      };
+    }));
+
+    const { error: labelsError } = await supabase.from('labels').insert(labelsPayload);
+    if (labelsError) {
+      console.error('[Background] Step 5 error: Labels insert error:', labelsError);
+      throw labelsError;
+    }
+
+    console.log('[Background] Step 5 completed: AI analysis results saved (pending user review)');
+
+    // 6. 세션 상태를 completed로 업데이트
+    console.log('[Background] Step 6: Update session status to completed...');
+    const { error: statusUpdateError } = await supabase
+      .from('sessions')
+      .update({ status: 'completed' })
+      .eq('id', sessionId);
+
+    if (statusUpdateError) {
+      console.error('[Background] Step 6 error: Status update error:', statusUpdateError);
+      // 상태 업데이트 실패해도 분석은 완료되었으므로 계속 진행
+    } else {
+      console.log('[Background] Step 6 completed: Session status updated to completed');
+    }
+
+    console.log('[Background] Background analysis completed for session:', sessionId);
+  } catch (error) {
+    console.error('[Background] Error in background task:', error);
+    console.error('[Background] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
+    // 백그라운드 분석 실패 시 세션 상태를 failed로 업데이트
+    try {
+      await supabase
+        .from('sessions')
+        .update({ status: 'failed' })
+        .eq('id', sessionId);
+      console.log('[Background] Session status updated to failed due to background error');
+    } catch (statusError) {
+      console.error('[Background] Failed to update session status to failed:', statusError);
+    }
+  }
+}
+
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return handleOptions();
   }
@@ -320,181 +614,16 @@ serve(async (req) => {
       message: 'Session created, analysis in progress',
     });
 
-    // 백그라운드에서 분석 계속 진행
-    (async () => {
-      try {
-        // 3. Taxonomy 데이터 로드
-        console.log('Step 3a: Loading taxonomy data from database...', { language: userLanguage });
-        const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
-        const prompt = buildPrompt(taxonomyData, userLanguage);
-        
-        // 3. Gemini API로 분석
-        console.log('Step 3b: Analyzing image with Gemini...');
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
-    const imagePart = { inlineData: { data: imageBase64, mimeType } };
-    const textPart = { text: prompt };
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts: [textPart, imagePart] },
-    });
-
-    const responseText = response.text;
-    console.log('Step 3 completed: Gemini response received, length:', responseText.length);
-    
-    // JSON 파싱
-    const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-    const result = JSON.parse(jsonString);
-
-    if (!result || !Array.isArray(result.items)) {
-      throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
-    }
-
-    console.log(`Step 3 completed: Parsed ${result.items.length} items from analysis`);
-
-    // 4. 문제 저장
-    console.log('Step 4: Save problems to database...');
-    const items = result.items;
-    const problemsPayload = items.map((it: any, idx: number) => ({
-      session_id: createdSessionId,
-      index_in_image: it.index ?? idx,
-      stem: it.문제내용?.text || '',
-      choices: (it.문제_보기 || []).map((c: any) => ({ text: c.text, confidence: c.confidence_score })),
-    }));
-
-    const { data: problems, error: problemsError } = await supabase
-      .from('problems')
-      .insert(problemsPayload)
-      .select('id, index_in_image');
-
-    if (problemsError) {
-      console.error('Step 4 error: Problems insert error:', problemsError);
-      throw problemsError;
-    }
-
-    console.log(`Step 4 completed: Inserted ${problems?.length || 0} problems`);
-
-    // 5. AI 분석 결과를 labels에 저장 (user_mark는 null로 - 사용자 검수 대기)
-    console.log('Step 5: Save AI analysis results to labels (pending user review)...');
-    const idByIndex = new Map<number, string>();
-    for (const row of problems || []) {
-      idByIndex.set(row.index_in_image, row.id);
-    }
-
-    // 각 문제에 대해 taxonomy 조회하여 code, CEFR, 난이도 추가
-    const labelsPayload = await Promise.all(items.map(async (it: any, idx: number) => {
-      const normalizedMark = normalizeMark(it.사용자가_직접_채점한_정오답);
-      const classification = it.문제_유형_분류 || {};
-      
-      // Gemini가 반환한 원본 값
-      const rawDepth1 = (classification['1Depth'] || '').trim();
-      const rawDepth2 = (classification['2Depth'] || '').trim();
-      const rawDepth3 = (classification['3Depth'] || '').trim();
-      const rawDepth4 = (classification['4Depth'] || '').trim();
-      
-      // 유효성 검증: DB에 있는 값인지 확인
-      const validDepth1 = taxonomyData.allValues.depth1.includes(rawDepth1) ? rawDepth1 : '';
-      const validDepth2 = taxonomyData.allValues.depth2.includes(rawDepth2) ? rawDepth2 : '';
-      const validDepth3 = taxonomyData.allValues.depth3.includes(rawDepth3) ? rawDepth3 : '';
-      const validDepth4 = taxonomyData.allValues.depth4.includes(rawDepth4) ? rawDepth4 : '';
-      
-      // 유효하지 않은 값이 있으면 경고
-      if (!validDepth1 && rawDepth1) {
-        console.warn(`Invalid depth1: "${rawDepth1}" - not in taxonomy. Valid values: ${taxonomyData.allValues.depth1.slice(0, 3).join(', ')}...`);
-      }
-      if (!validDepth2 && rawDepth2) {
-        console.warn(`Invalid depth2: "${rawDepth2}" - not in taxonomy`);
-      }
-      if (!validDepth3 && rawDepth3) {
-        console.warn(`Invalid depth3: "${rawDepth3}" - not in taxonomy`);
-      }
-      if (!validDepth4 && rawDepth4) {
-        console.warn(`Invalid depth4: "${rawDepth4}" - not in taxonomy`);
-      }
-      
-      // 유효한 값으로만 taxonomy 조회
-          const taxonomy = await findTaxonomyByDepth(
-        supabase,
-        validDepth1,
-        validDepth2,
-        validDepth3,
-        validDepth4,
-        userLanguage
-      );
-      
-      // classification에 code, CEFR, 난이도 추가 (유효한 값만 저장)
-      const enrichedClassification = {
-        '1Depth': validDepth1 || null,
-        '2Depth': validDepth2 || null,
-        '3Depth': validDepth3 || null,
-        '4Depth': validDepth4 || null,
-        code: taxonomy.code,
-        CEFR: taxonomy.cefr,
-        난이도: taxonomy.difficulty,
-        분류_신뢰도: classification['분류_신뢰도'] || '보통',
-      };
-      
-      // 유효하지 않은 값이 있거나 매핑 실패 시 신뢰도 하락
-      if (!validDepth1 || !taxonomy.code) {
-        enrichedClassification['분류_신뢰도'] = '낮음';
-        if (!validDepth1) {
-          console.warn(`Invalid classification: depth1="${rawDepth1}" is not in taxonomy. Saving with null.`);
-        }
-      }
-      
-      return {
-        problem_id: idByIndex.get(it.index ?? idx)!,
-        user_answer: it.사용자가_기술한_정답?.text || '',
-        user_mark: null, // 사용자 검수 전이므로 null
-        is_correct: normalizedMark === 'O', // AI 분석 결과 저장
-        classification: enrichedClassification,
-        confidence: {
-          stem: it.문제내용?.confidence_score || 1.0,
-          answer: it.사용자가_기술한_정답?.confidence_score || 1.0,
-          choices: (it.문제_보기 || []).map((c: any) => c.confidence_score || 1.0),
-        },
-      };
-    }));
-
-    const { error: labelsError } = await supabase.from('labels').insert(labelsPayload);
-    if (labelsError) {
-      console.error('Step 5 error: Labels insert error:', labelsError);
-      throw labelsError;
-    }
-
-    console.log('Step 5 completed: AI analysis results saved (pending user review)');
-
-        // 6. 세션 상태를 completed로 업데이트
-        console.log('Step 6: Update session status to completed...');
-        const { error: statusUpdateError } = await supabase
-          .from('sessions')
-          .update({ status: 'completed' })
-          .eq('id', createdSessionId);
-
-        if (statusUpdateError) {
-          console.error('Step 6 error: Status update error:', statusUpdateError);
-          // 상태 업데이트 실패해도 분석은 완료되었으므로 계속 진행
-        } else {
-          console.log('Step 6 completed: Session status updated to completed');
-        }
-
-        console.log('Background analysis completed for session:', createdSessionId);
-      } catch (bgError) {
-        console.error('Background analysis error:', bgError);
-        
-        // 백그라운드 분석 실패 시 세션 상태를 failed로 업데이트
-        try {
-          await supabase
-            .from('sessions')
-            .update({ status: 'failed' })
-            .eq('id', createdSessionId);
-          console.log('Session status updated to failed due to background error');
-        } catch (statusError) {
-          console.error('Failed to update session status to failed:', statusError);
-        }
-      }
-    })();
+    // 백그라운드 작업 시작
+    EdgeRuntime.waitUntil(
+      analyzeImageInBackground(
+        createdSessionId,
+        imageBase64,
+        mimeType,
+        userLanguage,
+        geminiApiKey
+      )
+    );
 
     // 세션 생성 후 즉시 응답 반환
     return response;
@@ -517,4 +646,4 @@ serve(async (req) => {
     
     return errorResponse(error.message || 'Internal server error', 500, error.toString());
   }
-});
+});}

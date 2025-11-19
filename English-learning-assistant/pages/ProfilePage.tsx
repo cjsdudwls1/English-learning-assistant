@@ -15,10 +15,12 @@ export const ProfilePage: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
   
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<string>('');
   const [gender, setGender] = useState<string>('');
   const [age, setAge] = useState<string>('');
   const [grade, setGrade] = useState<string>('');
   const [profileLanguage, setProfileLanguage] = useState<string>('');
+  const [country, setCountry] = useState<string>('');
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -29,7 +31,7 @@ export const ProfilePage: React.FC = () => {
         // 프로필 정보 불러오기
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('email, gender, age, grade, language')
+          .select('email, role, gender, age, grade, language, country')
           .eq('user_id', userId)
           .single();
 
@@ -39,10 +41,12 @@ export const ProfilePage: React.FC = () => {
 
         if (profileData) {
           setEmail(profileData.email || '');
+          setRole(profileData.role || 'student');
           setGender(profileData.gender || '');
           setAge(profileData.age ? profileData.age.toString() : '');
           setGrade(profileData.grade || '');
           setProfileLanguage(profileData.language || '');
+          setCountry(profileData.country || '');
         } else {
           // 프로필이 없으면 사용자 정보에서 이메일만 가져오기
           const { data: userData } = await supabase.auth.getUser();
@@ -74,10 +78,12 @@ export const ProfilePage: React.FC = () => {
         .upsert({
           user_id: userId,
           email: email,
+          role: role || 'student',
           gender: gender || null,
           age: age ? parseInt(age, 10) : null,
           grade: grade || null,
           language: profileLanguage || null,
+          country: country || null,
         }, {
           onConflict: 'user_id'
         });
@@ -126,6 +132,47 @@ export const ProfilePage: React.FC = () => {
             placeholder="your@email.com"
             required
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            {language === 'ko' ? '권한' : 'Role'}
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setRole('student')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                role === 'student'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              {language === 'ko' ? '학생' : 'Student'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole('parent')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                role === 'parent'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              {language === 'ko' ? '학부모' : 'Parent'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole('teacher')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                role === 'teacher'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              {language === 'ko' ? '선생님' : 'Teacher'}
+            </button>
+          </div>
         </div>
 
         <div>
@@ -216,6 +263,47 @@ export const ProfilePage: React.FC = () => {
               }`}
             >
               {t.profile.korean}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            {language === 'ko' ? '국가' : 'Country'}
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setCountry('SG')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                country === 'SG'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              {language === 'ko' ? '싱가폴' : 'Singapore'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCountry('KR')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                country === 'KR'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              {language === 'ko' ? '대한민국' : 'Korea'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCountry('CN')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                country === 'CN'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              {language === 'ko' ? '중국' : 'China'}
             </button>
           </div>
         </div>

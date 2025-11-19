@@ -14,10 +14,12 @@ export const LoginButton: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
   
   // 회원가입 시 추가 정보
+  const [role, setRole] = useState<string>('');
   const [gender, setGender] = useState<string>('');
   const [age, setAge] = useState<string>('');
   const [grade, setGrade] = useState<string>('');
   const [profileLanguage, setProfileLanguage] = useState<string>('');
+  const [country, setCountry] = useState<string>('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,8 +30,8 @@ export const LoginButton: React.FC = () => {
     try {
       if (isSignUp) {
         // 회원가입 시 추가 정보 검증
-        if (!gender || !age || !grade || !profileLanguage) {
-          throw new Error(language === 'ko' ? '성별, 연령, 학년, 언어를 모두 입력해주세요.' : 'Please fill in all fields: gender, age, grade, and language.');
+        if (!role || !gender || !age || !grade || !profileLanguage) {
+          throw new Error(language === 'ko' ? '권한, 성별, 연령, 학년, 언어를 모두 입력해주세요.' : 'Please fill in all fields: role, gender, age, grade, and language.');
         }
         
         const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
@@ -42,10 +44,12 @@ export const LoginButton: React.FC = () => {
             .upsert({
               user_id: authData.user.id,
               email: email,
+              role: role,
               gender: gender,
               age: parseInt(age, 10),
               grade: grade,
               language: profileLanguage,
+              country: country || null,
             }, {
               onConflict: 'user_id'
             });
@@ -56,10 +60,12 @@ export const LoginButton: React.FC = () => {
         setMessage(language === 'ko' ? '회원가입 완료! 이메일을 확인하거나 바로 로그인하세요.' : 'Sign up complete! Please check your email or log in now.');
         setIsSignUp(false);
         // 폼 초기화
+        setRole('');
         setGender('');
         setAge('');
         setGrade('');
         setProfileLanguage('');
+        setCountry('');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -101,6 +107,52 @@ export const LoginButton: React.FC = () => {
         
         {isSignUp && (
           <>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                {language === 'ko' ? '권한 선택' : 'Select Role'}
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRole('student')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                    role === 'student'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  {language === 'ko' ? '학생' : 'Student'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('parent')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                    role === 'parent'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  {language === 'ko' ? '학부모' : 'Parent'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('teacher')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                    role === 'teacher'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  {language === 'ko' ? '선생님' : 'Teacher'}
+                </button>
+              </div>
+              {isSignUp && !role && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {language === 'ko' ? '권한을 선택해주세요.' : 'Please select a role.'}
+                </p>
+              )}
+            </div>
+            
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.login.gender || t.profile.gender}</label>
               <div className="flex gap-3">
@@ -201,6 +253,47 @@ export const LoginButton: React.FC = () => {
               {isSignUp && !profileLanguage && (
                 <p className="mt-1 text-xs text-red-600 dark:text-red-400">{t.login.selectLanguage}</p>
               )}
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                {language === 'ko' ? '국가 선택' : 'Select Country'}
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCountry('SG')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                    country === 'SG'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  {language === 'ko' ? '싱가폴' : 'Singapore'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCountry('KR')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                    country === 'KR'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  {language === 'ko' ? '대한민국' : 'Korea'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCountry('CN')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                    country === 'CN'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  {language === 'ko' ? '중국' : 'China'}
+                </button>
+              </div>
             </div>
           </>
         )}
