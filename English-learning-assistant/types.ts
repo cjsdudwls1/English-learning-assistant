@@ -88,3 +88,32 @@ export interface SessionWithProblems {
   incorrect_count: number;
   status?: string;
 }
+
+// 생성된 문제 타입 (generated_problems 테이블)
+export interface GeneratedProblem {
+  id: string;
+  stem: string;
+  choices: Array<{ text: string; is_correct?: boolean }>;
+  correct_answer_index: number | null;
+  problem_type: 'multiple_choice' | 'short_answer' | 'essay' | 'ox';
+  classification: ProblemClassification | Record<string, any>;
+  correct_answer?: string | null;
+  guidelines?: string | null;
+  is_correct?: boolean | null;
+  explanation?: string | null;
+  is_editable?: boolean;
+  created_at: string;
+}
+
+// Realtime 구독 타입 (Supabase Realtime Channel)
+// Supabase의 RealtimeChannel 타입을 직접 참조하기 어려우므로 any로 유지 (기능 우선)
+export type RealtimeSubscription = any;
+
+// 문제 생성 상태 타입
+export interface ProblemGenerationState {
+  isGenerating: boolean;
+  generatedProblems: GeneratedProblem[];
+  error: string | null;
+  expectedProblemCounts: { [key: string]: number };
+  receivedProblems: GeneratedProblem[];
+}

@@ -1,8 +1,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { Header } from './components/Header';
-import { ImageUploader } from './components/ImageUploader';
-import { Loader } from './components/Loader';
+import { UploadPage } from './components/UploadPage';
 import { supabase } from './services/supabaseClient';
 import { Routes, Route, Link } from 'react-router-dom';
 import { AuthGate } from './components/AuthGate';
@@ -147,32 +146,14 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/upload" element={
             <AuthGate>
-              <div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
-                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <p className="text-sm text-blue-800 dark:text-blue-200">
-                    {language === 'ko' 
-                      ? '📸 문제 이미지를 업로드하면 즉시 "업로드되었습니다!" 메시지가 표시됩니다. AI 분석은 백그라운드에서 진행되며, 통계 페이지에서 결과를 확인할 수 있습니다.'
-                      : '📸 When you upload a problem image, you will immediately see an "Uploaded!" message. AI analysis runs in the background, and you can check the results on the statistics page.'}
-                  </p>
-                </div>
-                <ImageUploader onImagesSelect={handleImagesSelect} />
-                <div className="mt-6 text-center">
-                  <button
-                    onClick={handleAnalyzeClick}
-                    disabled={imageFiles.length === 0 || isLoading}
-                    className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    {isLoading ? t.upload.uploading : `${t.upload.uploadButton} (${imageFiles.length}${t.upload.uploadCount})`}
-                  </button>
-                </div>
-                {isLoading && <Loader />}
-                {error && (
-                  <div className="mt-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg text-center">
-                    <p className="font-semibold">{t.common.error}</p>
-                    <p>{error}</p>
-                  </div>
-                )}
-              </div>
+              <UploadPage
+                language={language}
+                imageFiles={imageFiles}
+                isLoading={isLoading}
+                error={error}
+                onImagesSelect={handleImagesSelect}
+                onAnalyzeClick={handleAnalyzeClick}
+              />
             </AuthGate>
           } />
           <Route path="/edit/:sessionId" element={<AuthGate><EditPage /></AuthGate>} />
@@ -182,32 +163,18 @@ const App: React.FC = () => {
           <Route path="/recent" element={<AuthGate><RecentProblemsPage /></AuthGate>} />
           <Route path="/stats" element={<AuthGate><StatsPage /></AuthGate>} />
           <Route path="/profile" element={<AuthGate><ProfilePage /></AuthGate>} />
-          <Route path="/" element={<AuthGate><div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
-                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <p className="text-sm text-blue-800 dark:text-blue-200">
-                    {language === 'ko' 
-                      ? '📸 문제 이미지를 업로드하면 즉시 "업로드되었습니다!" 메시지가 표시됩니다. AI 분석은 백그라운드에서 진행되며, 통계 페이지에서 결과를 확인할 수 있습니다.'
-                      : '📸 When you upload a problem image, you will immediately see an "Uploaded!" message. AI analysis runs in the background, and you can check the results on the statistics page.'}
-                  </p>
-                </div>
-                <ImageUploader onImagesSelect={handleImagesSelect} />
-                <div className="mt-6 text-center">
-                  <button
-                    onClick={handleAnalyzeClick}
-                    disabled={imageFiles.length === 0 || isLoading}
-                    className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    {isLoading ? t.upload.uploading : `${t.upload.uploadButton} (${imageFiles.length}${t.upload.uploadCount})`}
-                  </button>
-                </div>
-                {isLoading && <Loader />}
-                {error && (
-                  <div className="mt-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg text-center">
-                    <p className="font-semibold">{t.common.error}</p>
-                    <p>{error}</p>
-                  </div>
-                )}
-              </div></AuthGate>} />
+          <Route path="/" element={
+            <AuthGate>
+              <UploadPage
+                language={language}
+                imageFiles={imageFiles}
+                isLoading={isLoading}
+                error={error}
+                onImagesSelect={handleImagesSelect}
+                onAnalyzeClick={handleAnalyzeClick}
+              />
+            </AuthGate>
+          } />
           <Route path="*" element={<AuthGate><div className="text-center py-10"><a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">{language === 'ko' ? '문제 업로드하러 가기' : 'Go to Upload'}</a></div></AuthGate>} />
         </Routes>
       </main>
