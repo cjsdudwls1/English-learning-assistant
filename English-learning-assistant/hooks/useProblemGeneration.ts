@@ -259,7 +259,7 @@ export function useProblemGeneration({
               setErrorAndNotify(timeoutMessage);
               generationStartTimeRef.current = null;
             }
-          }, 5 * 60 * 1000);
+          }, 10 * 60 * 1000); // 10분으로 증가 (여러 문제 유형 순차 생성 + Edge Function 실행 시간 고려)
         };
         
         startPolling();
@@ -285,7 +285,7 @@ export function useProblemGeneration({
         setErrorAndNotify(timeoutMessage);
         generationStartTimeRef.current = null;
       }
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000); // 10분으로 증가 (여러 문제 유형 순차 생성 + Edge Function 실행 시간 고려)
 
     return () => {
       pollingActiveRef.current = false;
