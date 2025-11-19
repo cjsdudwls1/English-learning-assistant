@@ -441,19 +441,11 @@ export function useProblemGeneration({
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // RPM 제한을 피하기 위해 각 호출 사이에 딜레이 추가
-      let isFirstRequest = true;
-
+      // Edge Function은 백그라운드에서 실행되므로 연속 호출 가능
+      // 각 문제 유형을 순차적으로 호출 (대기 시간 없음)
       for (const problemType of problemTypes) {
         const count = problemCounts[problemType];
         if (count <= 0) continue;
-
-        if (!isFirstRequest) {
-          const delayMs = 7000;
-          console.log(`Waiting ${delayMs/1000} seconds before generating ${problemType} problems...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-        isFirstRequest = false;
 
         try {
           const { data: { session } } = await supabase.auth.getSession();
