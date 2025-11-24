@@ -14,8 +14,9 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getTranslation } from '../utils/translations';
 import { TaxonomyDetailPopup } from '../components/TaxonomyDetailPopup';
-import { findTaxonomyByDepth } from '../services/db';
+import { findTaxonomyByDepth, fetchProblemsMetadataByCorrectness, type ProblemMetadataItem } from '../services/db';
 import { StatsOverviewCharts } from '../components/StatsOverviewCharts';
+import { ProblemMetadataModal } from '../components/ProblemMetadataModal';
 
 export const StatsPage: React.FC = () => {
   const { language } = useLanguage();
@@ -42,6 +43,10 @@ export const StatsPage: React.FC = () => {
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [quizResults, setQuizResults] = useState<(GeneratedProblemResult | null)[]>([]);
   const [showResultSummary, setShowResultSummary] = useState(false);
+  const [problemMetadataItems, setProblemMetadataItems] = useState<ProblemMetadataItem[]>([]);
+  const [showMetadataModal, setShowMetadataModal] = useState(false);
+  const [metadataIsCorrect, setMetadataIsCorrect] = useState(false);
+  const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
 
   const loadData = async (showLoading: boolean = false) => {
     try {
@@ -403,9 +408,42 @@ export const StatsPage: React.FC = () => {
     }
   };
 
-  // 숫자 클릭 핸들러 제거 (더 이상 문제 리스트 표시하지 않음)
-  const handleNodeClick = () => {
-    // 숫자 클릭 시 아무 동작도 하지 않음 (유사 문제 생성은 체크박스 선택 후 버튼 클릭)
+  // 숫자 클릭 핸들러 - 문제 메타데이터 조회 및 표시
+  const handleNodeClick = async (node: StatsNode, isCorrect: boolean) => {
+    console.log('handleNodeClick called', { node, isCorrect });
+    try {
+      setIsLoadingMetadata(true);
+      setMetadataIsCorrect(isCorrect);
+      
+      // 분류 정보 추출
+      const depth1 = node.depth1 || undefined;
+      const depth2 = node.depth2 || undefined;
+      const depth3 = node.depth3 || undefined;
+      const depth4 = node.depth4 || undefined;
+      
+      console.log('Fetching metadata with params:', { depth1, depth2, depth3, depth4, isCorrect });
+      
+      // 메타데이터 조회
+      const items = await fetchProblemsMetadataByCorrectness(
+        depth1,
+        depth2,
+        depth3,
+        depth4,
+        isCorrect
+      );
+      
+      console.log('Metadata items received:', items);
+      setProblemMetadataItems(items);
+      setShowMetadataModal(true);
+      console.log('Modal should be shown now');
+    } catch (error) {
+      console.error('Error fetching problem metadata:', error);
+      alert(language === 'ko' 
+        ? '문제 분석 정보를 불러오는 중 오류가 발생했습니다.' 
+        : 'Error loading problem analysis information.');
+    } finally {
+      setIsLoadingMetadata(false);
+    }
   };
 
   const handleProblemResult = useCallback((problemIndex: number, result: GeneratedProblemResult) => {
@@ -660,6 +698,30 @@ export const StatsPage: React.FC = () => {
             code={selectedTaxonomyCode}
             onClose={() => setSelectedTaxonomyCode(null)}
           />
+        )}
+
+        {/* 문제 메타데이터 모달 */}
+        {showMetadataModal && (
+          <ProblemMetadataModal
+            items={problemMetadataItems}
+            isCorrect={metadataIsCorrect}
+            onClose={() => {
+              setShowMetadataModal(false);
+              setProblemMetadataItems([]);
+            }}
+          />
+        )}
+
+        {/* 메타데이터 로딩 오버레이 */}
+        {isLoadingMetadata && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-slate-800 rounded-lg p-6">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto"></div>
+              <p className="mt-4 text-slate-600 dark:text-slate-400 text-center">
+                {language === 'ko' ? '분석 정보를 불러오는 중...' : 'Loading analysis information...'}
+              </p>
+            </div>
+          </div>
         )}
         
         {/* 예시 문장 모달 */}

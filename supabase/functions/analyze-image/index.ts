@@ -465,18 +465,158 @@ serve(async (req) => {
 
     console.log('Step 5 completed: AI analysis results saved (pending user review)');
 
-        // 6. 세션 상태를 completed로 업데이트
-        console.log('Step 6: Update session status to completed...');
+    // 6. 문제 메타데이터 생성 및 저장
+    console.log('Step 6: Generate problem metadata...');
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    
+    // 각 문제에 대해 메타데이터 생성
+    const metadataPromises = items.map(async (it: any, idx: number) => {
+      const problemId = idByIndex.get(it.index ?? idx);
+      if (!problemId) {
+        console.warn(`Problem ID not found for index ${it.index ?? idx}`);
+        return null;
+      }
+
+      const problemStem = it.문제내용?.text || '';
+      const problemChoices = (it.문제_보기 || []).map((c: any) => c.text || '').join('\n');
+      const userAnswer = it.사용자가_기술한_정답?.text || '';
+      const isCorrect = normalizeMark(it.사용자가_직접_채점한_정오답) === 'O';
+
+      // 메타데이터 생성 프롬프트
+      const metadataPrompt = userLanguage === 'ko' 
+        ? `다음 영어 문제를 분석하여 메타데이터를 생성해주세요.
+
+문제 내용:
+${problemStem}
+
+선택지:
+${problemChoices}
+
+사용자 답안: ${userAnswer}
+정답 여부: ${isCorrect ? '정답' : '오답'}
+
+다음 형식의 JSON으로 응답해주세요:
+{
+  "difficulty": "상" | "중" | "하",
+  "word_difficulty": 1-9 사이의 숫자,
+  "problem_type": "문제 유형에 대한 설명 (예: 문법, 어휘, 독해 등)",
+  "analysis": "문제에 대한 상세 분석 정보"
+}
+
+난이도 기준:
+- 상: 고등학교 수준 이상의 어려운 문제
+- 중: 중학교 수준의 문제
+- 하: 초등학교 수준의 쉬운 문제
+
+단어 난이도 기준:
+- 1-3: 초등학교 수준의 쉬운 단어
+- 4-6: 중학교 수준의 보통 단어
+- 7-9: 고등학교 수준 이상의 어려운 단어
+
+JSON 형식으로만 응답해주세요.`
+        : `Analyze the following English problem and generate metadata.
+
+Problem:
+${problemStem}
+
+Choices:
+${problemChoices}
+
+User Answer: ${userAnswer}
+Is Correct: ${isCorrect ? 'Correct' : 'Incorrect'}
+
+Please respond in the following JSON format:
+{
+  "difficulty": "high" | "medium" | "low",
+  "word_difficulty": number between 1-9,
+  "problem_type": "Description of problem type (e.g., grammar, vocabulary, reading comprehension)",
+  "analysis": "Detailed analysis of the problem"
+}
+
+Difficulty criteria:
+- high: High school level or above
+- medium: Middle school level
+- low: Elementary school level
+
+Word difficulty criteria:
+- 1-3: Elementary school level words
+- 4-6: Middle school level words
+- 7-9: High school level or above words
+
+Respond only in JSON format.`;
+
+      try {
+        // temperature 설정을 위해 generationConfig 사용
+        const metadataResponse = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: { parts: [{ text: metadataPrompt }] },
+          generationConfig: {
+            temperature: 0.0, // 일관성 보장
+          },
+        });
+
+        const metadataText = metadataResponse.text;
+        // JSON 추출
+        const jsonMatch = metadataText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          console.warn(`Failed to extract JSON from metadata response for problem ${problemId}`);
+          return null;
+        }
+
+        const metadata = JSON.parse(jsonMatch[0]);
+        
+        // 난이도 변환 (영어 -> 한국어)
+        if (userLanguage === 'en') {
+          if (metadata.difficulty === 'high') metadata.difficulty = '상';
+          else if (metadata.difficulty === 'medium') metadata.difficulty = '중';
+          else if (metadata.difficulty === 'low') metadata.difficulty = '하';
+        }
+
+        return {
+          problemId,
+          metadata: {
+            difficulty: metadata.difficulty || '중',
+            word_difficulty: metadata.word_difficulty || 5,
+            problem_type: metadata.problem_type || '',
+            analysis: metadata.analysis || '',
+          },
+        };
+      } catch (error) {
+        console.error(`Error generating metadata for problem ${problemId}:`, error);
+        return null;
+      }
+    });
+
+    const metadataResults = await Promise.all(metadataPromises);
+    
+    // 메타데이터를 problems 테이블에 업데이트
+    for (const result of metadataResults) {
+      if (result && result.metadata) {
+        const { error: updateError } = await supabase
+          .from('problems')
+          .update({ problem_metadata: result.metadata })
+          .eq('id', result.problemId);
+
+        if (updateError) {
+          console.error(`Error updating metadata for problem ${result.problemId}:`, updateError);
+        }
+      }
+    }
+
+    console.log(`Step 6 completed: Generated metadata for ${metadataResults.filter(r => r !== null).length} problems`);
+
+        // 7. 세션 상태를 completed로 업데이트
+        console.log('Step 7: Update session status to completed...');
         const { error: statusUpdateError } = await supabase
           .from('sessions')
           .update({ status: 'completed' })
           .eq('id', createdSessionId);
 
         if (statusUpdateError) {
-          console.error('Step 6 error: Status update error:', statusUpdateError);
+          console.error('Step 7 error: Status update error:', statusUpdateError);
           // 상태 업데이트 실패해도 분석은 완료되었으므로 계속 진행
         } else {
-          console.log('Step 6 completed: Session status updated to completed');
+          console.log('Step 7 completed: Session status updated to completed');
         }
 
         console.log('Background analysis completed for session:', createdSessionId);

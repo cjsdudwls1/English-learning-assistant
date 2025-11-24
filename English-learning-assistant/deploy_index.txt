@@ -1,15 +1,15 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// 에러 파싱 함수 (인라인으로 포함)
+// ?먮윭 ?뚯떛 ?⑥닔 (?몃씪?몄쑝濡??ы븿)
 function parseApiError(error: unknown): { message: string; code: number; status: string } {
-  // Error 객체인 경우
+  // Error 媛앹껜??寃쎌슦
   if (error instanceof Error) {
     const message = error.message;
     
-    // JSON 문자열인 경우 파싱 시도
+    // JSON 臾몄옄?댁씤 寃쎌슦 ?뚯떛 ?쒕룄
     if (message.includes('{') && message.includes('}')) {
       try {
         const parsed = JSON.parse(message);
@@ -22,11 +22,11 @@ function parseApiError(error: unknown): { message: string; code: number; status:
           };
         }
       } catch {
-        // JSON 파싱 실패 시 원본 메시지 사용
+        // JSON ?뚯떛 ?ㅽ뙣 ???먮낯 硫붿떆吏 ?ъ슜
       }
     }
     
-    // 타임아웃 에러 확인
+    // ??꾩븘???먮윭 ?뺤씤
     if (message.includes('timeout') || message.includes('Timeout') || message.includes('TIMEOUT')) {
       return {
         message: 'Request timeout: The AI service took too long to respond. Please try generating fewer problems at once.',
@@ -42,16 +42,15 @@ function parseApiError(error: unknown): { message: string; code: number; status:
     };
   }
   
-  // 객체 형태의 에러 처리
+  // 媛앹껜 ?뺥깭???먮윭 泥섎━
   const err = error as any;
   
-  // 중첩된 error 객체 처리
+  // 以묒꺽??error 媛앹껜 泥섎━
   let errorMessage = 'Unknown error';
   let errorCode = 500;
   let errorStatus = 'UNAVAILABLE';
   
-  // 다양한 에러 구조 지원
-  if (err?.error) {
+  // ?ㅼ뼇???먮윭 援ъ“ 吏??  if (err?.error) {
     const errorObj = err.error;
     errorMessage = errorObj.message || errorObj.error?.message || errorMessage;
     errorCode = errorObj.code || errorObj.status || errorCode;
@@ -62,7 +61,7 @@ function parseApiError(error: unknown): { message: string; code: number; status:
     errorStatus = err?.status || err?.error?.status || errorStatus;
   }
   
-  // 숫자가 아닌 경우 파싱 시도
+  // ?レ옄媛 ?꾨땶 寃쎌슦 ?뚯떛 ?쒕룄
   if (typeof errorCode !== 'number') {
     const parsedCode = parseInt(String(errorCode));
     if (!isNaN(parsedCode)) {
@@ -77,13 +76,12 @@ function parseApiError(error: unknown): { message: string; code: number; status:
   };
 }
 
-// EdgeRuntime 타입 정의 (Supabase Edge Functions에서 제공)
+// EdgeRuntime ????뺤쓽 (Supabase Edge Functions?먯꽌 ?쒓났)
 declare const EdgeRuntime: {
   waitUntil(promise: Promise<any>): void;
 };
 
-// 공유 유틸리티 함수들
-function requireEnv(name: string): string {
+// 怨듭쑀 ?좏떥由ы떚 ?⑥닔??function requireEnv(name: string): string {
   const value = Deno.env.get(name);
   if (!value) {
     throw new Error(`${name} environment variable is not set`);
@@ -119,7 +117,7 @@ function handleOptions(): Response {
   return new Response(null, { status: 200, headers: CORS_HEADERS });
 }
 
-// Taxonomy 데이터를 DB에서 동적으로 로드하는 함수
+// Taxonomy ?곗씠?곕? DB?먯꽌 ?숈쟻?쇰줈 濡쒕뱶?섎뒗 ?⑥닔
 async function loadTaxonomyData(supabase: any, language: 'ko' | 'en' = 'ko'): Promise<{ structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }> {
   console.log('Loading taxonomy data from database...', { language });
   
@@ -138,8 +136,7 @@ async function loadTaxonomyData(supabase: any, language: 'ko' | 'en' = 'ko'): Pr
     throw error;
   }
   
-  // 계층 구조로 변환
-  const structure: any = {};
+  // 怨꾩링 援ъ“濡?蹂??  const structure: any = {};
   const allValues: { depth1: Set<string>; depth2: Set<string>; depth3: Set<string>; depth4: Set<string> } = {
     depth1: new Set(),
     depth2: new Set(),
@@ -166,8 +163,7 @@ async function loadTaxonomyData(supabase: any, language: 'ko' | 'en' = 'ko'): Pr
     }
   }
   
-  // 문자열로 변환
-  function formatStructure(obj: any, indent = 0): string {
+  // 臾몄옄?대줈 蹂??  function formatStructure(obj: any, indent = 0): string {
     let result = '';
     const spaces = '  '.repeat(indent);
     
@@ -199,7 +195,7 @@ async function loadTaxonomyData(supabase: any, language: 'ko' | 'en' = 'ko'): Pr
   };
 }
 
-// depth1~4로 taxonomy 조회하여 code, CEFR, 난이도 찾기
+// depth1~4濡?taxonomy 議고쉶?섏뿬 code, CEFR, ?쒖씠??李얘린
 async function findTaxonomyByDepth(
   supabase: any,
   depth1: string,
@@ -239,106 +235,105 @@ async function findTaxonomyByDepth(
 function buildPrompt(classificationData: { structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }, language: 'ko' | 'en' = 'ko') {
   const { structure, allValues } = classificationData;
   
-  // 언어에 따라 프롬프트 언어 변경 (현재는 한국어 프롬프트만 있으므로 영어일 때는 영어로 번역 필요)
+  // ?몄뼱???곕씪 ?꾨＼?꾪듃 ?몄뼱 蹂寃?(?꾩옱???쒓뎅???꾨＼?꾪듃留??덉쑝誘濡??곸뼱???뚮뒗 ?곸뼱濡?踰덉뿭 ?꾩슂)
   const isEnglish = language === 'en';
   
   return `
-### 1. 페르소나 (Persona) ###
-당신은 두 가지 전문성을 겸비한 최고 수준의 AI 전문가입니다:
-1.  **손글씨 OCR 전문가**: 불규칙한 필기, 겹쳐 쓴 글씨, 다양한 필기구의 흔적까지 분석하여 디지털 텍스트로 변환하는 데 특화되어 있습니다. 펜의 압력, 기울기, 획의 연결성과 같은 미세한 특징을 파악하여 문맥 기반으로 모호한 글자를 추론하는 능력이 뛰어납니다.
-2.  **영어 교육 평가 전문가**: 다양한 유형의 영어 문제를 이해하고, 교육과정 분류 체계에 따라 문제의 핵심 의도를 파악하여 정확하게 분류할 수 있습니다.
+### 1. ?섎Ⅴ?뚮굹 (Persona) ###
+?뱀떊? ??媛吏 ?꾨Ц?깆쓣 寃몃퉬??理쒓퀬 ?섏???AI ?꾨Ц媛?낅땲??
+1.  **?먭???OCR ?꾨Ц媛**: 遺덇퇋移숉븳 ?꾧린, 寃뱀퀜 ??湲?? ?ㅼ뼇???꾧린援ъ쓽 ?붿쟻源뚯? 遺꾩꽍?섏뿬 ?붿????띿뒪?몃줈 蹂?섑븯?????뱁솕?섏뼱 ?덉뒿?덈떎. ?쒖쓽 ?뺣젰, 湲곗슱湲? ?띿쓽 ?곌껐?깃낵 媛숈? 誘몄꽭???뱀쭠???뚯븙?섏뿬 臾몃㎘ 湲곕컲?쇰줈 紐⑦샇??湲?먮? 異붾줎?섎뒗 ?λ젰???곗뼱?⑸땲??
+2.  **?곸뼱 援먯쑁 ?됯? ?꾨Ц媛**: ?ㅼ뼇???좏삎???곸뼱 臾몄젣瑜??댄빐?섍퀬, 援먯쑁怨쇱젙 遺꾨쪟 泥닿퀎???곕씪 臾몄젣???듭떖 ?섎룄瑜??뚯븙?섏뿬 ?뺥솗?섍쾶 遺꾨쪟?????덉뒿?덈떎.
 
-### 2. 과업 (Task) ###
-사용자가 업로드한 영어 문제 이미지 한 장을 종합적으로 분석하여, 이미지 내의 모든 텍스트와 손글씨를 인식하고, 문제 유형을 분류한 뒤, 분석된 모든 정보를 지정된 JSON 형식에 맞춰 단 하나의 결과물로 출력해야 합니다.
+### 2. 怨쇱뾽 (Task) ###
+?ъ슜?먭? ?낅줈?쒗븳 ?곸뼱 臾몄젣 ?대?吏 ???μ쓣 醫낇빀?곸쑝濡?遺꾩꽍?섏뿬, ?대?吏 ?댁쓽 紐⑤뱺 ?띿뒪?몄? ?먭??⑤? ?몄떇?섍퀬, 臾몄젣 ?좏삎??遺꾨쪟???? 遺꾩꽍??紐⑤뱺 ?뺣낫瑜?吏?뺣맂 JSON ?뺤떇??留욎떠 ???섎굹??寃곌낵臾쇰줈 異쒕젰?댁빞 ?⑸땲??
 
-### 3. 맥락 (Context) ###
-- **입력 데이터 1 (이미지)**: 사용자가 촬영하거나 업로드한 영어 문제 이미지 파일. 이 이미지에는 인쇄된 문제 텍스트, 객관식 보기, 그리고 사용자가 손으로 작성한 답안 및 채점 표시(O, X, △, ✓, 취소선 등)가 포함되어 있습니다.
-- **입력 데이터 2 (분류 기준표)**: 문제 유형을 분류하기 위한 기준이 되는 데이터입니다.
+### 3. 留λ씫 (Context) ###
+- **?낅젰 ?곗씠??1 (?대?吏)**: ?ъ슜?먭? 珥ъ쁺?섍굅???낅줈?쒗븳 ?곸뼱 臾몄젣 ?대?吏 ?뚯씪. ???대?吏?먮뒗 ?몄뇙??臾몄젣 ?띿뒪?? 媛앷???蹂닿린, 洹몃━怨??ъ슜?먭? ?먯쑝濡??묒꽦???듭븞 諛?梨꾩젏 ?쒖떆(O, X, ?? ?? 痍⑥냼????媛 ?ы븿?섏뼱 ?덉뒿?덈떎.
+- **?낅젰 ?곗씠??2 (遺꾨쪟 湲곗???**: 臾몄젣 ?좏삎??遺꾨쪟?섍린 ?꾪븳 湲곗????섎뒗 ?곗씠?곗엯?덈떎.
 
-**분류 기준표 계층 구조:**
+**遺꾨쪟 湲곗???怨꾩링 援ъ“:**
 \`\`\`
 ${structure}
 \`\`\`
 
-**⚠️ 절대 규칙:**
-- 위 계층 구조에 나와있는 정확한 depth1, depth2, depth3, depth4 값만 사용하세요.
-- 공백이나 특수문자(·)를 변경하지 마세요. (예: ❌ "문장유형" → ✅ "문장 유형·시제·상")
-- 임의의 값이나 약어를 사용하지 마세요. (예: ❌ "어휘" → ✅ "어휘·연결")
-- 계층 구조를 정확히 따라야 합니다 (depth1 → depth2 → depth3 → depth4).
+**?좑툘 ?덈? 洹쒖튃:**
+- ??怨꾩링 援ъ“???섏??덈뒗 ?뺥솗??depth1, depth2, depth3, depth4 媛믩쭔 ?ъ슜?섏꽭??
+- 怨듬갚?대굹 ?뱀닔臾몄옄(쨌)瑜?蹂寃쏀븯吏 留덉꽭?? (?? ??"臾몄옣?좏삎" ????"臾몄옣 ?좏삎쨌?쒖젣쨌??)
+- ?꾩쓽??媛믪씠???쎌뼱瑜??ъ슜?섏? 留덉꽭?? (?? ??"?댄쐶" ????"?댄쐶쨌?곌껐")
+- 怨꾩링 援ъ“瑜??뺥솗???곕씪???⑸땲??(depth1 ??depth2 ??depth3 ??depth4).
 
-### 4. 단계별 지시 (Step-by-Step Instructions / Chain-of-Thought) ###
-다음 단계를 순서대로, 그리고 신중하게 수행하여 최종 결과물을 도출하세요.
+### 4. ?④퀎蹂?吏??(Step-by-Step Instructions / Chain-of-Thought) ###
+?ㅼ쓬 ?④퀎瑜??쒖꽌?濡? 洹몃━怨??좎쨷?섍쾶 ?섑뻾?섏뿬 理쒖쥌 寃곌낵臾쇱쓣 ?꾩텧?섏꽭??
 
-**[1단계: 이미지 전처리 및 영역 구분]**
-- 이미지 전체를 스캔하여 인쇄된 텍스트 영역(문제 본문, 보기)과 손글씨가 있을 가능성이 높은 영역(답안 작성란, 채점 마킹 영역)을 명확하게 구분하세요.
+**[1?④퀎: ?대?吏 ?꾩쿂由?諛??곸뿭 援щ텇]**
+- ?대?吏 ?꾩껜瑜??ㅼ틪?섏뿬 ?몄뇙???띿뒪???곸뿭(臾몄젣 蹂몃Ц, 蹂닿린)怨??먭??④? ?덉쓣 媛?μ꽦???믪? ?곸뿭(?듭븞 ?묒꽦?, 梨꾩젏 留덊궧 ?곸뿭)??紐낇솗?섍쾶 援щ텇?섏꽭??
 
-**[2단계: 텍스트 및 마킹 인식]**
-- **인쇄 텍스트 추출**: 문제 본문과 객관식 보기(예: ①, ②, ③, ④, ⑤) 텍스트를 정확하게 추출합니다.
-- **손글씨 답안 인식**:
-    - **컨텍스트 활용**: 주변 인쇄 텍스트(문제 내용)의 맥락과 일반적인 영어 문법 규칙을 활용하여 사용자가 작성한 답안을 추론합니다.
-    - **특징 분석**: 획의 시작점, 끝점, 글자 간 간격, 크기 비율을 분석하여 유사 문자(예: 1/l, 0/O, 5/S)를 정밀하게 구분합니다.
-    - **다중 해석 처리**: 만약 손글씨가 불명확하여 여러 가지로 해석될 수 있다면(예: '3'인지 '5'인지 모호한 경우), 가장 가능성이 높은 답을 기본값으로 하되, 가능한 모든 대체 해석을 수집해 둡니다.
-- **채점 마킹 인식**: 이미지에 표시된 채점 마크를 인식하되, 최종 출력에서는 반드시 다음 규칙을 따릅니다.
-    - 최종 값은 오직 "O" 또는 "X" 둘 중 하나만 사용합니다.
-    - 원형/체크/정답 표식은 모두 "O"로 통일합니다.
-    - 교차선/오답 표식은 모두 "X"로 통일합니다.
-    - 그 외 표식(△, 취소선 등)이 보이더라도 상황 판단하여 "O" 또는 "X" 중 하나로 결정합니다.
+**[2?④퀎: ?띿뒪??諛?留덊궧 ?몄떇]**
+- **?몄뇙 ?띿뒪??異붿텧**: 臾몄젣 蹂몃Ц怨?媛앷???蹂닿린(?? ?? ?? ?? ?? ?? ?띿뒪?몃? ?뺥솗?섍쾶 異붿텧?⑸땲??
+- **?먭????듭븞 ?몄떇**:
+    - **而⑦뀓?ㅽ듃 ?쒖슜**: 二쇰? ?몄뇙 ?띿뒪??臾몄젣 ?댁슜)??留λ씫怨??쇰컲?곸씤 ?곸뼱 臾몃쾿 洹쒖튃???쒖슜?섏뿬 ?ъ슜?먭? ?묒꽦???듭븞??異붾줎?⑸땲??
+    - **?뱀쭠 遺꾩꽍**: ?띿쓽 ?쒖옉?? ?앹젏, 湲??媛?媛꾧꺽, ?ш린 鍮꾩쑉??遺꾩꽍?섏뿬 ?좎궗 臾몄옄(?? 1/l, 0/O, 5/S)瑜??뺣??섍쾶 援щ텇?⑸땲??
+    - **?ㅼ쨷 ?댁꽍 泥섎━**: 留뚯빟 ?먭??④? 遺덈챸?뺥븯???щ윭 媛吏濡??댁꽍?????덈떎硫??? '3'?몄? '5'?몄? 紐⑦샇??寃쎌슦), 媛??媛?μ꽦???믪? ?듭쓣 湲곕낯媛믪쑝濡??섎릺, 媛?ν븳 紐⑤뱺 ?泥??댁꽍???섏쭛???〓땲??
+- **梨꾩젏 留덊궧 ?몄떇**: ?대?吏???쒖떆??梨꾩젏 留덊겕瑜??몄떇?섎릺, 理쒖쥌 異쒕젰?먯꽌??諛섎뱶???ㅼ쓬 洹쒖튃???곕쫭?덈떎.
+    - 理쒖쥌 媛믪? ?ㅼ쭅 "O" ?먮뒗 "X" ??以??섎굹留??ъ슜?⑸땲??
+    - ?먰삎/泥댄겕/?뺣떟 ?쒖떇? 紐⑤몢 "O"濡??듭씪?⑸땲??
+    - 援먯감???ㅻ떟 ?쒖떇? 紐⑤몢 "X"濡??듭씪?⑸땲??
+    - 洹????쒖떇(?? 痍⑥냼??????蹂댁씠?붾씪???곹솴 ?먮떒?섏뿬 "O" ?먮뒗 "X" 以??섎굹濡?寃곗젙?⑸땲??
 
-**[3단계: 문제 유형 분류]**
-- [2단계]에서 추출한 문제 텍스트를 기반으로, 주어진 분류 기준표를 참조하여 문제의 유형을 "1Depth"부터 "4Depth"까지 분류합니다.
-- 분류의 정확도에 대한 자체적인 신뢰도를 '높음', '보통', '낮음' 중 하나로 평가하고, 왜 그렇게 분류했는지에 대한 구체적인 근거를 한 문장으로 요약합니다.
+**[3?④퀎: 臾몄젣 ?좏삎 遺꾨쪟]**
+- [2?④퀎]?먯꽌 異붿텧??臾몄젣 ?띿뒪?몃? 湲곕컲?쇰줈, 二쇱뼱吏?遺꾨쪟 湲곗??쒕? 李몄“?섏뿬 臾몄젣???좏삎??"1Depth"遺??"4Depth"源뚯? 遺꾨쪟?⑸땲??
+- 遺꾨쪟???뺥솗?꾩뿉 ????먯껜?곸씤 ?좊ː?꾨? '?믪쓬', '蹂댄넻', '??쓬' 以??섎굹濡??됯??섍퀬, ??洹몃젃寃?遺꾨쪟?덈뒗吏?????援ъ껜?곸씤 洹쇨굅瑜???臾몄옣?쇰줈 ?붿빟?⑸땲??
 
-**[4단계: 후처리 및 신뢰도 평가]**
-- 인식된 모든 텍스트(특히 손글씨)에 대해 영어 사전을 기반으로 맞춤법 교정을 시도합니다. 만약 단어를 교정했다면, 해당 사실을 기록해 둡니다.
-- 추출 및 분석된 각 데이터 항목(문제내용, 사용자 답안 등)에 대해 개별적인 인식 신뢰도(Confidence Score)를 백분율로 평가합니다.
+**[4?④퀎: ?꾩쿂由?諛??좊ː???됯?]**
+- ?몄떇??紐⑤뱺 ?띿뒪???뱁엳 ?먭?????????곸뼱 ?ъ쟾??湲곕컲?쇰줈 留욎땄踰?援먯젙???쒕룄?⑸땲?? 留뚯빟 ?⑥뼱瑜?援먯젙?덈떎硫? ?대떦 ?ъ떎??湲곕줉???〓땲??
+- 異붿텧 諛?遺꾩꽍??媛??곗씠????ぉ(臾몄젣?댁슜, ?ъ슜???듭븞 ???????媛쒕퀎?곸씤 ?몄떇 ?좊ː??Confidence Score)瑜?諛깅텇?⑤줈 ?됯??⑸땲??
 
-### 5. 출력 명세 (Output Specification) ###
-이미지 한 장에 여러 문항이 있을 수 있으므로, 반드시 아래 구조의 JSON 객체 하나만 출력하세요.
+### 5. 異쒕젰 紐낆꽭 (Output Specification) ###
+?대?吏 ???μ뿉 ?щ윭 臾명빆???덉쓣 ???덉쑝誘濡? 諛섎뱶???꾨옒 援ъ“??JSON 媛앹껜 ?섎굹留?異쒕젰?섏꽭??
 
 \`\`\`json
 {
   "items": [
     {
       "index": 0,
-      "사용자가_직접_채점한_정오답": "O | X",
-      "문제내용": { "text": "...", "confidence_score": 0.98 },
-      "문제_보기": [ { "text": "① ...", "confidence_score": 0.99 } ],
-      "사용자가_기술한_정답": {
+      "?ъ슜?먭?_吏곸젒_梨꾩젏???뺤삤??: "O | X",
+      "臾몄젣?댁슜": { "text": "...", "confidence_score": 0.98 },
+      "臾몄젣_蹂닿린": [ { "text": "??...", "confidence_score": 0.99 } ],
+      "?ъ슜?먭?_湲곗닠???뺣떟": {
         "text": "...",
         "confidence_score": 0.85,
         "auto_corrected": false,
         "alternate_interpretations": ["..."]
       },
-      "문제_유형_분류": {
+      "臾몄젣_?좏삎_遺꾨쪟": {
         "1Depth": "...",
         "2Depth": "...",
         "3Depth": "...",
         "4Depth": "...",
-        "분류_신뢰도": "높음"
+        "遺꾨쪟_?좊ː??: "?믪쓬"
       },
-      "분류_근거": "..."
+      "遺꾨쪟_洹쇨굅": "..."
     }
   ]
 }
 \`\`\`
 
-### 6. 제약 및 예외 처리 (Constraints & Error Handling) ###
-- **이미지 품질 저하**: 이미지가 너무 흐릿하거나 빛 반사가 심해 내용을 판독할 수 없는 경우, JSON의 모든 값을 "인식불가"로 채우세요.
-- **비영어 문제**: 분석 결과, 내용이 영어가 아니라고 판단되면 JSON의 모든 값을 "영어 문제 아님"으로 채우세요.
-- **분류 모호성**: 문제 유형 분류가 애매하여 두 개 이상의 카테고리에 걸쳐 있다고 판단될 경우, 가장 가능성이 높은 하나를 선택하되, "분류_신뢰도"를 "낮음"으로 설정하세요.
-- **불필요한 정보**: 프롬프트에 명시되지 않은 어떠한 정보도 추가로 생성하거나 출력하지 마세요.
+### 6. ?쒖빟 諛??덉쇅 泥섎━ (Constraints & Error Handling) ###
+- **?대?吏 ?덉쭏 ???*: ?대?吏媛 ?덈Т ?먮┸?섍굅??鍮?諛섏궗媛 ?ы빐 ?댁슜???먮룆?????녿뒗 寃쎌슦, JSON??紐⑤뱺 媛믪쓣 "?몄떇遺덇?"濡?梨꾩슦?몄슂.
+- **鍮꾩쁺??臾몄젣**: 遺꾩꽍 寃곌낵, ?댁슜???곸뼱媛 ?꾨땲?쇨퀬 ?먮떒?섎㈃ JSON??紐⑤뱺 媛믪쓣 "?곸뼱 臾몄젣 ?꾨떂"?쇰줈 梨꾩슦?몄슂.
+- **遺꾨쪟 紐⑦샇??*: 臾몄젣 ?좏삎 遺꾨쪟媛 ?좊ℓ?섏뿬 ??媛??댁긽??移댄뀒怨좊━??嫄몄퀜 ?덈떎怨??먮떒??寃쎌슦, 媛??媛?μ꽦???믪? ?섎굹瑜??좏깮?섎릺, "遺꾨쪟_?좊ː??瑜?"??쓬"?쇰줈 ?ㅼ젙?섏꽭??
+- **遺덊븘?뷀븳 ?뺣낫**: ?꾨＼?꾪듃??紐낆떆?섏? ?딆? ?대뼚???뺣낫??異붽?濡??앹꽦?섍굅??異쒕젰?섏? 留덉꽭??
 `;
 
 function normalizeMark(raw: unknown): 'O' | 'X' {
   if (raw === undefined || raw === null) return 'X';
   const value = String(raw).trim().toLowerCase();
-  const truthy = new Set(['o', '✓', 'v', 'correct', 'true', '정답', '맞음', 'ok', '⭕', 'circle', 'check', 'checkmark']);
+  const truthy = new Set(['o', '??, 'v', 'correct', 'true', '?뺣떟', '留욎쓬', 'ok', '狩?, 'circle', 'check', 'checkmark']);
   if (truthy.has(value)) return 'O';
   return 'X';
 }
 
-// 백그라운드 작업 함수: Gemini API 호출 및 DB 저장
-async function analyzeImageInBackground(
+// 諛깃렇?쇱슫???묒뾽 ?⑥닔: Gemini API ?몄텧 諛?DB ???async function analyzeImageInBackground(
   sessionId: string,
   imageBase64: string,
   mimeType: string,
@@ -348,12 +343,12 @@ async function analyzeImageInBackground(
   const supabase = createServiceSupabaseClient();
   
   try {
-    // 3. Taxonomy 데이터 로드
+    // 3. Taxonomy ?곗씠??濡쒕뱶
     console.log('[Background] Step 3a: Loading taxonomy data from database...', { language: userLanguage });
     const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
     const prompt = buildPrompt(taxonomyData, userLanguage);
     
-    // 3. Gemini API로 분석 (재시도 로직 적용)
+    // 3. Gemini API濡?遺꾩꽍 (?ъ떆??濡쒖쭅 ?곸슜)
     console.log('[Background] Step 3b: Analyzing image with Gemini...');
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
@@ -362,15 +357,13 @@ async function analyzeImageInBackground(
 
     let responseText: string;
     
-    // 재시도 설정
-    const MAX_RETRIES = 5; // 최대 5번까지 재시도
-    const BASE_DELAY = 5000; // 기본 5초 대기 (서버 복구 시간 고려)
+    // ?ъ떆???ㅼ젙
+    const MAX_RETRIES = 5; // 理쒕? 5踰덇퉴吏 ?ъ떆??    const BASE_DELAY = 5000; // 湲곕낯 5珥??湲?(?쒕쾭 蹂듦뎄 ?쒓컙 怨좊젮)
 
     let attempt = 0;
     while (attempt < MAX_RETRIES) {
       try {
-        const timeoutMs = 50000; // 50초 타임아웃
-        const timeoutPromise = new Promise<never>((_, reject) => {
+        const timeoutMs = 50000; // 50珥???꾩븘??        const timeoutPromise = new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error('Gemini API request timeout')), timeoutMs);
         });
         
@@ -389,12 +382,12 @@ async function analyzeImageInBackground(
         responseText = response.text;
         console.log('[Background] Step 3 completed: Gemini response received, length:', responseText.length);
         
-        // 성공했으면 반복문 탈출
+        // ?깃났?덉쑝硫?諛섎났臾??덉텧
         break;
       } catch (apiError: any) {
         attempt++;
         
-        // 에러 정보 상세 로깅
+        // ?먮윭 ?뺣낫 ?곸꽭 濡쒓퉭
         console.error(`[Background] Gemini API error (attempt ${attempt}/${MAX_RETRIES}):`, apiError);
         console.error(`[Background] Error type:`, typeof apiError);
         console.error(`[Background] Error keys:`, apiError ? Object.keys(apiError) : 'N/A');
@@ -402,7 +395,7 @@ async function analyzeImageInBackground(
           console.error(`[Background] Nested error:`, apiError.error);
         }
         
-        // 에러 정보 파싱 (공통 유틸리티 사용)
+        // ?먮윭 ?뺣낫 ?뚯떛 (怨듯넻 ?좏떥由ы떚 ?ъ슜)
         const parsedError = parseApiError(apiError);
         const errorMessage = parsedError.message;
         const errorCode = parsedError.code;
@@ -416,21 +409,20 @@ async function analyzeImageInBackground(
         
         console.log(`[Background] Error classification - RateLimit: ${isRateLimit}, ServerOverload: ${isServerOverload}, Timeout: ${isTimeout}`);
         
-        // 마지막 시도였거나, 재시도할 가치가 없는 에러라면 throw
+        // 留덉?留??쒕룄?嫄곕굹, ?ъ떆?꾪븷 媛移섍? ?녿뒗 ?먮윭?쇰㈃ throw
         if (attempt >= MAX_RETRIES || (!isRateLimit && !isServerOverload && !isTimeout)) {
           console.error(`[Background] Gemini API failed after ${attempt} attempts:`, { code: errorCode, status: errorStatus, message: errorMessage });
           throw new Error(`Gemini API error: ${errorMessage}`);
         }
         
-        // 429, 503, 또는 타임아웃이면 잠시 대기 후 재시도 (Exponential Backoff)
-        // 1번째: 5초, 2번째: 10초, 3번째: 20초, 4번째: 40초 대기
-        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+        // 429, 503, ?먮뒗 ??꾩븘?껋씠硫??좎떆 ?湲????ъ떆??(Exponential Backoff)
+        // 1踰덉㎏: 5珥? 2踰덉㎏: 10珥? 3踰덉㎏: 20珥? 4踰덉㎏: 40珥??湲?        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
         console.warn(`[Background] Hit rate limit/overload/timeout (code: ${errorCode}, status: ${errorStatus}). Retrying in ${delay/1000}s... (Attempt ${attempt}/${MAX_RETRIES})`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
     
-    // JSON 파싱
+    // JSON ?뚯떛
     const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     let result: any;
     try {
@@ -442,19 +434,18 @@ async function analyzeImageInBackground(
     }
 
     if (!result || !Array.isArray(result.items)) {
-      throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
+      throw new Error('AI ?묐떟 ?뺤떇 ?ㅻ쪟: items 諛곗뿴???놁뒿?덈떎.');
     }
 
     console.log(`[Background] Step 3 completed: Parsed ${result.items.length} items from analysis`);
 
-    // 4. 문제 저장
-    console.log('[Background] Step 4: Save problems to database...');
+    // 4. 臾몄젣 ???    console.log('[Background] Step 4: Save problems to database...');
     const items = result.items;
     const problemsPayload = items.map((it: any, idx: number) => ({
       session_id: sessionId,
       index_in_image: it.index ?? idx,
-      stem: it.문제내용?.text || '',
-      choices: (it.문제_보기 || []).map((c: any) => ({ text: c.text, confidence: c.confidence_score })),
+      stem: it.臾몄젣?댁슜?.text || '',
+      choices: (it.臾몄젣_蹂닿린 || []).map((c: any) => ({ text: c.text, confidence: c.confidence_score })),
     }));
 
     const { data: problems, error: problemsError } = await supabase
@@ -469,31 +460,30 @@ async function analyzeImageInBackground(
 
     console.log(`[Background] Step 4 completed: Inserted ${problems?.length || 0} problems`);
 
-    // 5. AI 분석 결과를 labels에 저장 (user_mark는 null로 - 사용자 검수 대기)
+    // 5. AI 遺꾩꽍 寃곌낵瑜?labels?????(user_mark??null濡?- ?ъ슜??寃???湲?
     console.log('[Background] Step 5: Save AI analysis results to labels (pending user review)...');
     const idByIndex = new Map<number, string>();
     for (const row of problems || []) {
       idByIndex.set(row.index_in_image, row.id);
     }
 
-    // 각 문제에 대해 taxonomy 조회하여 code, CEFR, 난이도 추가
+    // 媛?臾몄젣?????taxonomy 議고쉶?섏뿬 code, CEFR, ?쒖씠??異붽?
     const labelsPayload = await Promise.all(items.map(async (it: any, idx: number) => {
-      const normalizedMark = normalizeMark(it.사용자가_직접_채점한_정오답);
-      const classification = it.문제_유형_분류 || {};
+      const normalizedMark = normalizeMark(it.?ъ슜?먭?_吏곸젒_梨꾩젏???뺤삤??;
+      const classification = it.臾몄젣_?좏삎_遺꾨쪟 || {};
       
-      // Gemini가 반환한 원본 값
-      const rawDepth1 = (classification['1Depth'] || '').trim();
+      // Gemini媛 諛섑솚???먮낯 媛?      const rawDepth1 = (classification['1Depth'] || '').trim();
       const rawDepth2 = (classification['2Depth'] || '').trim();
       const rawDepth3 = (classification['3Depth'] || '').trim();
       const rawDepth4 = (classification['4Depth'] || '').trim();
       
-      // 유효성 검증: DB에 있는 값인지 확인
+      // ?좏슚??寃利? DB???덈뒗 媛믪씤吏 ?뺤씤
       const validDepth1 = taxonomyData.allValues.depth1.includes(rawDepth1) ? rawDepth1 : '';
       const validDepth2 = taxonomyData.allValues.depth2.includes(rawDepth2) ? rawDepth2 : '';
       const validDepth3 = taxonomyData.allValues.depth3.includes(rawDepth3) ? rawDepth3 : '';
       const validDepth4 = taxonomyData.allValues.depth4.includes(rawDepth4) ? rawDepth4 : '';
       
-      // 유효하지 않은 값이 있으면 경고
+      // ?좏슚?섏? ?딆? 媛믪씠 ?덉쑝硫?寃쎄퀬
       if (!validDepth1 && rawDepth1) {
         console.warn(`[Background] Invalid depth1: "${rawDepth1}" - not in taxonomy. Valid values: ${taxonomyData.allValues.depth1.slice(0, 3).join(', ')}...`);
       }
@@ -507,7 +497,7 @@ async function analyzeImageInBackground(
         console.warn(`[Background] Invalid depth4: "${rawDepth4}" - not in taxonomy`);
       }
       
-      // 유효한 값으로만 taxonomy 조회
+      // ?좏슚??媛믪쑝濡쒕쭔 taxonomy 議고쉶
       const taxonomy = await findTaxonomyByDepth(
         supabase,
         validDepth1,
@@ -517,7 +507,7 @@ async function analyzeImageInBackground(
         userLanguage
       );
       
-      // classification에 code, CEFR, 난이도 추가 (유효한 값만 저장)
+      // classification??code, CEFR, ?쒖씠??異붽? (?좏슚??媛믩쭔 ???
       const enrichedClassification = {
         '1Depth': validDepth1 || null,
         '2Depth': validDepth2 || null,
@@ -525,13 +515,13 @@ async function analyzeImageInBackground(
         '4Depth': validDepth4 || null,
         code: taxonomy.code,
         CEFR: taxonomy.cefr,
-        난이도: taxonomy.difficulty,
-        분류_신뢰도: classification['분류_신뢰도'] || '보통',
+        ?쒖씠?? taxonomy.difficulty,
+        遺꾨쪟_?좊ː?? classification['遺꾨쪟_?좊ː??] || '蹂댄넻',
       };
       
-      // 유효하지 않은 값이 있거나 매핑 실패 시 신뢰도 하락
+      // ?좏슚?섏? ?딆? 媛믪씠 ?덇굅??留ㅽ븨 ?ㅽ뙣 ???좊ː???섎씫
       if (!validDepth1 || !taxonomy.code) {
-        enrichedClassification['분류_신뢰도'] = '낮음';
+        enrichedClassification['遺꾨쪟_?좊ː??] = '??쓬';
         if (!validDepth1) {
           console.warn(`[Background] Invalid classification: depth1="${rawDepth1}" is not in taxonomy. Saving with null.`);
         }
@@ -539,14 +529,13 @@ async function analyzeImageInBackground(
       
       return {
         problem_id: idByIndex.get(it.index ?? idx)!,
-        user_answer: it.사용자가_기술한_정답?.text || '',
-        user_mark: null, // 사용자 검수 전이므로 null
-        is_correct: normalizedMark === 'O', // AI 분석 결과 저장
-        classification: enrichedClassification,
+        user_answer: it.?ъ슜?먭?_湲곗닠???뺣떟?.text || '',
+        user_mark: null, // ?ъ슜??寃???꾩씠誘濡?null
+        is_correct: normalizedMark === 'O', // AI 遺꾩꽍 寃곌낵 ???        classification: enrichedClassification,
         confidence: {
-          stem: it.문제내용?.confidence_score || 1.0,
-          answer: it.사용자가_기술한_정답?.confidence_score || 1.0,
-          choices: (it.문제_보기 || []).map((c: any) => c.confidence_score || 1.0),
+          stem: it.臾몄젣?댁슜?.confidence_score || 1.0,
+          answer: it.?ъ슜?먭?_湲곗닠???뺣떟?.confidence_score || 1.0,
+          choices: (it.臾몄젣_蹂닿린 || []).map((c: any) => c.confidence_score || 1.0),
         },
       };
     }));
@@ -559,82 +548,52 @@ async function analyzeImageInBackground(
 
     console.log('[Background] Step 5 completed: AI analysis results saved (pending user review)');
 
-    // 6. 문제 메타데이터 생성 및 저장
-    console.log('[Background] Step 6: Generate problem metadata...');
+    // 6. 臾몄젣 硫뷀??곗씠???앹꽦 諛????    console.log('[Background] Step 6: Generate problem metadata...');
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     
-    if (!problems || problems.length === 0) {
-      console.log('[Background] Step 6 skipped: No problems to process');
-    } else {
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      
-      // 문제와 원본 아이템을 매핑
-      const problemItemMap = new Map<number, any>();
-      for (const item of items) {
-        const itemIndex = item.index ?? items.indexOf(item);
-        problemItemMap.set(itemIndex, item);
-      }
-      
-      console.log(`[Background] Step 6: Processing ${problems.length} problems for metadata generation...`);
-      
-      // 각 문제에 대해 메타데이터 생성 (순차적으로 처리하여 rate limit 방지)
-      let successCount = 0;
-      let errorCount = 0;
-      
-      for (let i = 0; i < problems.length; i++) {
-        const p = problems[i];
-        const originalItem = problemItemMap.get(p.index_in_image);
-        
-        if (!originalItem) {
-          console.warn(`[Background] Step 6: Original item not found for problem ${p.id} (index: ${p.index_in_image})`);
-          errorCount++;
-          continue;
-        }
+    // 媛?臾몄젣?????硫뷀??곗씠???앹꽦
+    const metadataResults = await Promise.all(problems.map(async (p: any) => {
+      const originalItem = items.find((it: any) => (it.index ?? items.indexOf(p)) === p.index_in_image);
+      if (!originalItem) return null;
 
-        const problemStem = originalItem.문제내용?.text || '';
-        const problemChoices = (originalItem.문제_보기 || []).map((c: any) => c.text).join('\n');
-        const userAnswer = originalItem.사용자가_기술한_정답?.text || '';
-        const isCorrect = normalizeMark(originalItem.사용자가_직접_채점한_정오답) === 'O';
+      const problemStem = originalItem.臾몄젣?댁슜?.text || '';
+      const problemChoices = (originalItem.臾몄젣_蹂닿린 || []).map((c: any) => c.text).join('\n');
+      const userAnswer = originalItem.?ъ슜?먭?_湲곗닠???뺣떟?.text || '';
+      const isCorrect = normalizeMark(originalItem.?ъ슜?먭?_吏곸젒_梨꾩젏???뺤삤?? === 'O';
 
-        // 문제 내용이 없으면 스킵
-        if (!problemStem || problemStem.trim() === '') {
-          console.warn(`[Background] Step 6: Problem ${p.id} has no stem, skipping metadata generation`);
-          errorCount++;
-          continue;
-        }
+      // 硫뷀??곗씠???앹꽦 ?꾨＼?꾪듃
+      const metadataPrompt = userLanguage === 'ko' 
+        ? `?ㅼ쓬 ?곸뼱 臾몄젣瑜?遺꾩꽍?섏뿬 硫뷀??곗씠?곕? ?앹꽦?댁＜?몄슂.
 
-        // 메타데이터 생성 프롬프트
-        const metadataPrompt = userLanguage === 'ko' 
-          ? `다음 영어 문제를 분석하여 메타데이터를 생성해주세요.
-
-문제 내용:
+臾몄젣 ?댁슜:
 ${problemStem}
 
-선택지:
+?좏깮吏:
 ${problemChoices}
 
-사용자 답안: ${userAnswer}
-정답 여부: ${isCorrect ? '정답' : '오답'}
+?ъ슜???듭븞: ${userAnswer}
+?뺣떟 ?щ?: ${isCorrect ? '?뺣떟' : '?ㅻ떟'}
 
-다음 형식의 JSON으로 응답해주세요:
+?ㅼ쓬 ?뺤떇??JSON?쇰줈 ?묐떟?댁＜?몄슂:
 {
-  "difficulty": "상" | "중" | "하",
-  "word_difficulty": 1-9 사이의 숫자,
-  "problem_type": "문제 유형에 대한 설명 (예: 문법, 어휘, 독해 등)",
-  "analysis": "문제에 대한 상세 분석 정보"
+  "difficulty": "?? | "以? | "??,
+  "word_difficulty": 1-9 ?ъ씠???レ옄,
+  "problem_type": "臾몄젣 ?좏삎??????ㅻ챸 (?? 臾몃쾿, ?댄쐶, ?낇빐 ??",
+  "analysis": "臾몄젣??????곸꽭 遺꾩꽍 ?뺣낫"
 }
 
-난이도 기준:
-- 상: 고등학교 수준 이상의 어려운 문제
-- 중: 중학교 수준의 문제
-- 하: 초등학교 수준의 쉬운 문제
+?쒖씠??湲곗?:
+- ?? 怨좊벑?숆탳 ?섏? ?댁긽???대젮??臾몄젣
+- 以? 以묓븰援??섏???臾몄젣
+- ?? 珥덈벑?숆탳 ?섏????ъ슫 臾몄젣
 
-단어 난이도 기준:
-- 1-3: 초등학교 수준의 쉬운 단어
-- 4-6: 중학교 수준의 보통 단어
-- 7-9: 고등학교 수준 이상의 어려운 단어
+?⑥뼱 ?쒖씠??湲곗?:
+- 1-3: 珥덈벑?숆탳 ?섏????ъ슫 ?⑥뼱
+- 4-6: 以묓븰援??섏???蹂댄넻 ?⑥뼱
+- 7-9: 怨좊벑?숆탳 ?섏? ?댁긽???대젮???⑥뼱
 
-JSON 형식으로만 응답해주세요.`
-          : `Analyze the following English problem and generate metadata.
+JSON ?뺤떇?쇰줈留??묐떟?댁＜?몄슂.`
+        : `Analyze the following English problem and generate metadata.
 
 Problem:
 ${problemStem}
@@ -665,97 +624,60 @@ Word difficulty criteria:
 
 Respond only in JSON format.`;
 
-        try {
-          console.log(`[Background] Step 6: Generating metadata for problem ${p.id} (${i + 1}/${problems.length})...`);
-          
-          const metadataResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [{ text: metadataPrompt }] },
-            generationConfig: {
-              temperature: 0.0, // 일관성 보장
-            },
-          });
+      try {
+        const metadataResponse = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: { parts: [{ text: metadataPrompt }] },
+          generationConfig: {
+            temperature: 0.0, // ?쇨???蹂댁옣
+          },
+        });
 
-          const metadataText = metadataResponse.text;
-          
-          // JSON 추출
-          const jsonMatch = metadataText.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) {
-            console.warn(`[Background] Step 6: Failed to extract JSON from metadata response for problem ${p.id}`);
-            console.warn(`[Background] Step 6: Response text (first 200 chars): ${metadataText.substring(0, 200)}`);
-            errorCount++;
-            continue;
-          }
-
-          let metadata: any;
-          try {
-            metadata = JSON.parse(jsonMatch[0]);
-          } catch (parseError) {
-            console.error(`[Background] Step 6: JSON parse error for problem ${p.id}:`, parseError);
-            console.error(`[Background] Step 6: JSON string: ${jsonMatch[0].substring(0, 500)}`);
-            errorCount++;
-            continue;
-          }
-          
-          // 난이도 변환 (영어 -> 한국어)
-          if (userLanguage === 'en') {
-            if (metadata.difficulty === 'high') metadata.difficulty = '상';
-            else if (metadata.difficulty === 'medium') metadata.difficulty = '중';
-            else if (metadata.difficulty === 'low') metadata.difficulty = '하';
-          }
-
-          // 난이도 유효성 검증
-          const validDifficulties = ['상', '중', '하'];
-          if (!validDifficulties.includes(metadata.difficulty)) {
-            console.warn(`[Background] Step 6: Invalid difficulty "${metadata.difficulty}" for problem ${p.id}, defaulting to "중"`);
-            metadata.difficulty = '중';
-          }
-
-          // 단어 난이도 유효성 검증 (1-9 범위)
-          const wordDifficulty = Number(metadata.word_difficulty);
-          if (isNaN(wordDifficulty) || wordDifficulty < 1 || wordDifficulty > 9) {
-            console.warn(`[Background] Step 6: Invalid word_difficulty "${metadata.word_difficulty}" for problem ${p.id}, defaulting to 5`);
-            metadata.word_difficulty = 5;
-          } else {
-            metadata.word_difficulty = Math.round(wordDifficulty);
-          }
-
-          // 메타데이터 저장
-          const { error: updateError } = await supabase
-            .from('problems')
-            .update({ 
-              problem_metadata: {
-                difficulty: metadata.difficulty || '중',
-                word_difficulty: metadata.word_difficulty || 5,
-                problem_type: metadata.problem_type || '',
-                analysis: metadata.analysis || '',
-              }
-            })
-            .eq('id', p.id);
-
-          if (updateError) {
-            console.error(`[Background] Step 6: Error updating metadata for problem ${p.id}:`, updateError);
-            errorCount++;
-            continue;
-          }
-
-          console.log(`[Background] Step 6: Metadata saved for problem ${p.id} (difficulty: ${metadata.difficulty}, word_difficulty: ${metadata.word_difficulty})`);
-          successCount++;
-        } catch (error) {
-          console.error(`[Background] Step 6: Error generating/saving metadata for problem ${p.id}:`, error);
-          if (error instanceof Error) {
-            console.error(`[Background] Step 6: Error message: ${error.message}`);
-            console.error(`[Background] Step 6: Error stack: ${error.stack}`);
-          }
-          errorCount++;
-          // 개별 문제 실패해도 계속 진행
+        const metadataText = metadataResponse.text;
+        // JSON 異붿텧
+        const jsonMatch = metadataText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          console.warn(`[Background] Failed to extract JSON from metadata response for problem ${p.id}`);
+          return null;
         }
+
+        const metadata = JSON.parse(jsonMatch[0]);
+        
+        // ?쒖씠??蹂??(?곸뼱 -> ?쒓뎅??
+        if (userLanguage === 'en') {
+          if (metadata.difficulty === 'high') metadata.difficulty = '??;
+          else if (metadata.difficulty === 'medium') metadata.difficulty = '以?;
+          else if (metadata.difficulty === 'low') metadata.difficulty = '??;
+        }
+
+        // 硫뷀??곗씠?????        const { error: updateError } = await supabase
+          .from('problems')
+          .update({ 
+            problem_metadata: {
+              difficulty: metadata.difficulty || '以?,
+              word_difficulty: metadata.word_difficulty || 5,
+              problem_type: metadata.problem_type || '',
+              analysis: metadata.analysis || '',
+            }
+          })
+          .eq('id', p.id);
+
+        if (updateError) {
+          console.error(`[Background] Error updating metadata for problem ${p.id}:`, updateError);
+          return null;
+        }
+
+        console.log(`[Background] Metadata saved for problem ${p.id}`);
+        return { problemId: p.id, success: true };
+      } catch (error) {
+        console.error(`[Background] Error generating/saving metadata for problem ${p.id}:`, error);
+        return null;
       }
+    }));
 
-      console.log(`[Background] Step 6 completed: Generated metadata for ${successCount}/${problems.length} problems (${errorCount} errors)`);
-    }
+    console.log(`[Background] Step 6 completed: Generated metadata for ${metadataResults.filter(r => r !== null).length} problems`);
 
-    // 7. 세션 상태를 completed로 업데이트
+    // 7. ?몄뀡 ?곹깭瑜?completed濡??낅뜲?댄듃
     console.log('[Background] Step 7: Update session status to completed...');
     const { error: statusUpdateError } = await supabase
       .from('sessions')
@@ -764,7 +686,7 @@ Respond only in JSON format.`;
 
     if (statusUpdateError) {
       console.error('[Background] Step 7 error: Status update error:', statusUpdateError);
-      // 상태 업데이트 실패해도 분석은 완료되었으므로 계속 진행
+      // ?곹깭 ?낅뜲?댄듃 ?ㅽ뙣?대룄 遺꾩꽍? ?꾨즺?섏뿀?쇰?濡?怨꾩냽 吏꾪뻾
     } else {
       console.log('[Background] Step 7 completed: Session status updated to completed');
     }
@@ -774,7 +696,7 @@ Respond only in JSON format.`;
     console.error('[Background] Error in background task:', error);
     console.error('[Background] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     
-    // 백그라운드 분석 실패 시 세션 상태를 failed로 업데이트
+    // 諛깃렇?쇱슫??遺꾩꽍 ?ㅽ뙣 ???몄뀡 ?곹깭瑜?failed濡??낅뜲?댄듃
     try {
       await supabase
         .from('sessions')
@@ -836,8 +758,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 1. 이미지를 Storage에 업로드
-    console.log('Step 1: Upload image to storage...');
+    // 1. ?대?吏瑜?Storage???낅줈??    console.log('Step 1: Upload image to storage...');
     const timestamp = Date.now();
     const safeName = (fileName || 'image.jpg').replace(/[^a-zA-Z0-9_.-]/g, '_');
     const { data: userData } = await supabase.auth.admin.getUserById(userId);
@@ -860,7 +781,7 @@ Deno.serve(async (req) => {
     const imageUrl = urlData.publicUrl;
     console.log('Step 1 completed: Image uploaded to', imageUrl);
 
-    // 2. 세션 생성
+    // 2. ?몄뀡 ?앹꽦
     console.log('Step 2: Create session...');
     const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
@@ -876,14 +797,14 @@ Deno.serve(async (req) => {
     createdSessionId = sessionData.id;
     console.log('Step 2 completed: Session created with ID', createdSessionId);
 
-    // 세션 생성 후 즉시 sessionId 반환 (분석은 백그라운드에서 계속)
+    // ?몄뀡 ?앹꽦 ??利됱떆 sessionId 諛섑솚 (遺꾩꽍? 諛깃렇?쇱슫?쒖뿉??怨꾩냽)
     const response = jsonResponse({
       success: true,
       sessionId: createdSessionId,
       message: 'Session created, analysis in progress',
     });
 
-    // 백그라운드 작업 시작
+    // 諛깃렇?쇱슫???묒뾽 ?쒖옉
     EdgeRuntime.waitUntil(
       analyzeImageInBackground(
         createdSessionId,
@@ -894,12 +815,12 @@ Deno.serve(async (req) => {
       )
     );
 
-    // 세션 생성 후 즉시 응답 반환
+    // ?몄뀡 ?앹꽦 ??利됱떆 ?묐떟 諛섑솚
     return response;
   } catch (error: any) {
     console.error('Error in analyze-image function:', error);
     
-    // 에러 발생 시 세션 상태를 failed로 업데이트 (세션이 생성된 경우에만)
+    // ?먮윭 諛쒖깮 ???몄뀡 ?곹깭瑜?failed濡??낅뜲?댄듃 (?몄뀡???앹꽦??寃쎌슦?먮쭔)
     if (supabase && typeof createdSessionId !== 'undefined') {
       try {
         console.log('Updating session status to failed...');
@@ -915,4 +836,4 @@ Deno.serve(async (req) => {
     
     return errorResponse(error.message || 'Internal server error', 500, error.toString());
   }
-});
+});}

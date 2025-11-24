@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ImageRotator } from './ImageRotator';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
@@ -20,11 +20,14 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // imageFiles가 변경될 때 부모 컴포넌트에 알림
+  useEffect(() => {
+    onImagesSelect(imageFiles.map(img => img.file));
+  }, [imageFiles, onImagesSelect]);
+
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-
-    const newImageFiles: ImageFile[] = [];
     
     Array.from(files).forEach((file) => {
       if (file.type.startsWith('image/')) {
@@ -34,23 +37,16 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
           const previewUrl = reader.result as string;
           const imageFile: ImageFile = { file, previewUrl, id };
           
-          setImageFiles(prev => {
-            const updated = [...prev, imageFile];
-            // 부모 컴포넌트에 파일 목록 전달
-            onImagesSelect(updated.map(img => img.file));
-            return updated;
-          });
+          setImageFiles(prev => [...prev, imageFile]);
         };
         reader.readAsDataURL(file);
       }
     });
-  }, [onImagesSelect]);
+  }, []);
 
   const handleRotate = useCallback((index: number, rotatedBlob: Blob) => {
     setImageFiles(prev => {
-      const updated = [...prev];
-      const imageFile = updated[index];
-      
+      const imageFile = prev[index];
       if (!imageFile) return prev;
       
       // Blob을 File로 변환
@@ -59,35 +55,27 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
         lastModified: Date.now(),
       });
       
-      // 미리보기 업데이트
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const previewUrl = reader.result as string;
-        updated[index] = { ...imageFile, file: rotatedFile, previewUrl };
-        setImageFiles([...updated]);
-        onImagesSelect(updated.map(img => img.file));
-      };
-      reader.readAsDataURL(rotatedBlob);
+      // 미리보기 URL 생성 (동기적으로 처리)
+      // FileReader를 사용하지 않고 Blob URL 사용
+      const previewUrl = URL.createObjectURL(rotatedBlob);
       
-      return prev;
-    });
-  }, [onImagesSelect]);
-
-  const handleRemove = useCallback((index: number) => {
-    setImageFiles(prev => {
-      const updated = prev.filter((_, i) => i !== index);
-      onImagesSelect(updated.map(img => img.file));
+      // 상태 업데이트 (한 번만)
+      const updated = [...prev];
+      updated[index] = { ...imageFile, file: rotatedFile, previewUrl };
       return updated;
     });
-  }, [onImagesSelect]);
+  }, []);
+
+  const handleRemove = useCallback((index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   const handleClearAll = useCallback(() => {
     setImageFiles([]);
-    onImagesSelect([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [onImagesSelect]);
+  }, []);
 
   const handleButtonClick = useCallback(() => {
     fileInputRef.current?.click();

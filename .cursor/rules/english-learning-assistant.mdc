@@ -68,16 +68,18 @@ labels
 
 ### 백그라운드 처리 원칙 (절대 변경 금지)
 - AI 분석은 시간이 오래 걸릴 수 있음 (10-60초)
-- **클라이언트**: 5초 타임아웃 설정 (AbortController 사용)
-  - 5초 내 완료: 즉시 성공 메시지
-  - 5초 초과: "분석 진행 중" 메시지 표시 후 페이지 이동
-- **서버**: Edge Function은 타임아웃과 무관하게 완전히 실행됨
-- **중요**: AbortController의 signal은 클라이언트 응답 대기만 중단하며, 서버 실행은 중단하지 않음
+- **클라이언트**: Edge Function 호출 후 즉시 응답 수신 → 페이지 이동
+  - `App.tsx`: fetch 호출 후 즉시 `/stats` 페이지로 이동
+  - `RecentProblemsPage`: 폴링(2초 간격)으로 분석 완료 확인
+- **서버**: Edge Function은 `EdgeRuntime.waitUntil()`으로 백그라운드에서 완전히 실행됨
+  - 세션 생성 후 즉시 응답 반환
+  - 백그라운드에서 Gemini API 호출 및 DB 저장 완료
+- **중요**: 클라이언트가 페이지를 벗어나도 서버에서 작업은 계속 진행됨
 
 ### Edge Function 실행 보장
 - Edge Function 내부에서 모든 단계(Step 1-5)를 완료해야 함
-- 클라이언트 타임아웃은 서버 실행에 영향을 주지 않음
-- 로깅을 통해 각 단계 완료 여부 추적 가능
+- `EdgeRuntime.waitUntil()`으로 백그라운드 실행 보장
+- 로깅을 통해 각 단계 완료 여부 추적 가능 (Supabase 대시보드)
 
 ## 파일 구조
 
@@ -103,7 +105,7 @@ labels
 1. Edge Function이 호출되는지 확인 (콘솔 로그)
 2. Edge Function 로그 확인 (Supabase 대시보드)
 3. 환경 변수 확인 (GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-4. fetch 요청이 중단되지 않는지 확인 (AbortController 사용 금지)
+4. Edge Function 로그에서 백그라운드 작업 완료 여부 확인
 
 ### 데이터가 공유될 때
 1. 모든 조회 함수에서 user_id 필터링 확인
@@ -124,13 +126,9 @@ labels
 
 ### 변경 사항이 있을 때 반드시 수행
 1. **Git 커밋 및 푸시**: 클라이언트 코드 배포 (Netlify 자동 배포)
-2. **Edge Function 배포**: 서버 코드 배포 (수동 필요)
-   ```bash
-   mcp_supabase_deploy_edge_function({
-     name: "analyze-image",
-     files: [...]
-   })
-   ```
+2. **Edge Function 배포**: 서버 코드 배포 (MCP 도구 사용)
+   - `mcp_supabase_deploy_edge_function` 도구로 배포
+   - Supabase CLI 대신 MCP 도구 사용 (로그인 문제 해결)
 3. **배포 확인**:
    - Netlify: Git 푸시 후 자동 배포 확인
    - Supabase: Edge Function 버전 증가 확인

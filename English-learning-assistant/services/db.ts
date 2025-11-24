@@ -41,4 +41,10 @@ export {
   getProblemSolvingSession,
 } from './db/problemSolving';
 
+// Metadata
+export {
+  fetchProblemsMetadataByCorrectness,
+  type ProblemMetadataItem,
+} from './db/metadata';
+
 

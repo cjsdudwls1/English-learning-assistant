@@ -23,10 +23,10 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleImagesSelect = (files: File[]) => {
+  const handleImagesSelect = useCallback((files: File[]) => {
     setImageFiles(files);
     setError(null);
-  };
+  }, []);
 
   const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
     return new Promise((resolve, reject) => {

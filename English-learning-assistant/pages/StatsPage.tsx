@@ -13,7 +13,9 @@ import { StatsGeneratedProblems } from '../components/StatsGeneratedProblems';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getTranslation } from '../utils/translations';
-import { findTaxonomyByDepth } from '../services/db';
+import { findTaxonomyByDepth, fetchProblemsMetadataByCorrectness, type ProblemMetadataItem } from '../services/db';
+import { ProblemMetadataModal } from '../components/ProblemMetadataModal';
+import type { StatsNode } from '../services/stats';
 import { supabase } from '../services/supabaseClient';
 import { useStatsData } from '../hooks/useStatsData';
 import { useStatsFilters } from '../hooks/useStatsFilters';
@@ -83,6 +85,10 @@ export const StatsPage: React.FC = () => {
   const [quizResults, setQuizResults] = useState<(GeneratedProblemResult | null)[]>([]);
   const [showResultSummary, setShowResultSummary] = useState(false);
   const [selectedTaxonomyCode, setSelectedTaxonomyCode] = useState<string | null>(null);
+  const [problemMetadataItems, setProblemMetadataItems] = useState<ProblemMetadataItem[]>([]);
+  const [showMetadataModal, setShowMetadataModal] = useState(false);
+  const [metadataIsCorrect, setMetadataIsCorrect] = useState(false);
+  const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
 
   const handleProblemResult = useCallback((problemIndex: number, result: GeneratedProblemResult) => {
     setQuizResults(prev => {
@@ -107,9 +113,43 @@ export const StatsPage: React.FC = () => {
     setShowResultSummary(false);
   }, [problemGen]);
 
-  const handleNodeClick = useCallback(() => {
-    // 숫자 클릭 시 아무 동작도 하지 않음 (유사 문제 생성은 체크박스 선택 후 버튼 클릭)
-  }, []);
+  // 숫자 클릭 핸들러 - 문제 메타데이터 조회 및 표시
+  const handleNodeClick = useCallback(async (node: StatsNode, isCorrect: boolean) => {
+    console.log('handleNodeClick called', { node, isCorrect });
+    try {
+      setIsLoadingMetadata(true);
+      setMetadataIsCorrect(isCorrect);
+      
+      // 분류 정보 추출
+      const depth1 = node.depth1 || undefined;
+      const depth2 = node.depth2 || undefined;
+      const depth3 = node.depth3 || undefined;
+      const depth4 = node.depth4 || undefined;
+      
+      console.log('Fetching metadata with params:', { depth1, depth2, depth3, depth4, isCorrect });
+      
+      // 메타데이터 조회
+      const items = await fetchProblemsMetadataByCorrectness(
+        depth1,
+        depth2,
+        depth3,
+        depth4,
+        isCorrect
+      );
+      
+      console.log('Metadata items received:', items);
+      setProblemMetadataItems(items);
+      setShowMetadataModal(true);
+      console.log('Modal should be shown now');
+    } catch (error) {
+      console.error('Error fetching problem metadata:', error);
+      alert(language === 'ko' 
+        ? '문제 분석 정보를 불러오는 중 오류가 발생했습니다.' 
+        : 'Error loading problem analysis information.');
+    } finally {
+      setIsLoadingMetadata(false);
+    }
+  }, [language]);
 
   const totals = useMemo(() => {
     const correct = statsData.rows.reduce((s, r) => s + (r.correct_count || 0), 0);
@@ -214,10 +254,14 @@ export const StatsPage: React.FC = () => {
             problemCounts={problemGen.problemCounts}
             onCountChange={problemGen.handleCountChange}
             onGenerate={problemGen.handleGenerateProblems}
+            onLoadExisting={problemGen.handleLoadExistingProblems}
             isGenerating={problemGen.isGeneratingProblems}
+            isLoadingExisting={problemGen.isLoadingExistingProblems}
             error={problemGen.generationError}
             selectedNodesCount={nodes.selectedNodes.size}
             language={language}
+            useExistingProblems={problemGen.useExistingProblems}
+            onToggleUseExisting={problemGen.setUseExistingProblems}
             onClose={() => {
               problemGen.setShowProblemGenerator(false);
               statsData.setError(null);
@@ -303,6 +347,29 @@ export const StatsPage: React.FC = () => {
             code={selectedTaxonomyCode}
             onClose={() => setSelectedTaxonomyCode(null)}
           />
+        )}
+
+        {/* 문제 메타데이터 모달 */}
+        {showMetadataModal && (
+          <ProblemMetadataModal
+            items={problemMetadataItems}
+            isCorrect={metadataIsCorrect}
+            onClose={() => {
+              setShowMetadataModal(false);
+              setProblemMetadataItems([]);
+            }}
+          />
+        )}
+
+        {/* 메타데이터 로딩 표시 */}
+        {isLoadingMetadata && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-slate-800 rounded-lg p-6">
+              <div className="text-center text-slate-700 dark:text-slate-300">
+                {language === 'ko' ? '분석 정보를 불러오는 중...' : 'Loading analysis information...'}
+              </div>
+            </div>
+          </div>
         )}
         
         {/* 예시 문장 모달 */}
