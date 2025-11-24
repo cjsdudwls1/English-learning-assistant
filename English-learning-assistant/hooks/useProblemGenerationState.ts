@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useProblemGeneration } from './useProblemGeneration';
+import { loadProblemsWithExisting } from '../services/problemLoader';
 import type { GeneratedProblem } from '../types';
 
 type ProblemType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox';
@@ -30,10 +31,14 @@ interface UseProblemGenerationStateReturn {
   generatedProblems: GeneratedProblem[];
   setGeneratedProblems: (problems: GeneratedProblem[]) => void;
   isGeneratingProblems: boolean;
+  isLoadingExistingProblems: boolean;
   generationError: string | null;
   handleGenerateProblems: () => Promise<void>;
+  handleLoadExistingProblems: () => Promise<void>;
   handleGenerateSimilarProblems: () => void;
   resetGeneration: () => void;
+  useExistingProblems: boolean;
+  setUseExistingProblems: (value: boolean) => void;
 }
 
 export function useProblemGenerationState({
@@ -45,13 +50,15 @@ export function useProblemGenerationState({
   const [showProblemGenerator, setShowProblemGenerator] = useState(false);
   const [selectedProblemType, setSelectedProblemType] = useState<ProblemType>('multiple_choice');
   const [problemCounts, setProblemCounts] = useState<ProblemCount>({
-    multiple_choice: 5,
-    short_answer: 3,
-    essay: 2,
-    ox: 5,
+    multiple_choice: 0,
+    short_answer: 0,
+    essay: 0,
+    ox: 0,
   });
   const [showTestSheet, setShowTestSheet] = useState(false);
   const [generatedProblems, setGeneratedProblems] = useState<GeneratedProblem[]>([]);
+  const [isLoadingExistingProblems, setIsLoadingExistingProblems] = useState(false);
+  const [useExistingProblems, setUseExistingProblems] = useState(true);
 
   const {
     isGenerating: isGeneratingProblems,
@@ -85,6 +92,48 @@ export function useProblemGenerationState({
     resetGeneration();
   }, [resetGeneration]);
 
+  const handleLoadExistingProblems = useCallback(async () => {
+    const totalCount = Object.values(problemCounts).reduce((sum, count) => sum + count, 0);
+    if (totalCount < 1) {
+      onError(language === 'ko' 
+        ? '최소 하나의 문제 유형에서 1개 이상의 문제를 선택해야 합니다.' 
+        : 'At least one problem type must have 1 or more problems.');
+      return;
+    }
+
+    setIsLoadingExistingProblems(true);
+    try {
+      const classificationToUse = classifications.length > 0 ? {
+        depth1: classifications[0].depth1,
+        depth2: classifications[0].depth2,
+        depth3: classifications[0].depth3,
+        depth4: classifications[0].depth4,
+      } : undefined;
+
+      const result = await loadProblemsWithExisting(
+        {
+          problemCounts,
+          classification: classificationToUse,
+          language,
+          userId,
+          exactMatchOnly: false,
+        },
+        (stage, message, details) => {
+          console.log(`[Load Existing] Stage ${stage}: ${message}`, details);
+        }
+      );
+
+      setGeneratedProblems(result.problems);
+      setShowTestSheet(true);
+      setShowProblemGenerator(false);
+    } catch (error) {
+      console.error('Error loading existing problems:', error);
+      onError(error instanceof Error ? error.message : (language === 'ko' ? '문제 불러오기 중 오류가 발생했습니다.' : 'An error occurred while loading problems.'));
+    } finally {
+      setIsLoadingExistingProblems(false);
+    }
+  }, [problemCounts, classifications, language, userId, onError]);
+
   return {
     showProblemGenerator,
     setShowProblemGenerator,
@@ -97,10 +146,14 @@ export function useProblemGenerationState({
     generatedProblems,
     setGeneratedProblems,
     isGeneratingProblems,
+    isLoadingExistingProblems,
     generationError,
     handleGenerateProblems: baseHandleGenerateProblems,
+    handleLoadExistingProblems,
     handleGenerateSimilarProblems,
     resetGeneration,
+    useExistingProblems,
+    setUseExistingProblems,
   };
 }
 

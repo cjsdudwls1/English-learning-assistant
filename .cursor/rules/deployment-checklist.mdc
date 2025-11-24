@@ -37,13 +37,13 @@ git push
 - Netlify에서 자동 배포 진행
 - 배포 완료 후 URL 확인
 
-### 2. Edge Function 배포 (수동)
-```bash
-# Supabase CLI로 Edge Function 배포
-supabase functions deploy analyze-image
-```
-- Supabase 대시보드에서 버전 확인
-- Edge Function 로그에서 "Step 1-5" 확인
+### 2. Edge Function 배포 (MCP 도구 사용)
+- **절대 사용하지 말 것**: Supabase CLI (`supabase functions deploy`)
+- **반드시 사용**: Supabase MCP 도구 (`mcp_supabase_deploy_edge_function`)
+- **이유**: CLI 로그인 문제 해결 및 안정적인 배포
+- 배포 후:
+  - Supabase 대시보드에서 버전 확인 (ACTIVE 상태)
+  - Edge Function 로그에서 "Step 1-6" 확인
 
 ### 3. 배포 후 검증
 - [ ] 브라우저에서 앱 접속 확인
@@ -70,9 +70,11 @@ supabase functions deploy analyze-image
 - [ ] Supabase 대시보드 → Edge Function 로그 확인
 - [ ] "Step 1: Upload image to storage..." 로그 확인
 - [ ] "Step 2: Create session..." 로그 확인
-- [ ] "Step 3: Analyzing image with Gemini..." 로그 확인
-- [ ] "Step 4: Save problems..." 로그 확인
-- [ ] "Step 5: Save labels..." 로그 확인
+- [ ] "[Background] Step 3a: Loading taxonomy data..." 로그 확인
+- [ ] "[Background] Step 3b: Analyzing image with Gemini..." 로그 확인
+- [ ] "[Background] Step 4: Save problems..." 로그 확인
+- [ ] "[Background] Step 5: Save labels..." 로그 확인
+- [ ] "[Background] Step 6: Update session status..." 로그 확인
 
 ## ⚠️ 문제 발생 시 대응
 

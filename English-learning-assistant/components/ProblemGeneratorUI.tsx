@@ -13,22 +13,30 @@ interface ProblemGeneratorUIProps {
   problemCounts: ProblemCount;
   onCountChange: (type: ProblemType, value: number) => void;
   onGenerate: () => void;
+  onLoadExisting?: () => void; // 기존 문제 불러오기 핸들러 (선택)
   isGenerating: boolean;
+  isLoadingExisting?: boolean; // 기존 문제 불러오기 중 여부
   error: string | null;
   selectedNodesCount: number;
   language: 'ko' | 'en';
   onClose: () => void;
+  useExistingProblems?: boolean; // 기존 문제 불러오기 모드 여부
+  onToggleUseExisting?: (value: boolean) => void; // 모드 토글
 }
 
 export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
   problemCounts,
   onCountChange,
   onGenerate,
+  onLoadExisting,
   isGenerating,
+  isLoadingExisting = false,
   error,
   selectedNodesCount,
   language,
   onClose,
+  useExistingProblems = false,
+  onToggleUseExisting,
 }) => {
   const adjustCount = (type: ProblemType, delta: number) => {
     const newValue = Math.max(0, Math.min(50, problemCounts[type] + delta));
@@ -121,16 +129,58 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
         </div>
       </div>
 
+      {/* 모드 선택 (기존 문제 불러오기 기능이 있는 경우) */}
+      {onLoadExisting && onToggleUseExisting && (
+        <div className="mb-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => onToggleUseExisting(true)}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+              useExistingProblems
+                ? 'bg-green-600 dark:bg-green-500 text-white'
+                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+            }`}
+          >
+            {language === 'ko' ? '기존 문제 불러오기' : 'Load Existing'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleUseExisting(false)}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+              !useExistingProblems
+                ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+            }`}
+          >
+            {language === 'ko' ? 'AI로 시험지 생성' : 'Generate New with AI'}
+          </button>
+        </div>
+      )}
+
       {/* 생성 버튼 */}
-      <div className="mb-4">
+      <div className="mb-4 space-y-3">
+        {/* 기존 문제 불러오기 버튼 */}
+        {useExistingProblems && onLoadExisting && (
+          <button
+            onClick={onLoadExisting}
+            disabled={isLoadingExisting || isGenerating || totalCount < 1}
+            className="w-full px-6 py-3 bg-green-600 dark:bg-green-500 text-white rounded-lg font-semibold hover:bg-green-700 dark:hover:bg-green-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoadingExisting 
+              ? (language === 'ko' ? '불러오는 중...' : 'Loading...')
+              : (language === 'ko' ? '기존 문제 불러오기 (빠르고 무료)' : 'Load Existing Problems (Fast & Free)')}
+          </button>
+        )}
+        
+        {/* AI로 시험지 생성 버튼 */}
         <button
           onClick={onGenerate}
-          disabled={isGenerating || totalCount < 1}
+          disabled={isGenerating || isLoadingExisting || totalCount < 1}
           className="w-full px-6 py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
           {isGenerating 
             ? (language === 'ko' ? '생성 중...' : 'Generating...')
-            : (language === 'ko' ? '시험지 생성' : 'Generate Test Sheet')}
+            : (language === 'ko' ? 'AI로 시험지 생성 (새로운 문제 생성)' : 'Generate New Problems with AI')}
         </button>
       </div>
 

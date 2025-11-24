@@ -149,6 +149,14 @@ export interface Translations {
     selectCategory: string;
   };
   
+  // 문제 메타데이터
+  problemMetadata: {
+    difficulty: string;
+    wordDifficulty: string;
+    problemType: string;
+    analysis: string;
+  };
+  
   // 분류 정보
   taxonomy: {
     classificationDetails: string;
@@ -313,6 +321,12 @@ export const translations: Record<Language, Translations> = {
       generating: '생성 중...',
       selectCategory: '카테고리를 선택해주세요.',
     },
+    problemMetadata: {
+      difficulty: '난이도',
+      wordDifficulty: '단어 난이도',
+      problemType: '문제 유형',
+      analysis: '분석 정보',
+    },
     taxonomy: {
       classificationDetails: '분류 상세 정보',
       classificationHierarchy: '분류 계층',
@@ -386,6 +400,12 @@ export const translations: Record<Language, Translations> = {
       categoryDistributionChart: 'Top Categories',
       noData: 'No data available.',
       unclassified: 'Unclassified',
+    },
+    problemMetadata: {
+      difficulty: 'Difficulty',
+      wordDifficulty: 'Word Difficulty',
+      problemType: 'Problem Type',
+      analysis: 'Analysis',
     },
     recent: {
       title: 'Recently Uploaded Problems',
@@ -473,6 +493,12 @@ export const translations: Record<Language, Translations> = {
       generate: 'Generate Example Sentence',
       generating: 'Generating...',
       selectCategory: 'Please select a category.',
+    },
+    problemMetadata: {
+      difficulty: 'Difficulty',
+      wordDifficulty: 'Word Difficulty',
+      problemType: 'Problem Type',
+      analysis: 'Analysis',
     },
     taxonomy: {
       classificationDetails: 'Classification Details',

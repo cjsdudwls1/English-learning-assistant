@@ -42,7 +42,11 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   React.useEffect(() => {
-    setProblemsList(problems);
+    // 출처 정보(_source)를 포함하여 문제 목록 설정
+    setProblemsList(problems.map(p => ({
+      ...p,
+      _source: (p as any)._source || undefined, // 출처 정보 유지
+    })));
     setStartTime(Date.now());
     setUserAnswers({});
     setIsSubmitted(false);
@@ -164,6 +168,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     const result = quizResults.find(r => r.problemId === problem.id);
     const isAnswered = userAnswer !== null && userAnswer !== undefined && userAnswer !== '';
     
+    // 출처 정보 확인 (디버깅용)
     if (editingProblemId === problem.id && isTeacher) {
       return (
         <ProblemEditMode
@@ -188,19 +193,22 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
         } ${isPrintMode ? 'break-inside-avoid' : ''}`}
       >
         <div className="flex items-start justify-between mb-3">
+          <div className="flex-1">
           <span className="text-lg font-semibold text-slate-700 dark:text-slate-300">
             {index + 1}. {problem.stem}
           </span>
+          </div>
+          <div className="flex items-center gap-2">
           {isTeacher && problem.is_editable && !isSubmitted && (
             <button
               onClick={() => setEditingProblemId(problem.id)}
-              className="ml-4 px-3 py-1 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors"
+                className="px-3 py-1 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors"
             >
               {language === 'ko' ? '편집' : 'Edit'}
             </button>
           )}
           {isSubmitted && (
-            <span className={`ml-4 px-3 py-1 text-xs font-semibold rounded ${
+              <span className={`px-3 py-1 text-xs font-semibold rounded ${
               result?.isCorrect 
                 ? 'bg-green-500 text-white' 
                 : 'bg-red-500 text-white'
@@ -208,6 +216,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               {result?.isCorrect ? (language === 'ko' ? '정답' : 'Correct') : (language === 'ko' ? '오답' : 'Wrong')}
             </span>
           )}
+          </div>
         </div>
 
         {currentProblemType === 'multiple_choice' && problem.choices && (
