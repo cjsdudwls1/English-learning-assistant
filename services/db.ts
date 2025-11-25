@@ -650,6 +650,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       let correct_count = 0;
       let incorrect_count = 0;
       let allMarksNull = true; // 모든 문제의 user_mark가 null인지 확인
+      let allProblemsHaveLabels = true; // 모든 문제에 labels가 있는지 확인
       
       problems.forEach((problem: any) => {
         const labels = problem.labels || [];
@@ -663,8 +664,8 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
           }
           // user_mark가 null이면 allMarksNull은 그대로 true 유지
         } else {
-          // label이 없으면 라벨링이 필요하지만, allMarksNull은 이미 true로 시작했으므로 그대로 유지
-          // (모든 문제의 user_mark가 null인 경우만 라벨링 필요로 간주)
+          // label이 없으면 이 세션은 라벨링 대상에서 제외 (Edge Function에서 labels 생성 실패)
+          allProblemsHaveLabels = false;
         }
       });
       
@@ -677,15 +678,19 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         incorrect_count,
         status: session.status, // status 필드 추가
         allMarksNull, // 모든 user_mark가 null인지 여부
+        allProblemsHaveLabels, // 모든 문제에 labels가 있는지 여부
       };
     })
     .filter((session: any) => {
-      // 라벨링이 필요한 세션: problem_count > 0 AND 모든 문제의 user_mark가 null
-      return session.problem_count > 0 && session.allMarksNull === true;
+      // 라벨링이 필요한 세션: 
+      // 1. problem_count > 0 
+      // 2. 모든 문제에 labels가 있어야 함 (Edge Function에서 labels 생성 완료)
+      // 3. 모든 문제의 user_mark가 null이어야 함 (사용자 검수 전)
+      return session.problem_count > 0 && session.allProblemsHaveLabels === true && session.allMarksNull === true;
     })
     .map((session: any) => {
-      // allMarksNull 필드 제거 (반환 타입에 없음)
-      const { allMarksNull, ...rest } = session;
+      // allMarksNull, allProblemsHaveLabels 필드 제거 (반환 타입에 없음)
+      const { allMarksNull, allProblemsHaveLabels, ...rest } = session;
       return rest;
     });
   
