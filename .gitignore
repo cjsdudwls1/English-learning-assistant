@@ -32,3 +32,7 @@ env.txt
 
 # Netlify
 .netlify
+
+# Local test images (do not commit)
+test_image/17/
+test_image/이어지는 지문/
