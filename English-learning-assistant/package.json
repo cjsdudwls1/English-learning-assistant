@@ -7,16 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "pwa": "vite build",
-    "cap:init": "npx cap init --web-dir=dist --npm-client=npm --yes",
-    "cap:sync": "npx cap sync",
-    "cap:android": "npx cap open android",
-    "cap:ios": "npx cap open ios"
+    "pwa": "vite build"
   },
   "dependencies": {
-    "@capacitor/android": "^7.4.3",
-    "@capacitor/cli": "^7.4.3",
-    "@capacitor/core": "^7.4.3",
     "@google/genai": "^1.21.0",
     "@playwright/test": "^1.56.1",
     "@supabase/supabase-js": "^2.47.10",
