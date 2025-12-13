@@ -200,7 +200,7 @@ export const StatsPage: React.FC = () => {
   if (statsData.error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{statsData.error}</div>;
 
   return (
-    <div className="mx-auto space-y-6 max-w-full px-2 sm:px-4 md:px-6 lg:max-w-5xl">
+    <div className="mx-auto space-y-6 w-full max-w-full px-2 sm:px-4 md:px-6 lg:max-w-5xl overflow-x-hidden">
       {/* 분석 중 UI - 최상단 */}
       {statsData.analyzingSessions.map((session) => (
         <AnalyzingCard
@@ -220,7 +220,7 @@ export const StatsPage: React.FC = () => {
         />
       ))}
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 w-full max-w-full min-w-0">
         <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-200">{t.stats.statsByType}</h2>
         
         {/* 기간 설정 UI */}
@@ -235,8 +235,8 @@ export const StatsPage: React.FC = () => {
           onThisYearClick={handleThisYearClick}
         />
 
-        <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
-          <div className="text-slate-700 dark:text-slate-300">{t.stats.total}: {totals.total} / {t.stats.correct}: {totals.correct} / {t.stats.incorrect}: {totals.incorrect}</div>
+        <div className="mb-4 flex items-center justify-between flex-wrap gap-3 w-full max-w-full min-w-0">
+          <div className="text-slate-700 dark:text-slate-300 text-sm sm:text-base break-words">{t.stats.total}: {totals.total} / {t.stats.correct}: {totals.correct} / {t.stats.incorrect}: {totals.incorrect}</div>
           <StatsActionButtons
             language={language}
             isReclassifying={reclassify.isReclassifying}
