@@ -1,9 +1,0 @@
-{
-	"appId": "com.cheon.ai.englishanalyzer",
-	"appName": "AI 영어 문제 분석기",
-	"webDir": "dist",
-	"bundledWebRuntime": false,
-	"server": {
-		"androidScheme": "https"
-	}
-}
