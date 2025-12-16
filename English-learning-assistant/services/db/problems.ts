@@ -222,7 +222,7 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
       .from('problems')
       .update({
         stem: item.문제내용.text,
-        choices: item.문제_보기.map(c => ({ text: c.text, confidence: c.confidence_score })),
+        choices: item.문제_보기.map(c => ({ text: c.text })),
       })
       .eq('id', problemId);
     
@@ -241,5 +241,14 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
     
     if (labelUpdateError) throw labelUpdateError;
   }
+
+  // ✅ 사용자 검수(라벨링) 완료로 세션 상태 업데이트
+  // QuickLabelingCard 노출 기준: status='completed' (검수 전)
+  // 검수 완료 후: status='labeled'
+  const { error: sessionUpdateError } = await supabase
+    .from('sessions')
+    .update({ status: 'labeled' })
+    .eq('id', sessionId);
+  if (sessionUpdateError) throw sessionUpdateError;
 }
 

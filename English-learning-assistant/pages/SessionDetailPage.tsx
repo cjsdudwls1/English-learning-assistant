@@ -15,8 +15,11 @@ export const SessionDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string>('pending');
   const [imageUrl, setImageUrl] = useState<string>('');
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const originalImageUrlRef = React.useRef<string>('');
+  const originalImageUrlsRef = React.useRef<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
 
   useEffect(() => {
     if (!sessionId) {
@@ -28,6 +31,9 @@ export const SessionDetailPage: React.FC = () => {
     setData(null);
     setError(null);
     setImageUrl('');
+    setImageUrls([]);
+    originalImageUrlRef.current = '';
+    originalImageUrlsRef.current = [];
 
     (async () => {
       try {
@@ -53,16 +59,54 @@ export const SessionDetailPage: React.FC = () => {
           const items = await fetchSessionProblems(sessionId);
           setData(items);
           
-          // 세션의 이미지 URL 가져오기
+          // 세션의 이미지 URL 가져오기 (image_urls 배열 우선, 없으면 image_url 사용)
           const { data: sessionData, error: sessionError } = await supabase
             .from('sessions')
-            .select('image_url')
+            .select('image_url, image_urls')
             .eq('id', sessionId)
             .single();
           
           if (!sessionError && sessionData) {
-            setImageUrl(sessionData.image_url);
-            originalImageUrlRef.current = sessionData.image_url;
+            // image_urls가 있으면 우선 사용, 없으면 image_url을 배열로 변환
+            let urls: string[] = [];
+            const raw = (sessionData as any).image_urls;
+
+            if (raw && Array.isArray(raw)) {
+              urls = raw.filter((u: any) => typeof u === 'string' && u.trim().length > 0).map((u: string) => u.trim());
+            } else if (typeof raw === 'string') {
+              // 혹시 문자열(JSON)로 내려오는 경우 방어
+              try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                  urls = parsed.filter((u: any) => typeof u === 'string' && u.trim().length > 0).map((u: string) => u.trim());
+                }
+              } catch {
+                // ignore
+              }
+            } else if (raw && typeof raw === 'object') {
+              // {0: 'url1', 1: 'url2'} 형태 방어
+              const keys = Object.keys(raw)
+                .map(k => parseInt(k, 10))
+                .filter(n => !Number.isNaN(n))
+                .sort((a, b) => a - b);
+              if (keys.length > 0) {
+                urls = keys
+                  .map(k => raw[k])
+                  .filter((u: any) => typeof u === 'string' && u.trim().length > 0)
+                  .map((u: string) => u.trim());
+              }
+            }
+
+            if (urls.length === 0 && (sessionData as any).image_url) {
+              urls = [String((sessionData as any).image_url)].filter(u => u.trim().length > 0).map(u => u.trim());
+            }
+
+            setImageUrls(urls);
+            originalImageUrlsRef.current = [...urls];
+
+            const first = urls[0] || (sessionData as any).image_url || '';
+            setImageUrl(first);
+            originalImageUrlRef.current = first;
           }
         }
       } catch (e) {
@@ -95,17 +139,26 @@ export const SessionDetailPage: React.FC = () => {
     }
   };
 
-  const handleImageClick = () => {
+  const handleImageClick = (index: number) => {
+    setSelectedImageIndex(index);
     setIsModalOpen(true);
   };
 
-  const handleRotate = async (rotatedBlob: Blob) => {
+  const handleRotate = async (rotatedBlob: Blob, imageIndex: number) => {
     if (!sessionId) return;
     
     try {
       // 기존 public URL에서 스토리지 경로 추출 후 동일 경로로 덮어쓰기(upsert)
       // 주의: blob: 미리보기 URL이 아닌 원본 서버 URL을 사용해야 함
-      const currentUrl = originalImageUrlRef.current || imageUrl;
+      const currentUrls = originalImageUrlsRef.current.length > 0
+        ? originalImageUrlsRef.current
+        : (imageUrls.length > 0 ? imageUrls : (imageUrl ? [imageUrl] : []));
+
+      if (imageIndex < 0 || imageIndex >= currentUrls.length) {
+        throw new Error('이미지 인덱스가 유효하지 않습니다.');
+      }
+
+      const currentUrl = currentUrls[imageIndex];
       if (!currentUrl) throw new Error('이미지 URL을 찾을 수 없습니다.');
 
       const match = currentUrl.match(/\/object\/public\/problem-images\/(.*)$/);
@@ -136,12 +189,17 @@ export const SessionDetailPage: React.FC = () => {
       // 캐시 무효화를 위해 쿼리스트링 버전 부여
       const cacheBustedUrl = `${currentUrl.split('?')[0]}?v=${Date.now()}`;
 
-      // DB 업데이트(재시도 포함)
+      // 회전 시 image_urls도 업데이트
+      const updatedUrls = [...currentUrls];
+      updatedUrls[imageIndex] = cacheBustedUrl;
+      const updatedImageUrl = updatedUrls[0] || cacheBustedUrl;
+
+      // DB 업데이트(재시도 포함) - image_url + image_urls 동시 업데이트
       let updateError: any = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         const { error } = await supabase
           .from('sessions')
-          .update({ image_url: cacheBustedUrl })
+          .update({ image_url: updatedImageUrl, image_urls: updatedUrls })
           .eq('id', sessionId);
         if (!error) { updateError = null; break; }
         updateError = error;
@@ -149,8 +207,10 @@ export const SessionDetailPage: React.FC = () => {
       }
       if (updateError) throw updateError;
 
-      setImageUrl(cacheBustedUrl);
-      originalImageUrlRef.current = cacheBustedUrl;
+      setImageUrls(updatedUrls);
+      originalImageUrlsRef.current = updatedUrls;
+      setImageUrl(updatedImageUrl);
+      originalImageUrlRef.current = updatedImageUrl;
       
     } catch (error) {
       console.error('Image rotation failed:', error);
@@ -197,17 +257,55 @@ export const SessionDetailPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* 좌측: 이미지 영역 */}
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">업로드된 이미지</h3>
+          <h3 className="text-lg font-semibold">
+            업로드된 이미지 {imageUrls.length > 0 ? `(${imageUrls.length}장)` : ''}
+          </h3>
+
+          {imageUrls.length > 0 ? (
+            <div className="space-y-4">
+              {imageUrls.map((url, index) => (
+                <div key={`${index}-${url}`} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-sm font-medium text-slate-600">
+                      이미지 {index + 1}/{imageUrls.length}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleImageClick(index)}
+                      className="text-xs px-3 py-1 bg-slate-200 hover:bg-slate-300 rounded"
+                    >
+                      확대보기
+                    </button>
+                  </div>
+                  <div className="max-h-[600px] overflow-auto flex items-start justify-center">
+                    <ImageRotator
+                      imageUrl={url || '/placeholder-image.jpg'}
+                      onRotate={(blob) => handleRotate(blob, index)}
+                      className="max-w-full max-h-[600px] object-contain"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : imageUrl ? (
           <div className="border border-slate-200 rounded-lg p-4 max-h-[800px] overflow-auto bg-slate-50 flex items-start justify-center">
             <ImageRotator
               imageUrl={imageUrl || '/placeholder-image.jpg'}
-              onRotate={handleRotate}
+                onRotate={(blob) => handleRotate(blob, 0)}
               className="max-w-full max-h-[800px] object-contain"
             />
           </div>
+          ) : (
+            <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 flex items-center justify-center min-h-[200px]">
+              <p className="text-slate-500">이미지가 없습니다</p>
+            </div>
+          )}
+
+          {(imageUrls.length > 0 || imageUrl) && (
           <p className="text-sm text-slate-500 mt-2">
-            회전 버튼을 사용하여 이미지 방향을 조정할 수 있습니다
+              회전 버튼을 사용하여 각 이미지의 방향을 조정할 수 있습니다
           </p>
+          )}
         </div>
         
         {/* 우측: 분석 결과 */}
@@ -227,7 +325,7 @@ export const SessionDetailPage: React.FC = () => {
       <ImageModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        imageUrl={imageUrl}
+        imageUrl={imageUrls[selectedImageIndex] || imageUrl}
         sessionId={sessionId}
       />
     </div>

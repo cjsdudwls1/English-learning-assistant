@@ -52,8 +52,7 @@ ${structure}
   "1Depth": "위 계층 구조의 depth1 값 중 하나를 정확히 복사",
   "2Depth": "위 계층 구조의 depth2 값 중 하나를 정확히 복사",
   "3Depth": "위 계층 구조의 depth3 값 중 하나를 정확히 복사",
-  "4Depth": "위 계층 구조의 depth4 값 중 하나를 정확히 복사",
-  "분류_신뢰도": "높음" | "보통" | "낮음"
+  "4Depth": "위 계층 구조의 depth4 값 중 하나를 정확히 복사"
 }
 \`\`\`
 
@@ -193,15 +192,6 @@ serve(async (req) => {
             userLanguage
           );
 
-          // 분류 신뢰도 결정
-          let confidence = classification['분류_신뢰도'] || '보통';
-          if (!validDepth1 || !taxonomy.code) {
-            confidence = '낮음';
-            if (!validDepth1) {
-              console.warn(`Invalid classification: depth1="${rawDepth1}" is not in taxonomy. Saving with null.`);
-            }
-          }
-
           // classification 업데이트 (유효한 값만 저장)
           const enrichedClassification = {
             '1Depth': validDepth1 || null,
@@ -211,7 +201,6 @@ serve(async (req) => {
             'code': taxonomy.code,
             'CEFR': taxonomy.cefr,
             '난이도': taxonomy.difficulty,
-            '분류_신뢰도': confidence,
           };
 
           // DB 업데이트 (무조건 수행)

@@ -22,6 +22,7 @@ export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
       id,
       created_at,
       image_url,
+      status,
       problems (
         id,
         labels (
@@ -42,14 +43,15 @@ export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
         id: session.id,
         created_at: session.created_at,
         image_url: session.image_url,
+        status: session.status,
         ...stats,
       };
     })
     .filter((session) => {
-      // 라벨링이 완료된 세션만: problem_count > 0 AND (correct_count + incorrect_count) === problem_count
-      // 즉, 모든 문제에 대해 정답 또는 오답 라벨링이 완료된 경우
-      return session.problem_count > 0 && 
-             (session.correct_count + session.incorrect_count) === session.problem_count;
+      // ✅ "사용자 검수(라벨링) 완료" 기준을 status로 전환
+      // - 분석 완료: status='completed' (검수 전)
+      // - 사용자 저장 완료: status='labeled' (검수 완료)
+      return session.status === 'labeled';
     });
   
   return sessions;
@@ -174,6 +176,35 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
   return analyzingSessions;
 }
 
+// 분석 실패 세션 조회 (status === 'failed')
+export async function fetchFailedSessions(): Promise<SessionWithProblems[]> {
+  const userId = await getCurrentUserId();
+
+  const { data, error } = await supabase
+    .from('sessions')
+    .select(`
+      id,
+      created_at,
+      image_url,
+      status
+    `)
+    .eq('user_id', userId)
+    .eq('status', 'failed')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map((session: any) => ({
+    id: session.id,
+    created_at: session.created_at,
+    image_url: session.image_url,
+    status: session.status,
+    problem_count: 0,
+    correct_count: 0,
+    incorrect_count: 0,
+  }));
+}
+
 // 라벨링이 필요한 세션 조회 (problem_count > 0 AND 모든 문제의 user_mark가 null AND status === 'completed')
 export async function fetchPendingLabelingSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
@@ -194,7 +225,8 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       )
     `)
     .eq('user_id', userId)
-    .eq('status', 'completed') // 분석이 완료된 세션만 (AnalyzingCard에서 제외하기 위해)
+    // ✅ 분석이 완료되었지만 아직 사용자 검수가 끝나지 않은 세션만
+    .eq('status', 'completed')
     .order('created_at', { ascending: false });
   
   if (error) throw error;
@@ -206,19 +238,16 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       const problem_count = problems.length;
       let correct_count = 0;
       let incorrect_count = 0;
-      let allMarksNull = true; // 모든 문제의 user_mark가 null인지 확인
       
       problems.forEach((problem: any) => {
         const labels = problem.labels || [];
         if (labels.length > 0) {
           const userMark = labels[0].user_mark;
-          // user_mark가 null이 아닌 경우만 카운트 (null이면 사용자 검수 전)
+          // 통계는 user_mark 기준으로 계산 (null이면 0으로 남김)
           if (userMark !== null && userMark !== undefined) {
-            allMarksNull = false; // 하나라도 null이 아니면 false
             const mark = normalizeMark(userMark);
             if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
           }
-          // user_mark가 null이면 allMarksNull은 그대로 true 유지
         } else {
           // label이 없으면 라벨링이 필요하지만, allMarksNull은 이미 true로 시작했으므로 그대로 유지
           // (모든 문제의 user_mark가 null인 경우만 라벨링 필요로 간주)
@@ -233,17 +262,11 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         correct_count,
         incorrect_count,
         status: session.status, // status 필드 추가
-        allMarksNull, // 모든 user_mark가 null인지 여부
       };
     })
     .filter((session: any) => {
-      // 라벨링이 필요한 세션: problem_count > 0 AND 모든 문제의 user_mark가 null
-      return session.problem_count > 0 && session.allMarksNull === true;
-    })
-    .map((session: any) => {
-      // allMarksNull 필드 제거 (반환 타입에 없음)
-      const { allMarksNull, ...rest } = session;
-      return rest;
+      // ✅ 문제는 생성되었는데 아직 검수 전(status='completed')이면 표시
+      return session.problem_count > 0;
     });
   
   return sessions;

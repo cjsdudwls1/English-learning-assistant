@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { AnalyzingCard } from '../components/AnalyzingCard';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
+import { FailedAnalysisCard } from '../components/FailedAnalysisCard';
 import { StatsOverviewCharts } from '../components/StatsOverviewCharts';
 import { TaxonomyDetailPopup } from '../components/TaxonomyDetailPopup';
 import { TestSheetView } from '../components/TestSheetView';
@@ -208,6 +209,11 @@ export const StatsPage: React.FC = () => {
           sessionId={session.id}
           imageUrl={session.image_url}
         />
+      ))}
+
+      {/* 분석 실패 UI - 분석 중 다음 (실패해도 사라지지 않게: 관찰 가능성) */}
+      {statsData.failedSessions.map((session) => (
+        <FailedAnalysisCard key={session.id} session={session} />
       ))}
 
       {/* 라벨링 UI - 분석 중 다음 */}

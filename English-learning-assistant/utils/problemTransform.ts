@@ -23,15 +23,12 @@ export function transformToProblemItem(
       : undefined,
     문제내용: {
       text: p.stem || '',
-      confidence_score: label.confidence?.stem || 1.0,
     },
     문제_보기: (p.choices || []).map((c: any) => ({
       text: c.text || '',
-      confidence_score: c.confidence || 1.0,
     })),
     사용자가_기술한_정답: {
       text: label.user_answer || '',
-      confidence_score: label.confidence?.answer || 1.0,
       auto_corrected: false,
       alternate_interpretations: [],
     },
@@ -40,7 +37,6 @@ export function transformToProblemItem(
       '2Depth': classification['2Depth'] || '',
       '3Depth': classification['3Depth'] || '',
       '4Depth': classification['4Depth'] || '',
-      '분류_신뢰도': classification['분류_신뢰도'] || '보통',
     },
     분류_근거: '',
   };
@@ -59,15 +55,12 @@ export function transformFromLabelJoin(row: any): ProblemItem {
       : undefined,
     문제내용: {
       text: row.problems.stem || '',
-      confidence_score: 1.0,
     },
     문제_보기: (row.problems.choices || []).map((c: any) => ({
       text: c.text || '',
-      confidence_score: c.confidence || 1.0,
     })),
     사용자가_기술한_정답: {
       text: row.user_answer || '',
-      confidence_score: 1.0,
       auto_corrected: false,
       alternate_interpretations: [],
     },
@@ -76,7 +69,6 @@ export function transformFromLabelJoin(row: any): ProblemItem {
       '2Depth': classification['2Depth'] || '',
       '3Depth': classification['3Depth'] || '',
       '4Depth': classification['4Depth'] || '',
-      '분류_신뢰도': classification['분류_신뢰도'] || '보통',
     },
     분류_근거: '',
   };

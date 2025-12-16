@@ -1,0 +1,45 @@
+# 퀵라벨링(문제 검수) 불변 규칙 + 관찰 가능성(Observability)
+
+## 목적
+- **“퀵라벨링 카드가 안 뜬다”**를 다시는 디버깅 불가 상태로 만들지 않는다.
+- 실패해도 UI에서 **‘실패 카드’로 관찰 가능**하게 노출한다.
+
+---
+
+## 불변 규칙 (절대 깨면 안 됨)
+
+### 1) 세션 상태 규칙
+- **`completed`**: 문제(`problems`)가 **1개 이상 저장된 이후**에만 설정한다.
+- **`failed`**: 문제 추출 실패/저장 실패 등으로 **문항 0개**인 경우 반드시 설정한다.
+- **`labeled`**: 사용자가 검수를 저장 완료한 상태이며, 이후 어떤 백그라운드 작업도 `labeled → completed`로 되돌리면 안 된다.
+
+### 2) 카드 노출 규칙(UX)
+- 퀵라벨링 카드(QuickLabelingCard)는 기본적으로:
+  - `status === 'completed'` AND `problem_count > 0`
+  - (또는 problems join 결과로 문제 존재가 확인됨)
+- 분석 실패(`status === 'failed'`)는 **절대 “무언가 안 뜸”으로 숨기지 말 것**.
+
+---
+
+## 관찰 가능성(Observability) 규칙
+
+### 1) StatsPage/RecentProblemsPage 상단에 실패 카드 노출
+- `status === 'failed'` 세션을 **상단에 항상 표시**한다.
+- 메시지(ko): **“분석 실패(0문항). 이미지 다시 업로드”**
+- 추가 정보:
+  - `failure_stage`를 함께 표시 (예: extract / extract_call / insert_problems ...)
+  - **개발 모드**에서는 `sessionId`까지 표시
+
+### 2) 실패 원인 저장
+- `sessions.failure_stage`, `sessions.failure_message`를 사용해 서버가 실패 이유를 남긴다.
+
+---
+
+## 변경 시 체크리스트(개발자가 반드시 수행)
+- 세션 status 흐름을 건드리면:
+  - `fetchPendingLabelingSessions`, `fetchAnalyzingSessions`, `fetchFailedSessions`의 조건이 여전히 일관적인지 확인
+  - StatsPage/RecentProblemsPage에서 **failed 카드가 계속 보이는지** 확인
+- Edge Function에서:
+  - `completed(0문항)`이 생성되지 않는지 확인
+  - 실패 시 `failure_stage/failure_message`가 비지 않는지 확인
+
