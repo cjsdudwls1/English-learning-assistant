@@ -31,5 +31,12 @@ export async function quickUpdateLabels(sessionId: string, problemId: string, ma
     .eq('problem_id', problemId);
   
   if (labelUpdateError) throw labelUpdateError;
+
+  // ✅ 간단 라벨링이 발생하면 세션을 "검수 완료"로 표시
+  const { error: sessionUpdateError } = await supabase
+    .from('sessions')
+    .update({ status: 'labeled' })
+    .eq('id', sessionId);
+  if (sessionUpdateError) throw sessionUpdateError;
 }
 

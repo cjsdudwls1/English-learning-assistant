@@ -1,10 +1,9 @@
 
-export interface TextWithConfidence {
+export interface Text {
   text: string;
-  confidence_score: number;
 }
 
-export interface UserAnswer extends TextWithConfidence {
+export interface UserAnswer extends Text {
   auto_corrected: boolean;
   alternate_interpretations: string[];
 }
@@ -17,7 +16,6 @@ export interface ProblemClassification {
   'code'?: string | null;  // taxonomy 조회용 (필수, NULL 가능)
   'CEFR'?: string | null;  // taxonomy에서 가져옴
   '난이도'?: number | null;  // taxonomy에서 가져옴
-  '분류_신뢰도': '높음' | '보통' | '낮음' | string;
 }
 
 export interface Taxonomy {
@@ -56,8 +54,8 @@ export interface Taxonomy {
 
 export interface AnalysisResult {
   사용자가_직접_채점한_정오답: 'O' | 'X' | '△' | '✓' | string;
-  문제내용: TextWithConfidence;
-  문제_보기: TextWithConfidence[];
+  문제내용: Text;
+  문제_보기: Text[];
   사용자가_기술한_정답: UserAnswer;
   문제_유형_분류: ProblemClassification;
   분류_근거: string;
@@ -68,8 +66,8 @@ export interface ProblemItem {
   index: number;
   사용자가_직접_채점한_정오답: 'O' | 'X' | '△' | '✓' | string;
   AI가_판단한_정오답?: '정답' | '오답' | string;
-  문제내용: TextWithConfidence;
-  문제_보기: TextWithConfidence[];
+  문제내용: Text;
+  문제_보기: Text[];
   사용자가_기술한_정답: UserAnswer;
   문제_유형_분류: ProblemClassification;
   분류_근거: string;
@@ -87,6 +85,8 @@ export interface SessionWithProblems {
   correct_count: number;
   incorrect_count: number;
   status?: string;
+  // 실패 관찰 가능성(Observability)
+  failure_stage?: string | null;
 }
 
 // 생성된 문제 타입 (generated_problems 테이블)

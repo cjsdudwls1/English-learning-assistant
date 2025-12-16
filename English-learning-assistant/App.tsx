@@ -563,30 +563,21 @@ const App: React.FC = () => {
         })
       );
 
-      // 요청 본문 생성 (여러 이미지를 한 번에 전송)
-      const requestBody = {
-        images: imagesArray,
-        userId: userData.user.id,
-        language: currentLanguage,
-      };
+      // ✅ Edge Function(analyze-image)은 멀티 이미지 입력(images[])을 지원
+      // => 여러 이미지를 한 번에 전송해서 "한 세션"으로 분석(문항 연속성 유지)
+      console.log(`Sending analyze-image request with ${imagesArray.length} image(s)...`);
 
-      console.log(`Sending request with ${imagesArray.length} images...`);
-
-      setIsLoading(false);
-      setStatus('done');
-      const uploadMessage = language === 'ko' 
-        ? `${imageFiles.length}개 이미지 업로드 완료. AI 분석이 진행중입니다. 앱에서 나가도 좋습니다.`
-        : `${imageFiles.length} image(s) uploaded. AI analysis is in progress. You can leave the app.`;
-      alert(uploadMessage);
-      
-      // Edge Function 호출 (한 번의 호출로 모든 이미지 전송)
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          images: imagesArray,
+          userId: userData.user.id,
+          language: currentLanguage,
+        }),
       });
 
       if (!response.ok) {
@@ -596,7 +587,23 @@ const App: React.FC = () => {
       }
 
       const result = await response.json();
-      console.log('Session created:', result);
+      const createdSessionId = result?.sessionId ? String(result.sessionId) : '';
+      if (!createdSessionId) {
+        console.warn('Unexpected analyze-image response:', result);
+        throw new Error(language === 'ko' ? '세션 생성에 실패했습니다. (sessionId 없음)' : 'Failed to create session. (Missing sessionId)');
+      }
+
+      console.log('Session created:', { sessionId: createdSessionId, imageCount: imagesArray.length });
+
+      setIsLoading(false);
+      setStatus('done');
+
+      const uploadMessage =
+        language === 'ko'
+          ? `${imagesArray.length}개 이미지 업로드 완료. AI 분석이 진행중입니다. (세션: ${createdSessionId}) 앱에서 나가도 좋습니다.`
+          : `${imagesArray.length} image(s) uploaded. AI analysis is in progress. (Session: ${createdSessionId}) You can leave the app.`;
+      alert(uploadMessage);
+
       // React Router를 사용하여 페이지 이동 (전체 리로드 없이)
       navigate('/stats');
     } catch (err) {

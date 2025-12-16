@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
-import { fetchAnalyzingSessions, fetchPendingLabelingSessions } from '../services/db';
+import { fetchAnalyzingSessions, fetchPendingLabelingSessions, fetchFailedSessions } from '../services/db';
 import type { SessionWithProblems } from '../types';
 
 interface UseStatsDataParams {
@@ -16,6 +16,7 @@ interface UseStatsDataReturn {
   error: string | null;
   setError: (error: string | null) => void;
   analyzingSessions: SessionWithProblems[];
+  failedSessions: SessionWithProblems[];
   pendingLabelingSessions: SessionWithProblems[];
   pollingActive: boolean;
   loadData: (showLoading?: boolean) => Promise<void>;
@@ -28,6 +29,7 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [analyzingSessions, setAnalyzingSessions] = useState<SessionWithProblems[]>([]);
+  const [failedSessions, setFailedSessions] = useState<SessionWithProblems[]>([]);
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [pollingActive, setPollingActive] = useState(true);
 
@@ -36,11 +38,12 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
       if (showLoading) {
         setLoading(true);
       }
-      const [statsData, hierarchicalStatsData, analyzing, pendingSessions] = await Promise.all([
+      const [statsData, hierarchicalStatsData, analyzing, pendingSessions, failed] = await Promise.all([
         fetchStatsByType(startDate || undefined, endDate || undefined, language),
         fetchHierarchicalStats(startDate || undefined, endDate || undefined, language),
         fetchAnalyzingSessions(),
         fetchPendingLabelingSessions(),
+        fetchFailedSessions(),
       ]);
       setRows(statsData);
       setHierarchicalData(hierarchicalStatsData);
@@ -53,6 +56,7 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
       
       setAnalyzingSessions(analyzing);
       setPendingLabelingSessions(filteredPendingSessions);
+      setFailedSessions(failed);
       
       // 분석 중이거나 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
       setPollingActive(analyzing.length > 0 || pendingSessions.length > 0);
@@ -92,6 +96,7 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
     error,
     setError,
     analyzingSessions,
+    failedSessions,
     pendingLabelingSessions,
     pollingActive,
     loadData,

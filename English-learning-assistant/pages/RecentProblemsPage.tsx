@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchUserSessions, deleteSession, fetchPendingLabelingSessions, fetchAnalyzingSessions } from '../services/db';
+import { fetchUserSessions, deleteSession, fetchPendingLabelingSessions, fetchAnalyzingSessions, fetchFailedSessions } from '../services/db';
 import { ImageModal } from '../components/ImageModal';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import { AnalyzingCard } from '../components/AnalyzingCard';
@@ -14,6 +14,7 @@ export const RecentProblemsPage: React.FC = () => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<SessionWithProblems[]>([]);
   const [analyzingSessions, setAnalyzingSessions] = useState<SessionWithProblems[]>([]);
+  const [failedSessions, setFailedSessions] = useState<SessionWithProblems[]>([]);
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +34,10 @@ export const RecentProblemsPage: React.FC = () => {
       // 분석 중인 세션 조회
       const analyzing = await fetchAnalyzingSessions();
       setAnalyzingSessions(analyzing);
+
+      // 분석 실패 세션 조회 (UI에 표시하지 않으면 사용자가 원인을 알 수 없음)
+      const failed = await fetchFailedSessions();
+      setFailedSessions(failed);
       
       // 라벨링이 필요한 세션 조회
       const pendingSessions = await fetchPendingLabelingSessions();
@@ -131,7 +136,7 @@ export const RecentProblemsPage: React.FC = () => {
     return sessions.slice(0, visibleSessionCount);
   }, [sessions, visibleSessionCount]);
 
-  if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0) return <div className="text-center text-slate-600 py-10">{t.common.loading}</div>;
+  if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0 && failedSessions.length === 0) return <div className="text-center text-slate-600 py-10">{t.common.loading}</div>;
   if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
 
   return (
@@ -143,6 +148,40 @@ export const RecentProblemsPage: React.FC = () => {
           sessionId={session.id}
           imageUrl={session.image_url}
         />
+      ))}
+
+      {/* 분석 실패 UI - 분석 중 다음 */}
+      {failedSessions.map((session) => (
+        <div
+          key={session.id}
+          className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-red-200 dark:border-red-800 mb-6"
+        >
+          <div className="flex items-start gap-6">
+            <img
+              src={session.image_url}
+              alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
+              className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 flex-shrink-0"
+            />
+            <div className="flex-1">
+              <h3 className="text-xl font-bold text-red-700 dark:text-red-300 mb-2">
+                {language === 'ko' ? 'AI 분석 실패' : 'AI Analysis Failed'}
+              </h3>
+              <p className="text-slate-600 dark:text-slate-400">
+                {language === 'ko'
+                  ? '이미지에서 문제를 추출하지 못했습니다. (0문항) 이미지가 선명한지 확인 후 다시 업로드하거나, 해당 세션을 삭제해주세요.'
+                  : 'Failed to extract problems from the image (0 items). Please re-upload with a clearer image or delete this session.'}
+              </p>
+              <div className="mt-4 flex gap-2 justify-end">
+                <button
+                  onClick={() => handleDelete(session.id)}
+                  className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+                >
+                  {language === 'ko' ? '삭제' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       ))}
 
       {/* 라벨링 UI - 분석 중 다음 */}

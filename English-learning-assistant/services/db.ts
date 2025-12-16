@@ -9,6 +9,7 @@ export {
   fetchUserSessions,
   fetchSessionsByStatus,
   fetchAnalyzingSessions,
+  fetchFailedSessions,
   fetchPendingLabelingSessions,
   deleteSession,
   getSessionStatus,
