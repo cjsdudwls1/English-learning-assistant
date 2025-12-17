@@ -186,7 +186,9 @@ export async function fetchFailedSessions(): Promise<SessionWithProblems[]> {
       id,
       created_at,
       image_url,
-      status
+      status,
+      failure_stage,
+      failure_message
     `)
     .eq('user_id', userId)
     .eq('status', 'failed')
@@ -199,6 +201,8 @@ export async function fetchFailedSessions(): Promise<SessionWithProblems[]> {
     created_at: session.created_at,
     image_url: session.image_url,
     status: session.status,
+    failure_stage: session.failure_stage ?? null,
+    failure_message: session.failure_message ?? null,
     problem_count: 0,
     correct_count: 0,
     incorrect_count: 0,

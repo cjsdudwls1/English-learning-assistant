@@ -14,7 +14,7 @@ import { StatsGeneratedProblems } from '../components/StatsGeneratedProblems';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getTranslation } from '../utils/translations';
-import { findTaxonomyByDepth, fetchProblemsMetadataByCorrectness, type ProblemMetadataItem } from '../services/db';
+import { deleteSession, findTaxonomyByDepth, fetchProblemsMetadataByCorrectness, type ProblemMetadataItem } from '../services/db';
 import { ProblemMetadataModal } from '../components/ProblemMetadataModal';
 import type { StatsNode } from '../services/stats';
 import { supabase } from '../services/supabaseClient';
@@ -197,6 +197,15 @@ export const StatsPage: React.FC = () => {
     await exampleGen.handleGenerateExampleSentences();
   }, [nodes.selectedNodes.size, exampleGen, t.example.selectCategory]);
 
+  const handleDeleteFailedSession = useCallback(async (sessionId: string) => {
+    try {
+      await deleteSession(sessionId);
+      await statsData.loadData(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : (language === 'ko' ? '삭제 실패' : 'Delete failed'));
+    }
+  }, [language, statsData]);
+
   if (statsData.loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">{t.common.loading}</div>;
   if (statsData.error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{statsData.error}</div>;
 
@@ -213,7 +222,7 @@ export const StatsPage: React.FC = () => {
 
       {/* 분석 실패 UI - 분석 중 다음 (실패해도 사라지지 않게: 관찰 가능성) */}
       {statsData.failedSessions.map((session) => (
-        <FailedAnalysisCard key={session.id} session={session} />
+        <FailedAnalysisCard key={session.id} session={session} onDelete={handleDeleteFailedSession} />
       ))}
 
       {/* 라벨링 UI - 분석 중 다음 */}
