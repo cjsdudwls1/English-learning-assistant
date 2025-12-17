@@ -2,129 +2,20 @@
 description: Git 푸시 작업 가이드 - Windows 환경에서 Git 전체 경로 사용
 ---
 
-# Git 푸시 작업 가이드
+# Git 푸시 가이드 (핵심요약 / Windows PowerShell)
 
-## 🚨 중요: Git 푸시 시 반드시 이 방법 사용
+## 원칙(이 프로젝트 기본값)
+- Git은 PATH에 없을 수 있으므로 **항상 전체 경로 + `&`로 실행**
+  - `& "C:\Program Files\Git\bin\git.exe" ...`
 
-### Git 설치 위치
-- **경로**: `C:\Program Files\Git\bin\git.exe`
-- **버전**: git version 2.49.0.windows.1
-- **문제**: PATH 환경변수에 등록되지 않아 직접 사용 불가
-
-### ✅ 올바른 Git 푸시 방법
-
-#### 1. 파일 추가 (Staging)
+## 가장 자주 쓰는 4줄
 ```powershell
-& "C:\Program Files\Git\bin\git.exe" add [파일명]
-```
-
-#### 2. 커밋 (Commit)
-```powershell
-& "C:\Program Files\Git\bin\git.exe" commit -m "커밋 메시지"
-```
-
-#### 3. 푸시 (Push)
-```powershell
-& "C:\Program Files\Git\bin\git.exe" push
-```
-
-### 📋 Git 푸시 작업 절차
-
-#### 단계별 명령어
-1. **파일 추가**:
-   ```powershell
-   & "C:\Program Files\Git\bin\git.exe" add .
-   ```
-
-2. **커밋**:
-   ```powershell
-   & "C:\Program Files\Git\bin\git.exe" commit -m "Fix: [수정 내용]"
-   ```
-
-3. **푸시**:
-   ```powershell
-   & "C:\Program Files\Git\bin\git.exe" push
-   ```
-
-#### 전체 명령어 예시
-```powershell
-# 1. 모든 변경사항 추가
+& "C:\Program Files\Git\bin\git.exe" status
 & "C:\Program Files\Git\bin\git.exe" add .
-
-# 2. 커밋
-& "C:\Program Files\Git\bin\git.exe" commit -m "Fix: Edge Function 호출 방식 개선"
-
-# 3. 푸시
+& "C:\Program Files\Git\bin\git.exe" commit -m "Fix: <요약>"
 & "C:\Program Files\Git\bin\git.exe" push
 ```
 
-### ⚠️ 주의사항
-
-#### 절대 사용하지 말 것
-- ❌ `git add .` (PATH에 등록되지 않음)
-- ❌ `git commit -m "메시지"` (PATH에 등록되지 않음)
-- ❌ `git push` (PATH에 등록되지 않음)
-
-#### 반드시 사용할 것
-- ✅ `& "C:\Program Files\Git\bin\git.exe" add .`
-- ✅ `& "C:\Program Files\Git\bin\git.exe" commit -m "메시지"`
-- ✅ `& "C:\Program Files\Git\bin\git.exe" push`
-
-### 🔧 PowerShell 특수 문자 처리
-
-#### 경로에 공백이 있는 경우
-- **올바른 방법**: `& "C:\Program Files\Git\bin\git.exe"`
-- **잘못된 방법**: `"C:\Program Files\Git\bin\git.exe"` (PowerShell에서 파싱 오류)
-
-#### 명령어 실행 순서
-1. **현재 디렉토리 확인**: `pwd` (C:\cheon\cheon_wokespace\edu\English-learning-assistant)
-2. **Git 상태 확인**: `& "C:\Program Files\Git\bin\git.exe" status`
-3. **파일 추가**: `& "C:\Program Files\Git\bin\git.exe" add .`
-4. **커밋**: `& "C:\Program Files\Git\bin\git.exe" commit -m "메시지"`
-5. **푸시**: `& "C:\Program Files\Git\bin\git.exe" push`
-
-### 📝 커밋 메시지 규칙
-
-#### 형식
-```
-Fix: [수정 내용]
-Feature: [새 기능]
-Update: [업데이트 내용]
-```
-
-#### 예시
-- `Fix: Edge Function 호출 방식 개선`
-- `Feature: 이미지 업로드 플로우 추가`
-- `Update: UI 컴포넌트 개선`
-
-### 🚀 배포 확인
-
-#### Git 푸시 후 확인사항
-1. **GitHub 확인**: https://github.com/cjsdudwls1/English-learning-assistant
-2. **Netlify 자동 배포**: Git 푸시 후 1-2분 내 자동 배포 시작
-3. **배포 완료**: 3-5분 후 https://english-learningassistant.netlify.app 접속 가능
-
-### 🔍 문제 해결
-
-#### Git 명령어 실패 시
-1. **경로 확인**: `Test-Path "C:\Program Files\Git\bin\git.exe"`
-2. **권한 확인**: 관리자 권한으로 PowerShell 실행
-3. **대안**: Git Bash 사용 (`C:\Program Files\Git\bin\bash.exe`)
-
-#### 푸시 실패 시
-1. **인증 확인**: GitHub 토큰 또는 SSH 키 설정
-2. **원격 저장소 확인**: `& "C:\Program Files\Git\bin\git.exe" remote -v`
-3. **브랜치 확인**: `& "C:\Program Files\Git\bin\git.exe" branch`
-
-## 🎯 핵심 원칙
-
-### Git 푸시 작업 시 반드시
-1. **전체 경로 사용**: `& "C:\Program Files\Git\bin\git.exe"`
-2. **PowerShell 앰퍼샌드 사용**: `&` 기호 필수
-3. **순서 준수**: add → commit → push
-4. **커밋 메시지**: 명확하고 간결하게
-
-### 절대 하지 말 것
-1. **직접 git 명령어 사용**: PATH 문제로 실패
-2. **경로 따옴표 없이 사용**: 공백으로 인한 파싱 오류
-3. **순서 무시**: add 없이 commit 시도
+## 금지
+- `git ...` (PATH 미설정 시 실패)
+- `"C:\Program Files\Git\bin\git.exe"`만 단독 실행 (PowerShell에서 실행자 `&` 필요)

@@ -87,6 +87,7 @@ export interface SessionWithProblems {
   status?: string;
   // 실패 관찰 가능성(Observability)
   failure_stage?: string | null;
+  failure_message?: string | null;
 }
 
 // 생성된 문제 타입 (generated_problems 테이블)

@@ -1,94 +1,26 @@
-# Quick Labeling (문제검수 카드) 불변 규칙
+# Quick Labeling 불변 규칙 (핵심요약)
 
 ## 목적
-퀵라벨링 카드(QuickLabelingCard)가 다른 기능 개발/리팩토링 과정에서 **다시 사라지거나 오작동**하는 회귀를 방지한다.
+- QuickLabelingCard 회귀(미노출/오작동)를 방지한다.
 
----
+## 불변 조건(절대)
+- **노출**: `status='completed'` AND **문제 1개 이상**
+- **미노출**:
+  - `pending|processing` → AnalyzingCard
+  - `failed` → 실패 UI(숨기지 말 것)
+  - `labeled` → 이미 저장 완료(카드 미노출)
 
-## 핵심 불변 조건 (절대 깨지면 안 됨)
+## 백엔드 상태 전이(절대)
+- 생성: `processing`
+- 저장 완료(Problems+Labels) 후: `completed`
+- **금지**: `completed`인데 문제 0개
+  - 0개면 `failed` + `failure_stage/failure_message` 기록
+- **금지**: `labeled → completed` 되돌림
+  - 완료 업데이트는 `eq('status','processing')` 가드 필수
 
-### 1) 카드 노출 기준 (프론트)
-- **카드가 떠야 하는 세션**: `sessions.status = 'completed'` 이고, 해당 세션의 `problems`가 **1개 이상** 존재해야 한다.
-- **카드가 뜨면 안 되는 세션**:
-  - `status in ('pending','processing')` → 분석 중 카드(AnalyzingCard)
-  - `status = 'failed'` → 실패(에러) UI로 처리(숨기지 말고 사용자에게 원인 안내)
-  - `status = 'labeled'` → 이미 검수 저장 완료(카드 미노출)
+## 실패 기록(필수)
+- `sessions.failure_stage`, `sessions.failure_message`는 **빈 값 금지**
 
-### 2) 상태 전이 규칙 (백엔드)
-- 세션 생성 시: `status = 'processing'`
-- 문제 저장(problems insert) + 라벨 저장(labels insert)이 끝나면:
-  - **반드시** `status = 'completed'` 로 전환 (퀵라벨링 카드 노출 트리거)
-- **절대 금지**: `completed`인데 `problem_count=0` 상태 생성
-  - 문제를 0개 추출했으면 `status='failed'`로 종료하고 `failure_stage/failure_message`를 반드시 기록
-- **절대 금지**: 사용자 검수 후 `status='labeled'`인 세션을 백그라운드 작업이 `completed`로 되돌리는 것
-  - 완료 업데이트는 항상 `eq('status','processing')` 가드 필요
-
-### 3) 분석 실패 기록 규칙 (백엔드)
-- 실패 시 `sessions.failure_stage`, `sessions.failure_message`를 반드시 기록한다.
-  - 최소 stage 후보: `extract_call`, `extract`, `extract_parse`, `extract_empty`, `insert_problems`, `insert_labels`, `request`, `unknown`
-- 실패 원인은 문자열로 남길 것(스택 포함 가능). `{}` 같은 무의미한 값 금지.
-
----
-
-## 코드 변경 시 금지/주의 항목
-
-### A) Edge Function(`analyze-image`) 수정 시
-- `choices`는 모델이 배열/문자열/객체로 반환할 수 있으므로 **항상 정규화(normalizeChoices)** 후 사용한다.
-  - 중복 해시, problems insert, labels confidence 계산 모두 동일
-- 모델 응답이 비어있는 케이스(RECITATION/차단/빈 content)를 고려:
-  - `extractModelText`는 candidates.parts join 등 여러 경로로 텍스트 추출
-  - 빈 응답이면 즉시 `failed` 처리 + 모델 메타(finishReason/blockReason 등) 기록
-- 모델 호출은 `429/503/timeout` 등에 대해 **재시도(backoff)** 가 필요
-
-### B) 프론트(StatsPage/RecentProblemsPage/useStatsData) 수정 시
-- 퀵라벨링 카드는 **StatsPage 상단 영역**(AnalyzingCard 다음)에 렌더링되는 구조를 유지한다.
-- `pendingLabelingSessions` 로딩 로직에서 다음 조건이 깨지면 회귀로 간주:
-  - status 필터: `completed`
-  - 문제 수 필터: `problem_count > 0`
-- 폴링 로직이 꺼지면(또는 조건이 바뀌면) 카드 노출이 지연/누락될 수 있으므로 주의
-
-### C) DB 레이어(`services/db.ts` 배럴) 수정 시
-- 새로 추가한 세션 조회 함수는 **반드시 배럴 파일에서 재-export**한다.
-  - 누락 시 빌드 에러/빈 화면 회귀
-
----
-
-## 변경 후 필수 회귀 체크 (작업 끝나기 전 반드시 수행)
-
-### 1) 업로드→카드 노출 E2E 체크
-- 이미지 1~2장 업로드
-- 60초 내에 Stats 페이지 상단에 **QuickLabelingCard가 1개 이상 노출**되는지 확인
-
-### 2) DB 검증 SQL (최근 30분)
-```sql
-select s.id, s.created_at, s.status,
-       coalesce(jsonb_array_length(s.image_urls),0) as image_urls_count,
-       count(p.id) as problem_count,
-       s.failure_stage, left(coalesce(s.failure_message,''),200) as failure_message_preview
-from public.sessions s
-left join public.problems p on p.session_id=s.id
-where s.created_at > now() - interval '30 minutes'
-group by s.id, s.created_at, s.status, s.image_urls, s.failure_stage, s.failure_message
-order by s.created_at desc
-limit 10;
-```
-- 기대값:
-  - 성공 케이스는 `status='completed' AND problem_count>0`
-  - 실패 케이스는 `status='failed' AND failure_stage IS NOT NULL AND failure_message <> ''`
-  - **금지 케이스**: `status='completed' AND problem_count=0`
-
-### 3) 상태 되돌림 방지 체크
-- 사용자가 퀵라벨 저장 완료 후 `status='labeled'`가 된 세션이 다시 `completed`로 바뀌지 않는지 확인
-
----
-
-## 수정 범위 힌트(자주 건드리는 파일)
-- Edge Function: `supabase/functions/analyze-image/index.ts`
-- 프론트 카드 노출: `English-learning-assistant/pages/StatsPage.tsx`, `English-learning-assistant/pages/RecentProblemsPage.tsx`
-- 세션 조회 로직: `English-learning-assistant/services/db/sessions.ts`, `English-learning-assistant/services/db.ts`
-
----
-
-## 결론
-퀵라벨링 카드는 **"completed + 문제>0"** 불변 조건으로만 노출된다.
-이 조건을 깨는 변경(특히 status 전이/문제 0개 처리/배럴 export 누락)은 회귀로 간주하고 즉시 롤백/수정한다.
+## 변경 후 스모크(필수)
+- 업로드 후 60초 내 Stats 상단에 **QuickLabelingCard** 노출 확인
+- DB에서 `completed & 문제0` 케이스가 없는지 확인

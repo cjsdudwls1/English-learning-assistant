@@ -10,10 +10,53 @@ interface FailedAnalysisCardProps {
 export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session, onDelete }) => {
   const { language } = useLanguage();
   const isDev = (import.meta as any).env?.DEV === true;
-  const stage = session.failure_stage ? String(session.failure_stage) : (language === 'ko' ? '알 수 없음' : 'Unknown');
+  const rawStage = session.failure_stage ? String(session.failure_stage) : '';
+  const stageLabel = rawStage
+    ? (language === 'ko' ? rawStage : rawStage)
+    : (language === 'ko' ? '알 수 없음' : 'Unknown');
+
+  const failureDetails = (() => {
+    if (!session.failure_message) return null;
+    try {
+      return JSON.parse(String(session.failure_message));
+    } catch {
+      return { message: String(session.failure_message) };
+    }
+  })();
+
+  const reasonText = (() => {
+    const msg = failureDetails?.message ? String(failureDetails.message) : '';
+    const code = failureDetails?.extra?.errorCode ?? failureDetails?.code ?? null;
+    const status = failureDetails?.extra?.errorStatus ?? failureDetails?.status ?? null;
+    const extraMsg = failureDetails?.extra?.errorMessage ? String(failureDetails.extra.errorMessage) : '';
+
+    if (language === 'ko') {
+      const parts: string[] = [];
+      if (msg) parts.push(msg);
+      if (code || status) parts.push(`(${[code && `code=${code}`, status && `status=${status}`].filter(Boolean).join(', ')})`);
+      if (extraMsg && extraMsg.toLowerCase().includes('overloaded')) parts.push('※ 모델 과부하(overloaded)로 인한 일시적 실패');
+      return parts.join(' ').trim();
+    }
+
+    const parts: string[] = [];
+    if (msg) parts.push(msg);
+    if (code || status) parts.push(`(${[code && `code=${code}`, status && `status=${status}`].filter(Boolean).join(', ')})`);
+    return parts.join(' ').trim();
+  })();
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-red-200 dark:border-red-800 mb-6">
+    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-red-200 dark:border-red-800 mb-6">
+      {onDelete && (
+        <button
+          type="button"
+          onClick={() => onDelete(session.id)}
+          aria-label={language === 'ko' ? '실패 세션 삭제' : 'Delete failed session'}
+          title={language === 'ko' ? '삭제' : 'Delete'}
+          className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200 dark:hover:bg-red-900/40"
+        >
+          <span className="text-xl leading-none">×</span>
+        </button>
+      )}
       <div className="flex items-start gap-6">
         <img
           src={session.image_url}
@@ -29,9 +72,14 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
               ? '이미지에서 문제를 추출하지 못했습니다. 이미지 다시 업로드를 권장합니다.'
               : 'Failed to extract problems from the image. Please re-upload a clearer image.'}
           </p>
+          {reasonText ? (
+            <p className="mt-2 text-sm text-red-700/90 dark:text-red-200/90 break-words">
+              {reasonText}
+            </p>
+          ) : null}
           <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             <span className="font-medium">{language === 'ko' ? 'failure_stage' : 'failure_stage'}: </span>
-            <span>{stage}</span>
+            <span>{stageLabel}</span>
             {isDev && (
               <>
                 <span className="mx-2">|</span>
@@ -40,16 +88,6 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
               </>
             )}
           </div>
-          {onDelete && (
-            <div className="mt-4 flex gap-2 justify-end">
-              <button
-                onClick={() => onDelete(session.id)}
-                className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
-              >
-                {language === 'ko' ? '삭제' : 'Delete'}
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>

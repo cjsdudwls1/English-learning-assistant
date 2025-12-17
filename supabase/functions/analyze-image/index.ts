@@ -100,6 +100,85 @@ function normalizeMark(raw: unknown): 'O' | 'X' {
   return 'X';
 }
 
+// 실패 원인 기록을 위한 에러 타입/유틸
+type FailureStage =
+  | 'request'
+  | 'extract_call'
+  | 'extract_parse'
+  | 'extract_empty'
+  | 'insert_problems'
+  | 'insert_labels'
+  | 'unknown';
+
+class StageError extends Error {
+  stage: FailureStage;
+  details: any;
+  constructor(stage: FailureStage, message: string, details?: any) {
+    super(message);
+    this.stage = stage;
+    this.details = details;
+  }
+}
+
+function safeStringify(value: unknown, maxLen = 1800): string {
+  let s = '';
+  try {
+    s = JSON.stringify(value);
+  } catch {
+    try {
+      s = String(value);
+    } catch {
+      s = '[unstringifiable]';
+    }
+  }
+  if (s.length > maxLen) return s.slice(0, maxLen) + '...';
+  return s;
+}
+
+function summarizeError(err: any) {
+  const message = err?.message ? String(err.message) : String(err ?? 'Unknown error');
+  const code = err?.status ?? err?.error?.code ?? err?.code ?? null;
+  const status = err?.error?.status ?? err?.statusText ?? null;
+  const name = err?.name ?? null;
+  const stack = err?.stack ?? null;
+  return { message, code, status, name, stack };
+}
+
+async function markSessionFailed(params: {
+  supabase: any;
+  sessionId: string;
+  stage: FailureStage;
+  error: any;
+  extra?: any;
+}) {
+  const { supabase, sessionId, stage, error, extra } = params;
+  const summary = summarizeError(error);
+  const failureMessage = safeStringify({ stage, ...summary, extra });
+  try {
+    await supabase
+      .from('sessions')
+      .update({
+        status: 'failed',
+        failure_stage: stage,
+        failure_message: failureMessage,
+      })
+      .eq('id', sessionId);
+  } catch (e) {
+    console.error('[FailureRecord] Failed to write failure_stage/message', {
+      sessionId,
+      stage,
+      originalError: summary,
+      updateError: summarizeError(e),
+    });
+    // 마지막 방어: status만이라도 업데이트
+    try {
+      await supabase.from('sessions').update({ status: 'failed' }).eq('id', sessionId);
+    } catch (e2) {
+      console.error('[FailureRecord] Failed to update status=failed', { sessionId, e2: summarizeError(e2) });
+    }
+  }
+}
+
 // 문제 번호 범위를 감지하고 분리하는 함수
 function validateAndSplitProblems(items: any[]): any[] {
   const validatedItems: any[] = [];
@@ -498,7 +577,17 @@ serve(async (req) => {
             // 마지막 시도였거나 재시도할 가치가 없는 오류면 throw
             if (attempt >= MAX_RETRIES || (!isRateLimit && !isServerOverload && !isTimeout)) {
               console.error(`[Background] Step 3b: Gemini API failed after ${attempt} attempts`, { sessionId: createdSessionId });
-              throw apiError;
+              throw new StageError(
+                'extract_call',
+                `Gemini API failed after ${attempt} attempts`,
+                {
+                  attempt,
+                  maxRetries: MAX_RETRIES,
+                  errorCode,
+                  errorStatus,
+                  errorMessage: errorMessage.substring(0, 500),
+                }
+              );
             }
             
             // 재시도 가능한 오류면 대기 후 재시도 (Exponential Backoff)
@@ -594,14 +683,13 @@ serve(async (req) => {
         // ✅ 문제를 하나도 추출하지 못한 경우: UI에서 "사라지는 completed(0문제)" 상태를 만들지 않도록 실패 처리
         if (!validatedItems || validatedItems.length === 0) {
           console.error(`[Background] No problems extracted. Marking session as failed.`, { sessionId: createdSessionId });
-          try {
-            await supabase
-              .from('sessions')
-              .update({ status: 'failed' })
-              .eq('id', createdSessionId);
-          } catch (e) {
-            console.error(`[Background] Failed to update session status to failed (no problems)`, { sessionId: createdSessionId, error: e });
-          }
+          await markSessionFailed({
+            supabase,
+            sessionId: createdSessionId,
+            stage: 'extract_empty',
+            error: new Error('No problems extracted (0 items)'),
+            extra: { imageCount: imageList.length },
+          });
           return;
         }
 
@@ -635,21 +723,20 @@ serve(async (req) => {
 
         if (problemsError) {
           console.error(`[Background] Step 4 error: Problems insert error`, { sessionId: createdSessionId, error: problemsError, problemsPayloadCount: problemsPayload.length });
-          throw problemsError;
+          throw new StageError('insert_problems', 'Problems insert failed', { problemsPayloadCount: problemsPayload.length, error: summarizeError(problemsError) });
         }
 
         console.log(`[Background] Step 4 completed: Inserted ${problems?.length || 0} problems`, { sessionId: createdSessionId });
 
         if (!problems || problems.length === 0) {
           console.error(`[Background] Step 4 produced 0 problems. Marking session as failed.`, { sessionId: createdSessionId });
-          try {
-            await supabase
-              .from('sessions')
-              .update({ status: 'failed' })
-              .eq('id', createdSessionId);
-          } catch (e) {
-            console.error(`[Background] Failed to update session status to failed (0 inserted)`, { sessionId: createdSessionId, error: e });
-          }
+          await markSessionFailed({
+            supabase,
+            sessionId: createdSessionId,
+            stage: 'insert_problems',
+            error: new Error('Inserted 0 problems'),
+            extra: { problemsPayloadCount: problemsPayload.length },
+          });
           return;
         }
 
@@ -737,7 +824,7 @@ serve(async (req) => {
           const { error: labelsError } = await supabase.from('labels').insert(validLabelsPayload);
           if (labelsError) {
             console.error(`[Background] Step 5 error: Labels insert error`, { sessionId: createdSessionId, error: labelsError, validLabelsPayloadCount: validLabelsPayload.length });
-            throw labelsError;
+            throw new StageError('insert_labels', 'Labels insert failed', { validLabelsPayloadCount: validLabelsPayload.length, error: summarizeError(labelsError) });
           }
         }
 
@@ -974,23 +1061,15 @@ serve(async (req) => {
           errorName: bgError?.name,
           errorCause: bgError?.cause,
         });
-        
-        // 백그라운드 분석 실패 시 세션 상태를 failed로 업데이트
-        try {
-          console.log(`[Background] Updating session status to failed...`, { sessionId: createdSessionId });
-          const { error: statusError } = await supabase
-            .from('sessions')
-            .update({ status: 'failed' })
-            .eq('id', createdSessionId);
-          
-          if (statusError) {
-            console.error(`[Background] Failed to update session status to failed`, { sessionId: createdSessionId, error: statusError });
-          } else {
-            console.log(`[Background] Session status updated to failed due to background error`, { sessionId: createdSessionId });
-          }
-        } catch (statusError: any) {
-          console.error(`[Background] Exception while updating session status to failed`, { sessionId: createdSessionId, error: statusError });
-        }
+
+        const stage: FailureStage = bgError instanceof StageError ? bgError.stage : 'unknown';
+        await markSessionFailed({
+          supabase,
+          sessionId: createdSessionId,
+          stage,
+          error: bgError,
+          extra: bgError instanceof StageError ? bgError.details : undefined,
+        });
       }
     })();
 
@@ -1012,16 +1091,12 @@ serve(async (req) => {
     
     // 에러 발생 시 세션 상태를 failed로 업데이트 (세션이 생성된 경우에만)
     if (supabase && typeof createdSessionId !== 'undefined') {
-      try {
-        console.log('Updating session status to failed...');
-        await supabase
-          .from('sessions')
-          .update({ status: 'failed' })
-          .eq('id', createdSessionId);
-        console.log('Session status updated to failed');
-      } catch (statusError) {
-        console.error('Failed to update session status to failed:', statusError);
-      }
+      await markSessionFailed({
+        supabase,
+        sessionId: createdSessionId,
+        stage: 'request',
+        error,
+      });
     }
     
     return errorResponse(error.message || 'Internal server error', 500, error.toString());
