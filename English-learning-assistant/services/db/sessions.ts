@@ -220,6 +220,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       id,
       created_at,
       image_url,
+      analysis_model,
       status,
       problems (
         id,
@@ -262,6 +263,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         id: session.id,
         created_at: session.created_at,
         image_url: session.image_url,
+        analysis_model: session.analysis_model ?? null,
         problem_count,
         correct_count,
         incorrect_count,

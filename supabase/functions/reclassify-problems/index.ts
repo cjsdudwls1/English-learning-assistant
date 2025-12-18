@@ -1,10 +1,10 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
-import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
-import { requireEnv } from '../_shared/env.ts'
-import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
-import { loadTaxonomyData, findTaxonomyByDepth } from '../_shared/taxonomy.ts'
+import { createServiceSupabaseClient } from './_shared/supabaseClient.ts'
+import { requireEnv } from './_shared/env.ts'
+import { CORS_HEADERS, errorResponse, handleOptions, jsonResponse } from './_shared/http.ts'
+import { loadTaxonomyData, findTaxonomyByDepth } from './_shared/taxonomy.ts'
 
 function buildPrompt(classificationData: { structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }) {
   const { structure, allValues } = classificationData;
@@ -115,7 +115,7 @@ serve(async (req) => {
         processed: 0
       }), {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
       });
     }
 
@@ -153,7 +153,7 @@ serve(async (req) => {
             contents: { parts: [{ text: `${prompt}\n\n문제: ${stem}` }] },
           });
 
-          const responseText = response.text;
+          const responseText = typeof response.text === 'function' ? await response.text() : String(response.text);
           const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
           const classification = JSON.parse(jsonString);
 

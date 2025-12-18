@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchUserSessions, deleteSession, fetchPendingLabelingSessions, fetchAnalyzingSessions, fetchFailedSessions } from '../services/db';
 import { ImageModal } from '../components/ImageModal';
@@ -24,6 +24,7 @@ export const RecentProblemsPage: React.FC = () => {
   const [modalSessionId, setModalSessionId] = useState<string>('');
   const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
   const [pollingActive, setPollingActive] = useState(true);
+  const lastAnalyzingSeenAtRef = useRef<number>(0);
 
   const loadData = async () => {
     try {
@@ -43,8 +44,17 @@ export const RecentProblemsPage: React.FC = () => {
       const pendingSessions = await fetchPendingLabelingSessions();
       setPendingLabelingSessions(pendingSessions);
       
-      // 분석 중이거나 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
-      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0);
+      // 폴링 로직:
+      // - analyzing/pending이 있으면 계속
+      // - analyzing이 막 끝난 직후(=status가 processing->completed/failed로 바뀌는 순간)에는
+      //   DB 반영/조인 조회 타이밍 때문에 pending/failed가 다음 틱에야 잡힐 수 있으므로,
+      //   잠깐(예: 60초) 더 폴링을 유지해서 "아무 카드도 안 뜨는" 구간을 없앰.
+      const now = Date.now();
+      if (analyzing.length > 0) {
+        lastAnalyzingSeenAtRef.current = now;
+      }
+      const recentlyHadAnalyzing = lastAnalyzingSeenAtRef.current > 0 && now - lastAnalyzingSeenAtRef.current < 60_000;
+      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0 || recentlyHadAnalyzing);
     } catch (e) {
       setError(e instanceof Error ? e.message : '조회 실패');
     } finally {
@@ -190,6 +200,7 @@ export const RecentProblemsPage: React.FC = () => {
           key={session.id}
           sessionId={session.id}
           imageUrl={session.image_url}
+          analysisModel={session.analysis_model}
           onSave={handleLabelingComplete}
         />
       ))}
