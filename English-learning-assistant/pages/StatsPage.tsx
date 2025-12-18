@@ -231,6 +231,7 @@ export const StatsPage: React.FC = () => {
           key={session.id}
           sessionId={session.id}
           imageUrl={session.image_url}
+          analysisModel={session.analysis_model}
           onSave={statsData.handleLabelingComplete}
         />
       ))}

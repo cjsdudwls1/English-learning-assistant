@@ -8,12 +8,14 @@ import { getTranslation } from '../utils/translations';
 interface QuickLabelingCardProps {
   sessionId: string;
   imageUrl: string;
+  analysisModel?: string | null;
   onSave?: () => void;
 }
 
 export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({ 
   sessionId, 
   imageUrl, 
+  analysisModel,
   onSave 
 }) => {
   const { language } = useLanguage();
@@ -110,9 +112,16 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
         
         {/* 헤더 */}
         <div className="flex-1">
-          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">
-            {language === 'ko' ? 'AI 분석 완료' : 'AI Analysis Complete'}
-          </h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
+              {language === 'ko' ? 'AI 분석 완료' : 'AI Analysis Complete'}
+            </h3>
+            {analysisModel ? (
+              <span className="text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">
+                Model: {analysisModel}
+              </span>
+            ) : null}
+          </div>
           <p className="text-slate-600 dark:text-slate-400">
             {language === 'ko' 
               ? `AI가 분석한 문제 ${problems.length}개를 확인하고 검수해주세요.`

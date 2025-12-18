@@ -6,6 +6,12 @@ import { requireEnv } from './_shared/env.ts'
 import { errorResponse, handleOptions, jsonResponse } from './_shared/http.ts'
 import { loadTaxonomyData, fetchTaxonomyByCode } from './_shared/taxonomy.ts'
 
+// Model selection
+// - Primary: fast, multimodal
+// - Fallback: Gemma 3 27B-IT (multimodal per project requirement)
+const PRIMARY_MODEL = 'gemini-2.5-flash';
+const FALLBACK_MODEL = 'gemma-3-27b-it';
+
 // 2단계 프롬프트 로직: Step 1 (Raw OCR) + Step 2 (Extraction)
 function buildPrompt(classificationData: { structure: string; optionsText: string; codes: string[] }, language: 'ko' | 'en' = 'ko', imageCount: number = 1) {
   const { structure, optionsText, codes } = classificationData;
@@ -142,6 +148,93 @@ function summarizeError(err: any) {
   const name = err?.name ?? null;
   const stack = err?.stack ?? null;
   return { message, code, status, name, stack };
+}
+
+function parseModelError(apiError: any) {
+  const errorCode = apiError?.status || apiError?.error?.code || 0;
+  const errorMessage = apiError?.message || apiError?.error?.message || String(apiError);
+  const errorStatus = apiError?.error?.status || '';
+  const lower = String(errorMessage).toLowerCase();
+  const isRateLimit = errorCode === 429 || lower.includes('rate limit') || lower.includes('quota');
+  const isServerOverload = errorCode === 503 || lower.includes('overloaded') || lower.includes('unavailable') || errorStatus === 'UNAVAILABLE';
+  const isTimeout = lower.includes('timeout') || errorCode === 504;
+  return { errorCode, errorStatus, errorMessage, isRateLimit, isServerOverload, isTimeout };
+}
+
+function computeBackoffDelayMs(base: number, attempt: number) {
+  // exponential backoff + jitter (0.85~1.15)
+  const raw = base * Math.pow(2, Math.max(0, attempt - 1));
+  const jitter = 0.85 + Math.random() * 0.30;
+  return Math.round(raw * jitter);
+}
+
+async function generateWithRetry(params: {
+  ai: any;
+  model: string;
+  contents: any;
+  sessionId: string;
+  maxRetries: number;
+  baseDelayMs: number;
+  temperature: number;
+}) {
+  const { ai, model, contents, sessionId, maxRetries, baseDelayMs, temperature } = params;
+  let attempt = 0;
+  let lastParsed: any = null;
+  let lastErr: any = null;
+
+  while (attempt < maxRetries) {
+    try {
+      console.log(`[Background] Step 3b: Model call attempt ${attempt + 1}/${maxRetries} (model=${model})...`, { sessionId });
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature,
+        },
+      });
+      return { response, attemptCount: attempt + 1 };
+    } catch (apiError: any) {
+      attempt++;
+      lastErr = apiError;
+      lastParsed = parseModelError(apiError);
+      const { errorCode, errorStatus, errorMessage, isRateLimit, isServerOverload, isTimeout } = lastParsed;
+
+      console.error(`[Background] Step 3b: Model error (attempt ${attempt}/${maxRetries}, model=${model}):`, {
+        sessionId,
+        errorCode,
+        errorStatus,
+        errorMessage: String(errorMessage).substring(0, 200),
+      });
+
+      const retryable = isRateLimit || isServerOverload || isTimeout;
+      if (attempt >= maxRetries || !retryable) {
+        throw new StageError(
+          'extract_call',
+          `Model call failed after ${attempt} attempts (model=${model})`,
+          {
+            model,
+            attempt,
+            maxRetries,
+            errorCode,
+            errorStatus,
+            errorMessage: String(errorMessage).substring(0, 500),
+          }
+        );
+      }
+
+      const delay = computeBackoffDelayMs(baseDelayMs, attempt);
+      console.warn(`[Background] Step 3b: Retrying in ${Math.round(delay / 1000)}s... (attempt ${attempt}/${maxRetries}, model=${model})`, { sessionId });
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  // should not reach here
+  throw new StageError(
+    'extract_call',
+    `Model call failed (no response) (model=${params.model})`,
+    { model: params.model, lastParsed, lastError: summarizeError(lastErr) }
+  );
 }
 
 async function markSessionFailed(params: {
@@ -429,6 +522,7 @@ serve(async (req) => {
         user_id: userId,
         image_url: imageUrl, // 하위 호환성을 위해 첫 번째 이미지 URL 유지
         image_urls: finalImageUrls, // 다중 이미지 URL 배열
+        analysis_model: PRIMARY_MODEL,
         status: 'processing'
       })
       .select('id, image_url, image_urls')
@@ -532,68 +626,70 @@ serve(async (req) => {
           throw new Error(`Parts array length mismatch: expected ${imageList.length + 1}, got ${parts.length}`);
         }
         
-        // Gemini API 호출 (503 오류 재시도 로직 포함)
+        // 모델 호출 (Primary -> Fallback)
         const MAX_RETRIES = 5;
         const BASE_DELAY = 5000; // 5초 기본 대기
-        let attempt = 0;
+        const FALLBACK_MAX_RETRIES = 2;
+        const FALLBACK_BASE_DELAY = 7000;
+
+        let usedModel = PRIMARY_MODEL;
         let response: any;
         let responseText: string = '';
-        
-        while (attempt < MAX_RETRIES) {
+
+        try {
+          const primary = await generateWithRetry({
+            ai,
+            model: PRIMARY_MODEL,
+            contents: { parts },
+            sessionId: createdSessionId,
+            maxRetries: MAX_RETRIES,
+            baseDelayMs: BASE_DELAY,
+            temperature: 0.1,
+          });
+          response = primary.response;
+          usedModel = PRIMARY_MODEL;
+        } catch (primaryErr: any) {
+          // Primary 실패 시 fallback으로 1회(또는 소수 회) 시도
+          console.warn(`[Background] Step 3b: Primary model failed, trying fallback model...`, {
+            sessionId: createdSessionId,
+            primaryModel: PRIMARY_MODEL,
+            fallbackModel: FALLBACK_MODEL,
+          });
+
+          // 세션에 fallback 모델 기록 (UI에서 표시)
           try {
-            console.log(`[Background] Step 3b: Gemini API call attempt ${attempt + 1}/${MAX_RETRIES}...`, { sessionId: createdSessionId });
-            
-            response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
+            await supabase
+              .from('sessions')
+              .update({ analysis_model: FALLBACK_MODEL })
+              .eq('id', createdSessionId);
+          } catch (e) {
+            console.error(`[Background] Failed to update analysis_model to fallback`, { sessionId: createdSessionId, error: e });
+          }
+
+          try {
+            const fallback = await generateWithRetry({
+              ai,
+              model: FALLBACK_MODEL,
               contents: { parts },
-              generationConfig: {
-                responseMimeType: "application/json",
-                temperature: 0.1,
-              },
-            });
-            
-            // 성공했으면 반복문 탈출
-            break;
-          } catch (apiError: any) {
-            attempt++;
-            
-            // 에러 정보 파싱
-            const errorCode = apiError?.status || apiError?.error?.code || 0;
-            const errorMessage = apiError?.message || apiError?.error?.message || String(apiError);
-            const errorStatus = apiError?.error?.status || '';
-            
-            console.error(`[Background] Step 3b: Gemini API error (attempt ${attempt}/${MAX_RETRIES}):`, {
               sessionId: createdSessionId,
-              errorCode,
-              errorStatus,
-              errorMessage: errorMessage.substring(0, 200),
+              maxRetries: FALLBACK_MAX_RETRIES,
+              baseDelayMs: FALLBACK_BASE_DELAY,
+              temperature: 0.1,
             });
-            
-            // 503, 429, 타임아웃 오류인지 확인
-            const isRateLimit = errorCode === 429 || errorMessage.toLowerCase().includes('rate limit') || errorMessage.toLowerCase().includes('quota');
-            const isServerOverload = errorCode === 503 || errorMessage.toLowerCase().includes('overloaded') || errorMessage.toLowerCase().includes('unavailable') || errorStatus === 'UNAVAILABLE';
-            const isTimeout = errorMessage.toLowerCase().includes('timeout') || errorCode === 504;
-            
-            // 마지막 시도였거나 재시도할 가치가 없는 오류면 throw
-            if (attempt >= MAX_RETRIES || (!isRateLimit && !isServerOverload && !isTimeout)) {
-              console.error(`[Background] Step 3b: Gemini API failed after ${attempt} attempts`, { sessionId: createdSessionId });
-              throw new StageError(
-                'extract_call',
-                `Gemini API failed after ${attempt} attempts`,
-                {
-                  attempt,
-                  maxRetries: MAX_RETRIES,
-                  errorCode,
-                  errorStatus,
-                  errorMessage: errorMessage.substring(0, 500),
-                }
-              );
-            }
-            
-            // 재시도 가능한 오류면 대기 후 재시도 (Exponential Backoff)
-            const delay = BASE_DELAY * Math.pow(2, attempt - 1);
-            console.warn(`[Background] Step 3b: Retrying in ${delay/1000}s... (attempt ${attempt}/${MAX_RETRIES})`, { sessionId: createdSessionId });
-            await new Promise(resolve => setTimeout(resolve, delay));
+            response = fallback.response;
+            usedModel = FALLBACK_MODEL;
+          } catch (fallbackErr: any) {
+            // fallback도 실패하면 primary/fallback 정보를 함께 남기고 throw
+            throw new StageError(
+              'extract_call',
+              `Primary+Fallback model calls failed`,
+              {
+                primaryModel: PRIMARY_MODEL,
+                fallbackModel: FALLBACK_MODEL,
+                primaryError: primaryErr instanceof StageError ? primaryErr.details : summarizeError(primaryErr),
+                fallbackError: fallbackErr instanceof StageError ? fallbackErr.details : summarizeError(fallbackErr),
+              }
+            );
           }
         }
         
@@ -647,7 +743,7 @@ serve(async (req) => {
           throw new Error('Invalid response from Gemini API: response.text is not a string');
         }
         
-        console.log(`[Background] Step 3 completed: Gemini response received`, { sessionId: createdSessionId, responseLength: responseText.length });
+        console.log(`[Background] Step 3 completed: Model response received`, { sessionId: createdSessionId, responseLength: responseText.length, usedModel });
     
         // JSON 파싱
         console.log(`[Background] Step 3c: Parsing JSON response...`, { sessionId: createdSessionId });
@@ -783,11 +879,12 @@ serve(async (req) => {
       const depth4 = userLanguage === 'en' ? taxonomyRow?.depth4_en : taxonomyRow?.depth4;
       
       // classification에 code, CEFR, 난이도 추가 (유효한 값만 저장)
+      // 빈 문자열도 null로 변환하여 저장 (gemma 모델이 빈 문자열을 반환하는 경우 대비)
       const enrichedClassification = {
-        '1Depth': depth1 || null,
-        '2Depth': depth2 || null,
-        '3Depth': depth3 || null,
-        '4Depth': depth4 || null,
+        '1Depth': (depth1 && String(depth1).trim()) || null,
+        '2Depth': (depth2 && String(depth2).trim()) || null,
+        '3Depth': (depth3 && String(depth3).trim()) || null,
+        '4Depth': (depth4 && String(depth4).trim()) || null,
         code: validCode,
         CEFR: taxonomyRow?.cefr ?? null,
         난이도: taxonomyRow?.difficulty ?? null,
@@ -936,7 +1033,7 @@ serve(async (req) => {
             try {
               console.log(`[Background] Step 6: Calling Gemini for batch metadata (${batchInputs.length} problems)...`, { sessionId: createdSessionId });
               const metadataResponse = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: PRIMARY_MODEL,
                 contents: { parts: [{ text: metadataPrompt }] },
                 generationConfig: {
                   responseMimeType: "application/json",
@@ -1061,7 +1158,7 @@ serve(async (req) => {
           errorName: bgError?.name,
           errorCause: bgError?.cause,
         });
-
+        
         const stage: FailureStage = bgError instanceof StageError ? bgError.stage : 'unknown';
         await markSessionFailed({
           supabase,

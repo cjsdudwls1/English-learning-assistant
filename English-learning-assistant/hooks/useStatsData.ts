@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { fetchAnalyzingSessions, fetchPendingLabelingSessions, fetchFailedSessions } from '../services/db';
 import type { SessionWithProblems } from '../types';
@@ -32,6 +32,7 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
   const [failedSessions, setFailedSessions] = useState<SessionWithProblems[]>([]);
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
   const [pollingActive, setPollingActive] = useState(true);
+  const lastAnalyzingSeenAtRef = useRef<number>(0);
 
   const loadData = useCallback(async (showLoading: boolean = false) => {
     try {
@@ -58,8 +59,15 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
       setPendingLabelingSessions(filteredPendingSessions);
       setFailedSessions(failed);
       
-      // 분석 중이거나 라벨링이 필요하면 폴링 계속, 없으면 폴링 중단
-      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0);
+      // 폴링 로직 (RecentProblemsPage와 동일한 이유):
+      // analyzing이 끝난 직후 completed/failed 카드가 다음 틱에 잡힐 수 있으므로,
+      // 잠깐(60초) 더 폴링을 유지해서 "카드 공백" 구간을 없앰.
+      const now = Date.now();
+      if (analyzing.length > 0) {
+        lastAnalyzingSeenAtRef.current = now;
+      }
+      const recentlyHadAnalyzing = lastAnalyzingSeenAtRef.current > 0 && now - lastAnalyzingSeenAtRef.current < 60_000;
+      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0 || recentlyHadAnalyzing);
     } catch (e) {
       setError(e instanceof Error ? e.message : '통계 조회 실패');
     } finally {
