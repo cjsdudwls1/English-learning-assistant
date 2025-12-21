@@ -44,27 +44,27 @@ export async function fetchExistingProblems(
   // TODO: generated_problems 테이블에 language 컬럼이 있는지 확인 필요
   // 현재는 classification에서 추론하거나, 일단 스킵
 
-  // 분류 필터링 - JSONB 필드 접근 방식: classification->>1Depth (기존 코드와 동일)
+  // 분류 필터링 - JSONB 필드 접근 방식: classification->>depth1
   // 분류가 제공되지 않으면 필터링하지 않고 문제 유형만으로 조회
   // exactMatchOnly가 false이고 classification이 있으면 depth1만 필터링 (더 관대하게)
   if (classification && classification.depth1) {
     if (exactMatchOnly) {
       // 완전 일치 (depth1~4 모두 일치)
       if (classification.depth1) {
-        query = query.eq('classification->>1Depth', classification.depth1);
+        query = query.eq('classification->>depth1', classification.depth1);
       }
       if (classification.depth2) {
-        query = query.eq('classification->>2Depth', classification.depth2);
+        query = query.eq('classification->>depth2', classification.depth2);
       }
       if (classification.depth3) {
-        query = query.eq('classification->>3Depth', classification.depth3);
+        query = query.eq('classification->>depth3', classification.depth3);
       }
       if (classification.depth4) {
-        query = query.eq('classification->>4Depth', classification.depth4);
+        query = query.eq('classification->>depth4', classification.depth4);
       }
     } else {
       // 유사 분류 포함 - depth1만 필터링 (더 관대하게, 더 많은 문제 찾기)
-      query = query.eq('classification->>1Depth', classification.depth1);
+      query = query.eq('classification->>depth1', classification.depth1);
     }
   }
   // classification이 없거나 depth1이 없으면 분류 필터링 없이 문제 유형만으로 조회

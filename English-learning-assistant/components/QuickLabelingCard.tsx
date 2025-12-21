@@ -173,10 +173,10 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                   {problem.문제_유형_분류 && (
                     <div className="text-xs text-slate-500 dark:text-slate-400">
                       {[
-                        problem.문제_유형_분류['1Depth'],
-                        problem.문제_유형_분류['2Depth'],
-                        problem.문제_유형_분류['3Depth'],
-                        problem.문제_유형_분류['4Depth'],
+                        problem.문제_유형_분류.depth1,
+                        problem.문제_유형_분류.depth2,
+                        problem.문제_유형_분류.depth3,
+                        problem.문제_유형_분류.depth4,
                       ].filter(Boolean).join(' > ')}
                     </div>
                   )}

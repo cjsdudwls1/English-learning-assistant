@@ -73,10 +73,10 @@ You are an English education expert. Generate example sentences appropriate for 
 
 ## Classification Information
 - **Classification Code**: ${taxonomy.code}
-- **1Depth**: ${depth1Display}
-- **2Depth**: ${depth2Display || 'N/A'}
-- **3Depth**: ${depth3Display || 'N/A'}
-- **4Depth**: ${depth4Display || 'N/A'}
+- **depth1**: ${depth1Display}
+- **depth2**: ${depth2Display || 'N/A'}
+- **depth3**: ${depth3Display || 'N/A'}
+- **depth4**: ${depth4Display || 'N/A'}
 - **Core Rule**: ${coreRule}
 - **Definition**: ${definition}
 
@@ -114,10 +114,10 @@ Output in the following JSON format:
 
 ## 분류 정보
 - **분류 코드**: ${taxonomy.code}
-- **1Depth**: ${depth1Display}
-- **2Depth**: ${depth2Display || 'N/A'}
-- **3Depth**: ${depth3Display || 'N/A'}
-- **4Depth**: ${depth4Display || 'N/A'}
+- **depth1**: ${depth1Display}
+- **depth2**: ${depth2Display || 'N/A'}
+- **depth3**: ${depth3Display || 'N/A'}
+- **depth4**: ${depth4Display || 'N/A'}
 - **핵심 규칙**: ${coreRule}
 - **정의**: ${definition}
 

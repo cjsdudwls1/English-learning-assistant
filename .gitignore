@@ -36,3 +36,7 @@ env.txt
 # Local test images (do not commit)
 test_image/17/
 test_image/이어지는 지문/
+
+# Personal files
+영진.ts
+사진내용.md

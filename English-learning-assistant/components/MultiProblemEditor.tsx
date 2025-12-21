@@ -209,24 +209,24 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           {!hideClassification && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
               <div>
-                <label className="block text-sm text-slate-600">1Depth</label>
-                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['1Depth']}
-                  onChange={(e) => updateClassification(i, { '1Depth': e.target.value })} />
+                <label className="block text-sm text-slate-600">depth1</label>
+                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류.depth1 || ''}
+                  onChange={(e) => updateClassification(i, { depth1: e.target.value })} />
               </div>
               <div>
-                <label className="block text-sm text-slate-600">2Depth</label>
-                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['2Depth']}
-                  onChange={(e) => updateClassification(i, { '2Depth': e.target.value })} />
+                <label className="block text-sm text-slate-600">depth2</label>
+                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류.depth2 || ''}
+                  onChange={(e) => updateClassification(i, { depth2: e.target.value })} />
               </div>
               <div>
-                <label className="block text-sm text-slate-600">3Depth</label>
-                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['3Depth']}
-                  onChange={(e) => updateClassification(i, { '3Depth': e.target.value })} />
+                <label className="block text-sm text-slate-600">depth3</label>
+                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류.depth3 || ''}
+                  onChange={(e) => updateClassification(i, { depth3: e.target.value })} />
               </div>
               <div>
                 <label className="block text-sm text-slate-600 flex items-center gap-2">
-                  4Depth
-                  {it.문제_유형_분류['4Depth'] && it.문제_유형_분류.code && (
+                  depth4
+                  {it.문제_유형_분류.depth4 && it.문제_유형_분류.code && (
                     <button
                       type="button"
                       onClick={() => {
@@ -240,8 +240,8 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
                     </button>
                   )}
                 </label>
-                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류['4Depth']}
-                  onChange={(e) => updateClassification(i, { '4Depth': e.target.value })} />
+                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류.depth4 || ''}
+                  onChange={(e) => updateClassification(i, { depth4: e.target.value })} />
               </div>
             </div>
           )}

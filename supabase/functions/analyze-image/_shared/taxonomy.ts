@@ -2,8 +2,6 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 interface TaxonomyStructure {
   structure: string;
-  optionsText: string;
-  codes: string[];
   allValues: {
     depth1: string[];
     depth2: string[];
@@ -23,7 +21,8 @@ export async function loadTaxonomyData(
 
   const { data, error } = await supabase
     .from('taxonomy')
-    .select(`code, ${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`)
+    // 프롬프트 기준표 생성 목적: depth1~4만 로딩
+    .select(`${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`)
     .order(`${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`);
 
   if (error) {
@@ -37,21 +36,12 @@ export async function loadTaxonomyData(
     depth3: new Set<string>(),
     depth4: new Set<string>(),
   };
-  const codes = new Set<string>();
-  const optionsLines: string[] = [];
 
   for (const row of data || []) {
-    const code = String(row.code || '').trim();
     const d1 = row[depth1Col] || '';
     const d2 = row[depth2Col] || '';
     const d3 = row[depth3Col] || '';
     const d4 = row[depth4Col] || '';
-
-    if (code) {
-      codes.add(code);
-      const parts = [d1, d2, d3, d4].filter(Boolean);
-      optionsLines.push(`${code}: ${parts.join(' > ')}`);
-    }
 
     if (d1) allValues.depth1.add(d1);
     if (d2) allValues.depth2.add(d2);
@@ -84,8 +74,6 @@ export async function loadTaxonomyData(
 
   return {
     structure: formatStructure(structure),
-    optionsText: optionsLines.join('\n'),
-    codes: Array.from(codes).sort(),
     allValues: {
       depth1: Array.from(allValues.depth1).sort(),
       depth2: Array.from(allValues.depth2).sort(),
