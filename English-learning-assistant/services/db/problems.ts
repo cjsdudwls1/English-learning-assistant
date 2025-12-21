@@ -117,16 +117,16 @@ export async function fetchProblemsByClassification(
   
   // 분류 필터링
   if (depth1) {
-    query = query.eq('classification->>1Depth', depth1);
+    query = query.eq('classification->>depth1', depth1);
   }
   if (depth2) {
-    query = query.eq('classification->>2Depth', depth2);
+    query = query.eq('classification->>depth2', depth2);
   }
   if (depth3) {
-    query = query.eq('classification->>3Depth', depth3);
+    query = query.eq('classification->>depth3', depth3);
   }
   if (depth4) {
-    query = query.eq('classification->>4Depth', depth4);
+    query = query.eq('classification->>depth4', depth4);
   }
   
   // 정답/오답 필터링

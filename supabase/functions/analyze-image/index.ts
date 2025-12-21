@@ -4,97 +4,81 @@ import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 import { createServiceSupabaseClient } from './_shared/supabaseClient.ts'
 import { requireEnv } from './_shared/env.ts'
 import { errorResponse, handleOptions, jsonResponse } from './_shared/http.ts'
-import { loadTaxonomyData, fetchTaxonomyByCode } from './_shared/taxonomy.ts'
+import { loadTaxonomyData } from './_shared/taxonomy.ts'
 
-// Model selection
-// - Primary: fast, multimodal
-// - Fallback: Gemma 3 27B-IT (multimodal per project requirement)
-const PRIMARY_MODEL = 'gemini-2.5-flash';
-const FALLBACK_MODEL = 'gemma-3-27b-it';
+// Model selection (ordered attempts)
+// - Try in this exact order
+// - If the last model fails too, treat as analysis failure
+const MODEL_SEQUENCE = [
+  'gemini-3-flash-preview',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
+] as const;
+
+// Lowest possible temperature for deterministic extraction
+const EXTRACTION_TEMPERATURE = 0.0;
+
+// Keep retries modest; we fail over to next model on errors.
+const MODEL_RETRY_POLICY: Record<(typeof MODEL_SEQUENCE)[number], { maxRetries: number; baseDelayMs: number }> = {
+  'gemini-3-flash-preview': { maxRetries: 2, baseDelayMs: 3000 },
+  'gemini-2.5-flash': { maxRetries: 3, baseDelayMs: 3000 },
+  'gemini-2.5-flash-lite': { maxRetries: 2, baseDelayMs: 3000 },
+  'gemini-2.5-pro': { maxRetries: 2, baseDelayMs: 4000 },
+};
+
+// Step 6 (metadata) model: keep it fast/cheap and deterministic
+const METADATA_MODEL = 'gemini-2.5-flash-lite';
 
 // 2단계 프롬프트 로직: Step 1 (Raw OCR) + Step 2 (Extraction)
-function buildPrompt(classificationData: { structure: string; optionsText: string; codes: string[] }, language: 'ko' | 'en' = 'ko', imageCount: number = 1) {
-  const { structure, optionsText, codes } = classificationData;
-  const allowedCodes = JSON.stringify(codes);
-  
+function buildPrompt(classificationData: { structure: string }, language: 'ko' | 'en' = 'ko', imageCount: number = 1) {
+  const { structure } = classificationData;
+
   return `
-## Role
-당신은 시험 문제 이미지를 분석하여 디지털 데이터로 변환하는 AI 전문가입니다.
-${imageCount > 1 ? `사용자가 업로드한 **${imageCount}장의 이미지**는 하나의 시험지가 연결된 것입니다.` : ''}
 
-## Critical Processing Rules
+## Task
+Extract all exam questions from images into structured JSON.
+${imageCount > 1 ? `**CRITICAL:** You have **${imageCount} sequential images**. Merge split questions across pages into single items.` : ''}
 
-### Layout & Reading Order
-1. **다단(Multi-Column) 레이아웃을 즉시 감지하세요.**
-2. **엄격하게 위에서 아래로, 왼쪽에서 오른쪽으로 읽으세요.**
-3. **한 단이 불완전한 문장으로 끝나면**, 다음 단의 상단과 시각적으로 연결하세요.
-4. **⚠️ 불완전한 문제 감지 (Critical):**
-   - 텍스트가 마침표(.)로 끝났더라도, **객관식 보기(①, ②, ③...)나 지문 (A), (B), (C)가 발견되지 않았다면**, 반드시 **오른쪽 단 상단**이나 **다음 이미지 상단**에서 나머지를 찾아 연결하세요.
-   - 문장이 끝났다고 해서 문제가 끝난 것이 아닙니다. **보기나 지문이 없으면 절대 멈추지 마세요.**
-
-### Grouped Question Separation ([n~m])
-- 범위형 문항(예: "[36~37]" 또는 "[38-39]")을 만나면, 반드시 **개별 문제 객체로 분리**해야 합니다.
-- **CRITICAL:** 공유된 지문/맥락은 각 문제 객체의 \`question_text\` 필드에 **완전히 복사**해야 합니다. 참조하지 말고 복사하세요.
-- 범위 표시(예: "[36~37]")는 문제 내용에 포함시키지 마세요.
-
-### Continuity Across Images
-- 페이지 하단의 텍스트가 잘렸다면, \`page_ended_incomplete: true\`를 설정하세요.
-- 잘린 텍스트를 환각하거나 완성하지 마세요. 보이는 것만 정확히 추출하세요.
-- 이미지가 잘려서 읽을 수 없으면 \`[UNREADABLE]\`로 표시하세요. **절대 내용을 상상하거나 보충하지 마세요.**
-
-### Deduplication
-- 동일한 문제 번호(예: "36")를 두 번 생성하지 마세요.
-- "36~37" 또는 "[36-37]" 같은 범위 표시는 문제 번호가 아닙니다. 이를 개별 문제로 분리하는 지시로만 사용하세요.
+## Extraction Rules (CRITICAL)
+1. **Verbatim Text**: Extract the ALL text content exactly as it appears. Do NOT summarize or skip any part of the passage, options, or instructions.
+2. **Missing Content**: NEVER return placeholders like "[Missing paragraph]" or "[Passage]". If the text is in the image, you MUST extract it.
+3. **Structure Markers**: Preserve all structural markers in passages, such as (A), (B), (C) or [A], [B]. For insertion questions, keep the insertion points (e.g. " (A) ") and their surrounding text clearly visible.
+4. **Underlined/Bracketed Text**: If a question references underlined or bracketed parts (e.g., "① [increased]"), extract them exactly as shown with the markers.
+5. **Options**: Extract all 5 choices fully. Do not truncate.
 
 ## Classification Criteria
 \`\`\`
 ${structure}
 \`\`\`
-* 분류는 **taxonomy 옵션(code) 중 하나를 선택**하는 방식으로 하세요. (절대 임의 텍스트 생성 금지)
-* 선택 규칙:
-  - \`classification.code\`는 반드시 아래 **허용 코드 목록** 중 하나여야 합니다.
-  - 확신이 없으면 \`classification.code\`는 \`null\`로 두세요.
-
-### Allowed codes (must choose from this list)
-${allowedCodes}
-
-### Taxonomy options (code → depth path)
-${optionsText}
+- **MANDATORY:** Classify using depth1~4 from criteria table above. NULL NOT allowed.
+- Use exact values (spelling/spacing/case-sensitive).
+- Only depth1~depth4 keys (no code/CEFR/difficulty).
 
 ## Output Format (JSON Only)
-반드시 아래 형식의 JSON만 응답하세요:
+Respond with JSON only. Do NOT include any markdown, explanations, or HTML.
 
 \`\`\`json
 {
-  "layout_type": "single_column" | "multi_column",
-  "page_ended_incomplete": boolean,
-  "last_text_snippet": "string (페이지 하단의 마지막 5-10단어, 이미지 연결용)",
-  "raw_text_summary": "전체 텍스트 흐름 요약 (다단 연결 및 중복 확인용)",
   "items": [
     {
-      "index": 0,
-      "problem_number": "36",
-      "question_text": "문제의 전체 지문과 질문 내용 (지문이 길 경우 합쳐서 기술)",
+      "problem_number": "35",
+      "question_text": "Full instruction + passage + all sub-questions/segments. (Combine if split)",
       "choices": ["① Choice 1", "② Choice 2", "③ Choice 3", "④ Choice 4", "⑤ Choice 5"],
-      "user_marked_correctness": "O" | "X" | "Unknown",
-      "user_answer": "3",
+      "user_marked_correctness": "O" | "X",
+      "user_answer": "marked choice or text",
       "classification": {
-        "code": "허용 코드 중 1개 또는 null"
+        "depth1": "exact value (MANDATORY)",
+        "depth2": "exact value (MANDATORY)",
+        "depth3": "exact value (MANDATORY)",
+        "depth4": "exact value (MANDATORY)"
       }
     }
   ]
 }
 \`\`\`
 
-## Field Writing Rules
-- **problem_number**: 숫자만 추출 (문자열). 범위형 문항([38-39])은 반드시 두 개의 독립된 문제로 분리.
-- **question_text**: 문제 제목, 본문, 지문 내용을 모두 포함. 단, "[36~37]..." 같은 안내 문구는 제거.
-  - **⚠️ 중요:** 텍스트가 마침표로 끝나도 보기(①, ②...)나 지문(A, B, C)이 없으면 오른쪽 단/다음 페이지에서 찾아 연결.
-  - **⚠️ 환각 금지:** 이미지가 잘려서 읽을 수 없으면 "[UNREADABLE]"로 표시. 절대 내용을 상상하거나 보충하지 마세요.
-- **choices**: 보기 문항이 있다면 배열로 포함. (없으면 빈 배열 [])
-  - 보기가 없으면 오른쪽 단 상단이나 다음 이미지에서 찾아야 합니다.
-- **user_marked_correctness**: "O" (정답/동그라미), "X" (오답/가위표/빗금), "Unknown" (표시 없음).
-- **classification**: 반드시 허용 코드에서만 선택. 불확실하면 code=null.
+**⚠️ CRITICAL: The \`items\` array must contain at least 1 question. Do NOT return empty array. Respond with JSON only.**
 `;
 }
 
@@ -185,6 +169,7 @@ async function generateWithRetry(params: {
   while (attempt < maxRetries) {
     try {
       console.log(`[Background] Step 3b: Model call attempt ${attempt + 1}/${maxRetries} (model=${model})...`, { sessionId });
+
       const response = await ai.models.generateContent({
         model,
         contents,
@@ -192,6 +177,13 @@ async function generateWithRetry(params: {
           responseMimeType: "application/json",
           temperature,
         },
+        // ✅ RECITATION 및 기타 안전 필터로 인한 차단을 방지하기 위해 BLOCK_NONE 설정
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        ],
       });
       return { response, attemptCount: attempt + 1 };
     } catch (apiError: any) {
@@ -277,7 +269,7 @@ function validateAndSplitProblems(items: any[]): any[] {
   const validatedItems: any[] = [];
   // 중복 체크를 위한 Set: 문제 내용의 해시를 저장
   const seenProblemHashes = new Set<string>();
-  
+
   // 문제 내용에서 핵심 텍스트 추출하여 해시 생성 (중복 체크용)
   function getProblemHash(item: any): string {
     const stem = String(item.question_text || item.stem || '').trim();
@@ -287,22 +279,22 @@ function validateAndSplitProblems(items: any[]): any[] {
     }).join('|');
     return `${stem}||${choices}`;
   }
-  
+
   for (const item of items) {
     const problemNumber = String(item.problem_number || item.index || '').trim();
     const problemText = String(item.question_text || item.stem || '').trim();
-    
+
     // 중복 체크: 같은 문제 내용이 이미 처리되었는지 확인
     const problemHash = getProblemHash(item);
     if (seenProblemHashes.has(problemHash)) {
       console.warn(`Skipping duplicate problem: problem_number=${problemNumber}, hash=${problemHash.substring(0, 50)}...`);
       continue;
     }
-    
+
     // 1. problem_number에서 범위 패턴 확인 (N~M 또는 N-M)
     // 단, problem_number가 단일 숫자(예: "1", "2")인 경우 범위로 처리하지 않음
     let rangeMatch = problemNumber.match(/^(\d+)[~-](\d+)$/);
-    
+
     // 2. problem_number에 범위가 없고, 문제 번호가 단일 숫자가 아닌 경우에만
     //    문제 내용의 시작 부분에서 범위 패턴 확인
     //    (AI가 이미 분리한 문제에서는 problem_number가 단일 숫자일 것이므로 이 로직은 실행되지 않음)
@@ -315,16 +307,16 @@ function validateAndSplitProblems(items: any[]): any[] {
         console.log(`Found problem number range in problem text start: ${textRangeMatch[0]}`);
       }
     }
-    
+
     if (rangeMatch) {
       // 범위로 표시된 경우 분리
       const startNum = parseInt(rangeMatch[1], 10);
       const endNum = parseInt(rangeMatch[2], 10);
-      
+
       if (startNum < endNum && endNum - startNum <= 10) {
         // 합리적인 범위인 경우에만 분리 (최대 10개까지)
         console.warn(`Detected problem number range: ${rangeMatch[0]}. Splitting into ${endNum - startNum + 1} separate problems.`);
-        
+
         // 각 문제 번호에 대해 별도 항목 생성
         // 주의: 문제 내용은 그대로 유지 (범위 표시가 포함된 지시문일 수 있음)
         for (let num = startNum; num <= endNum; num++) {
@@ -356,7 +348,7 @@ function validateAndSplitProblems(items: any[]): any[] {
       seenProblemHashes.add(problemHash);
     }
   }
-  
+
   return validatedItems;
 }
 
@@ -390,10 +382,10 @@ serve(async (req) => {
     }
 
     const { imageBase64, mimeType, userId, fileName, language, images } = requestData || {};
-    
+
     // 다중 이미지 배열 또는 단일 이미지 지원 (하위 호환성)
     let imageList: Array<{ imageBase64: string; mimeType: string; fileName: string }> = [];
-    
+
     if (images && Array.isArray(images) && images.length > 0) {
       // 다중 이미지 모드
       imageList = images.map((img: any, index: number) => {
@@ -461,14 +453,14 @@ serve(async (req) => {
     const { data: userData } = await supabase.auth.admin.getUserById(userId);
     const email = userData.user?.email || userId;
     const emailLocal = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
-    
+
     // 여러 이미지를 순차적으로 업로드하고 URL 수집
     const imageUrls: string[] = [];
     for (let i = 0; i < imageList.length; i++) {
       const img = imageList[i];
       const safeName = img.fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
       const path = `${emailLocal}/${timestamp}_${i}_${safeName}`;
-      
+
       const buffer = new Uint8Array(atob(img.imageBase64).split('').map(c => c.charCodeAt(0)));
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('problem-images')
@@ -479,12 +471,12 @@ serve(async (req) => {
         });
 
       if (uploadError) throw uploadError;
-      
+
       const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(uploadData.path);
       imageUrls.push(urlData.publicUrl);
       console.log(`Step 1: Image ${i + 1}/${imageList.length} uploaded to`, urlData.publicUrl);
     }
-    
+
     // 첫 번째 이미지 URL을 메인 이미지 URL로 사용 (하위 호환성)
     const imageUrl = imageUrls[0];
     console.log(`Step 1 completed: ${imageList.length} image(s) uploaded, main image URL:`, imageUrl);
@@ -495,7 +487,7 @@ serve(async (req) => {
       imageUrls: imageUrls,
       imageUrl: imageUrl,
     });
-    
+
     // image_urls 배열 검증 및 정리
     const cleanedImageUrls = imageUrls.filter((url: string) => url && typeof url === 'string' && url.trim().length > 0);
     if (cleanedImageUrls.length !== imageUrls.length) {
@@ -505,24 +497,24 @@ serve(async (req) => {
         invalidUrls: imageUrls.filter((url: string, idx: number) => !cleanedImageUrls.includes(url))
       });
     }
-    
+
     // 최종 저장할 image_urls 배열 (최소 1개는 있어야 함)
     const finalImageUrls = cleanedImageUrls.length > 0 ? cleanedImageUrls : (imageUrls.length > 0 ? imageUrls : [imageUrl]);
-    
+
     console.log('Step 2: Final image URLs to save', {
       originalCount: imageUrls.length,
       cleanedCount: cleanedImageUrls.length,
       finalCount: finalImageUrls.length,
       finalUrls: finalImageUrls
     });
-    
+
     const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
       .insert({
         user_id: userId,
         image_url: imageUrl, // 하위 호환성을 위해 첫 번째 이미지 URL 유지
         image_urls: finalImageUrls, // 다중 이미지 URL 배열
-        analysis_model: PRIMARY_MODEL,
+        analysis_model: MODEL_SEQUENCE[0],
         status: 'processing'
       })
       .select('id, image_url, image_urls')
@@ -532,9 +524,9 @@ serve(async (req) => {
       console.error('Step 2: Session insert error', sessionError);
       throw sessionError;
     }
-    
+
     createdSessionId = sessionData.id;
-    
+
     // 저장된 데이터 검증
     console.log('Step 2: Session created', {
       sessionId: createdSessionId,
@@ -545,7 +537,7 @@ serve(async (req) => {
       imageUrlsLength: Array.isArray(sessionData.image_urls) ? sessionData.image_urls.length : 0,
       expectedCount: imageUrls.length,
     });
-    
+
     // 저장된 image_urls가 예상과 다른 경우 경고
     if (!Array.isArray(sessionData.image_urls)) {
       console.error('Step 2: WARNING - image_urls is not an array!', {
@@ -562,7 +554,7 @@ serve(async (req) => {
         actualUrls: sessionData.image_urls
       });
     }
-    
+
     console.log('Step 2 completed: Session created with ID', createdSessionId);
 
     // 세션 생성 후 즉시 sessionId 반환 (분석은 백그라운드에서 계속)
@@ -579,20 +571,67 @@ serve(async (req) => {
         // 3. Taxonomy 데이터 로드
         console.log(`[Background] Step 3a: Loading taxonomy data from database...`, { language: userLanguage, sessionId: createdSessionId, imageCount: imageList.length });
         const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
+
+        // ✅ 서버 정규화/보강용 taxonomy lookup (프롬프트에는 포함하지 않음)
+        // - depth 경로가 기준표에 실제 존재하는지 검증
+        // - code/CEFR/난이도 등 부가정보를 한 번에 매핑
+        // (성능) 문제당 DB쿼리 대신 taxonomy를 1회만 조회하여 Map으로 사용
+        const depth1Col = userLanguage === 'en' ? 'depth1_en' : 'depth1';
+        const depth2Col = userLanguage === 'en' ? 'depth2_en' : 'depth2';
+        const depth3Col = userLanguage === 'en' ? 'depth3_en' : 'depth3';
+        const depth4Col = userLanguage === 'en' ? 'depth4_en' : 'depth4';
+
+        const { data: taxonomyRows, error: taxonomyRowsError } = await supabase
+          .from('taxonomy')
+          .select(`code, cefr, difficulty, ${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`);
+
+        if (taxonomyRowsError) {
+          console.error(`[Background] Step 3a: Failed to load taxonomy lookup rows`, {
+            sessionId: createdSessionId,
+            error: taxonomyRowsError,
+          });
+        }
+
+        const taxonomyByDepthKey = new Map<string, { code: string | null; cefr: string | null; difficulty: number | null }>();
+        const taxonomyByCode = new Map<string, { depth1: string | null; depth2: string | null; depth3: string | null; depth4: string | null; code: string | null; cefr: string | null; difficulty: number | null }>();
+        const makeDepthKey = (d1: string, d2: string, d3: string, d4: string) => `${d1}␟${d2}␟${d3}␟${d4}`;
+        const cleanOrNull = (v: unknown) => {
+          if (v === undefined || v === null) return null;
+          const s = String(v).trim();
+          return s ? s : null;
+        };
+
+        for (const row of taxonomyRows || []) {
+          const code = cleanOrNull(row.code);
+          const d1 = cleanOrNull(row[depth1Col]);
+          const d2 = cleanOrNull(row[depth2Col]);
+          const d3 = cleanOrNull(row[depth3Col]);
+          const d4 = cleanOrNull(row[depth4Col]);
+          const cefr = cleanOrNull(row.cefr);
+          const difficulty = row.difficulty ?? null;
+
+          if (d1 && d2 && d3 && d4) {
+            taxonomyByDepthKey.set(makeDepthKey(d1, d2, d3, d4), { code, cefr, difficulty });
+          }
+          if (code) {
+            taxonomyByCode.set(code, { depth1: d1, depth2: d2, depth3: d3, depth4: d4, code, cefr, difficulty });
+          }
+        }
+
         const prompt = buildPrompt(taxonomyData, userLanguage, imageList.length);
         console.log(`[Background] Step 3a completed: Taxonomy data loaded, prompt length: ${prompt.length}`);
-        
+
         // 3. Gemini API로 분석 (여러 이미지를 한 번에 전송)
         console.log(`[Background] Step 3b: Analyzing ${imageList.length} image(s) with Gemini...`, { sessionId: createdSessionId });
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
         // 모든 이미지를 parts 배열에 추가
-        console.log(`[Background] Step 3b: Preparing ${imageList.length} image(s) for Gemini API...`, { 
+        console.log(`[Background] Step 3b: Preparing ${imageList.length} image(s) for Gemini API...`, {
           sessionId: createdSessionId,
           imageListLength: imageList.length,
           imageFileNames: imageList.map((img, idx) => ({ index: idx, fileName: img.fileName, hasBase64: !!img.imageBase64, base64Length: img.imageBase64?.length || 0 }))
         });
-        
+
         const parts: any[] = [{ text: prompt }];
         for (let i = 0; i < imageList.length; i++) {
           const img = imageList[i];
@@ -601,7 +640,7 @@ serve(async (req) => {
             throw new Error(`Image ${i} (${img.fileName}) has no base64 data`);
           }
           parts.push({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } });
-          console.log(`[Background] Step 3b: Added image ${i + 1}/${imageList.length} to parts array:`, { 
+          console.log(`[Background] Step 3b: Added image ${i + 1}/${imageList.length} to parts array:`, {
             sessionId: createdSessionId,
             fileName: img.fileName,
             mimeType: img.mimeType,
@@ -609,185 +648,179 @@ serve(async (req) => {
           });
         }
 
-        console.log(`[Background] Step 3b: Calling Gemini API with ${imageList.length} image(s)...`, { 
+        console.log(`[Background] Step 3b: Calling Gemini API with ${imageList.length} image(s)...`, {
           sessionId: createdSessionId,
           partsLength: parts.length,
           expectedImages: imageList.length,
           actualImages: parts.length - 1 // parts[0] is text prompt
         });
-        
+
         // parts 배열 검증
         if (!parts || !Array.isArray(parts) || parts.length === 0) {
           throw new Error(`Invalid parts array: ${JSON.stringify(parts)}`);
         }
-        
+
         if (parts.length - 1 !== imageList.length) {
           console.error(`[Background] Step 3b: Parts array length mismatch! Expected ${imageList.length + 1} parts (1 text + ${imageList.length} images), got ${parts.length}`, { sessionId: createdSessionId });
           throw new Error(`Parts array length mismatch: expected ${imageList.length + 1}, got ${parts.length}`);
         }
-        
-        // 모델 호출 (Primary -> Fallback)
-        const MAX_RETRIES = 5;
-        const BASE_DELAY = 5000; // 5초 기본 대기
-        const FALLBACK_MAX_RETRIES = 2;
-        const FALLBACK_BASE_DELAY = 7000;
 
-        let usedModel = PRIMARY_MODEL;
-        let response: any;
+        // 모델 호출 + 파싱 + (0문항 포함) 검증까지 포함해서 ordered failover
+        let usedModel: string = MODEL_SEQUENCE[0];
         let responseText: string = '';
+        let result: any = null;
+        let validatedItems: any[] = [];
+        const modelAttemptErrors: Array<{ model: string; error: any }> = [];
 
-        try {
-          const primary = await generateWithRetry({
-            ai,
-            model: PRIMARY_MODEL,
-            contents: { parts },
-            sessionId: createdSessionId,
-            maxRetries: MAX_RETRIES,
-            baseDelayMs: BASE_DELAY,
-            temperature: 0.1,
-          });
-          response = primary.response;
-          usedModel = PRIMARY_MODEL;
-        } catch (primaryErr: any) {
-          // Primary 실패 시 fallback으로 1회(또는 소수 회) 시도
-          console.warn(`[Background] Step 3b: Primary model failed, trying fallback model...`, {
-            sessionId: createdSessionId,
-            primaryModel: PRIMARY_MODEL,
-            fallbackModel: FALLBACK_MODEL,
-          });
+        for (let i = 0; i < MODEL_SEQUENCE.length; i++) {
+          const model = MODEL_SEQUENCE[i];
+          const policy = MODEL_RETRY_POLICY[model];
 
-          // 세션에 fallback 모델 기록 (UI에서 표시)
+          // 세션에 현재 시도 모델 기록 (UI에서 표시)
           try {
             await supabase
               .from('sessions')
-              .update({ analysis_model: FALLBACK_MODEL })
+              .update({ analysis_model: model })
               .eq('id', createdSessionId);
           } catch (e) {
-            console.error(`[Background] Failed to update analysis_model to fallback`, { sessionId: createdSessionId, error: e });
+            console.error(`[Background] Failed to update analysis_model`, { sessionId: createdSessionId, model, error: e });
           }
 
           try {
-            const fallback = await generateWithRetry({
+            console.log(`[Background] Step 3b: Trying model ${i + 1}/${MODEL_SEQUENCE.length}: ${model}`, {
+              sessionId: createdSessionId,
+              maxRetries: policy?.maxRetries,
+              baseDelayMs: policy?.baseDelayMs,
+              temperature: EXTRACTION_TEMPERATURE,
+            });
+
+            const attempt = await generateWithRetry({
               ai,
-              model: FALLBACK_MODEL,
+              model,
               contents: { parts },
               sessionId: createdSessionId,
-              maxRetries: FALLBACK_MAX_RETRIES,
-              baseDelayMs: FALLBACK_BASE_DELAY,
-              temperature: 0.1,
+              maxRetries: policy?.maxRetries ?? 2,
+              baseDelayMs: policy?.baseDelayMs ?? 3000,
+              temperature: EXTRACTION_TEMPERATURE,
             });
-            response = fallback.response;
-            usedModel = FALLBACK_MODEL;
-          } catch (fallbackErr: any) {
-            // fallback도 실패하면 primary/fallback 정보를 함께 남기고 throw
-            throw new StageError(
-              'extract_call',
-              `Primary+Fallback model calls failed`,
-              {
-                primaryModel: PRIMARY_MODEL,
-                fallbackModel: FALLBACK_MODEL,
-                primaryError: primaryErr instanceof StageError ? primaryErr.details : summarizeError(primaryErr),
-                fallbackError: fallbackErr instanceof StageError ? fallbackErr.details : summarizeError(fallbackErr),
-              }
-            );
-          }
-        }
-        
-        // 응답이 없으면 에러
-        if (!response) {
-          throw new Error('Gemini API 호출 실패: 응답이 없습니다.');
-        }
 
-        // 여러 경로로 텍스트 추출 시도
-        if (response?.text) {
-          responseText = typeof response.text === 'function' 
-            ? await response.text() 
-            : response.text;
-        } else if (response?.response?.text) {
-          responseText = typeof response.response.text === 'function' 
-            ? await response.response.text() 
-            : response.response.text;
-        } else if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-          responseText = response.candidates[0].content.parts[0].text;
-        } else {
-          // RECITATION 등으로 content가 없는 경우 빈 응답 생성
-          const finishReason = response?.candidates?.[0]?.finishReason;
-          if (finishReason === 'RECITATION' || !response?.candidates?.[0]?.content) {
-            console.warn(`[Background] Step 3b: No content in response (finishReason: ${finishReason}), creating empty result`, { 
-              sessionId: createdSessionId
-            });
-            responseText = JSON.stringify({ items: [] });
-          } else {
-            // 응답 구조를 로깅하고 에러 발생
-            console.error(`[Background] Step 3b error: Unexpected response structure`, { 
+            const response = attempt.response;
+
+            // 응답 텍스트 추출 (content 없는 경우는 "성공"으로 보지 말고 다음 모델로 failover)
+            let candidateText: string = '';
+            if (response?.text) {
+              candidateText = typeof response.text === 'function'
+                ? await response.text()
+                : response.text;
+            } else if (response?.response?.text) {
+              candidateText = typeof response.response.text === 'function'
+                ? await response.response.text()
+                : response.response.text;
+            } else if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+              candidateText = response.candidates[0].content.parts[0].text;
+            } else {
+              const finishReason = response?.candidates?.[0]?.finishReason ?? null;
+              throw new StageError(
+                'extract_call',
+                `Model returned no content (model=${model})`,
+                {
+                  model,
+                  finishReason,
+                  hasCandidates: !!response?.candidates,
+                  candidatesLength: response?.candidates?.length,
+                  firstCandidate: response?.candidates?.[0]
+                    ? {
+                      finishReason: response.candidates[0].finishReason,
+                      hasContent: !!response.candidates[0].content,
+                      hasParts: !!response.candidates[0].content?.parts,
+                    }
+                    : null,
+                }
+              );
+            }
+
+            if (!candidateText || typeof candidateText !== 'string') {
+              throw new StageError(
+                'extract_call',
+                `Invalid response text (model=${model})`,
+                { model, responseTextType: typeof candidateText, responseTextLength: candidateText?.length }
+              );
+            }
+
+            // JSON 파싱 + 최소 유효성 검사 (여기서 0문항이면 다음 모델로 넘어감)
+            const jsonString = candidateText.replace(/```json/g, '').replace(/```/g, '').trim();
+            let parsed: any;
+            try {
+              parsed = JSON.parse(jsonString);
+            } catch (parseError: any) {
+              throw new StageError(
+                'extract_parse',
+                `JSON parse failed (model=${model}): ${parseError.message}`,
+                { model, jsonStringPreview: jsonString.substring(0, 800) }
+              );
+            }
+
+            if (!parsed || !Array.isArray(parsed.items)) {
+              throw new StageError(
+                'extract_parse',
+                `Invalid response format: items is missing (model=${model})`,
+                { model, parsedKeys: parsed ? Object.keys(parsed) : null, jsonStringPreview: jsonString.substring(0, 800) }
+              );
+            }
+
+            const candidateValidated = validateAndSplitProblems(parsed.items);
+            if (!candidateValidated || candidateValidated.length === 0) {
+              throw new StageError(
+                'extract_empty',
+                `No problems extracted (0 items) (model=${model})`,
+                {
+                  model,
+                  rawItemsLength: Array.isArray(parsed.items) ? parsed.items.length : null,
+                  responseTextPreview: jsonString.substring(0, 1200),
+                }
+              );
+            }
+
+            // 성공
+            usedModel = model;
+            responseText = candidateText;
+            result = parsed;
+            validatedItems = candidateValidated;
+            break;
+          } catch (err: any) {
+            modelAttemptErrors.push({ model, error: err });
+            console.warn(`[Background] Step 3b: Model attempt failed, moving to next (model=${model})`, {
               sessionId: createdSessionId,
-              hasCandidates: !!response?.candidates,
-              candidatesLength: response?.candidates?.length,
-              firstCandidate: response?.candidates?.[0] ? {
-                finishReason: response.candidates[0].finishReason,
-                hasContent: !!response.candidates[0].content,
-                hasParts: !!response.candidates[0].content?.parts
-              } : null,
-              response: JSON.stringify(response, null, 2).substring(0, 1000)
+              modelIndex: i,
+              stage: err instanceof StageError ? err.stage : null,
+              error: err instanceof StageError ? err.details : summarizeError(err),
             });
-            throw new Error('Gemini API 응답에서 텍스트를 찾을 수 없습니다. 응답 구조가 예상과 다릅니다.');
+
+            const isLast = i === MODEL_SEQUENCE.length - 1;
+            if (isLast) {
+              throw new StageError(
+                err instanceof StageError ? err.stage : 'extract_call',
+                `All model attempts failed (last=${model})`,
+                {
+                  modelSequence: MODEL_SEQUENCE,
+                  attempts: modelAttemptErrors.map(({ model: m, error }) => ({
+                    model: m,
+                    stage: error instanceof StageError ? error.stage : null,
+                    error: error instanceof StageError ? error.details : summarizeError(error),
+                  })),
+                }
+              );
+            }
           }
         }
-        
-        if (!responseText || typeof responseText !== 'string') {
-          console.error(`[Background] Step 3b error: Invalid response text`, { 
-            sessionId: createdSessionId, 
-            responseTextType: typeof responseText,
-            responseTextLength: responseText?.length
-          });
-          throw new Error('Invalid response from Gemini API: response.text is not a string');
-        }
-        
-        console.log(`[Background] Step 3 completed: Model response received`, { sessionId: createdSessionId, responseLength: responseText.length, usedModel });
-    
-        // JSON 파싱
-        console.log(`[Background] Step 3c: Parsing JSON response...`, { sessionId: createdSessionId });
-        const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        let result: any;
-        try {
-          result = JSON.parse(jsonString);
-        } catch (parseError: any) {
-          console.error(`[Background] Step 3c error: JSON parse failed`, { sessionId: createdSessionId, error: parseError.message, jsonStringPreview: jsonString.substring(0, 500) });
-          throw new Error(`JSON 파싱 실패: ${parseError.message}`);
-        }
 
-        if (!result || !Array.isArray(result.items)) {
-          console.error(`[Background] Step 3c error: Invalid response format`, { sessionId: createdSessionId, hasResult: !!result, hasItems: !!result?.items, itemsIsArray: Array.isArray(result?.items) });
-          throw new Error('AI 응답 형식 오류: items 배열이 없습니다.');
-        }
-
-        // raw_text_context 확인 (CoT 강제 확인)
-        if (result.raw_text_context) {
-          console.log(`[Background] Step 3c: raw_text_context found (length: ${result.raw_text_context.length})`, { sessionId: createdSessionId });
-        } else {
-          console.warn(`[Background] Step 3c: raw_text_context missing - AI may have skipped Step 1`, { sessionId: createdSessionId });
-        }
-
-        console.log(`[Background] Step 3 completed: Parsed ${result.items.length} items from analysis`, { sessionId: createdSessionId });
-
-        // 유효성 검사 및 문제 분리 (범위 표시가 있는 경우 분리)
-        const validatedItems = validateAndSplitProblems(result.items);
-        if (validatedItems.length !== result.items.length) {
-          console.log(`[Background] Step 3 validation: Split ${result.items.length} items into ${validatedItems.length} items`, { sessionId: createdSessionId });
-        }
-
-        // ✅ 문제를 하나도 추출하지 못한 경우: UI에서 "사라지는 completed(0문제)" 상태를 만들지 않도록 실패 처리
-        if (!validatedItems || validatedItems.length === 0) {
-          console.error(`[Background] No problems extracted. Marking session as failed.`, { sessionId: createdSessionId });
-          await markSessionFailed({
-            supabase,
-            sessionId: createdSessionId,
-            stage: 'extract_empty',
-            error: new Error('No problems extracted (0 items)'),
-            extra: { imageCount: imageList.length },
-          });
-          return;
-        }
+        console.log(`[Background] Step 3 completed: Model response received`, {
+          sessionId: createdSessionId,
+          usedModel,
+          responseLength: responseText.length,
+          rawItems: Array.isArray(result?.items) ? result.items.length : null,
+          validatedItems: validatedItems.length,
+        });
 
         // 4. 문제 저장 (메타데이터 포함)
         console.log(`[Background] Step 4: Save problems to database...`, { sessionId: createdSessionId, itemCount: validatedItems.length });
@@ -848,72 +881,115 @@ serve(async (req) => {
           idByIndex.set(row.index_in_image, row.id);
         }
 
-    // 각 문제에 대해 taxonomy 조회하여 code, CEFR, 난이도 추가
-    // items 배열의 인덱스와 problems 배열의 index_in_image가 일치하므로, 배열 인덱스를 직접 사용
-    const allowedTaxonomyCodes = new Set<string>(taxonomyData.codes || []);
-    const labelsPayload = await Promise.all(items.map(async (it: any, idx: number) => {
-      // user_marked_correctness가 "Unknown"인 경우 is_correct를 null로 설정
-      const rawMark = it.user_marked_correctness;
-      const isUnknown = rawMark && String(rawMark).trim().toLowerCase() === 'unknown';
-      
-      let isCorrect: boolean | null = null;
-      if (!isUnknown) {
-        const normalizedMark = normalizeMark(rawMark);
-        isCorrect = normalizedMark === 'O'; // AI 분석 결과 저장 (O면 true, X면 false)
-      }
-      // Unknown인 경우는 null 유지 (사용자 검수 필요)
-      
-      const classification = it.classification || {};
-      
-      // taxonomy 기반 선택형: code만 선택하도록 강제하고, 서버에서 code→depth path로 정규화
-      const rawCode = String(classification.code || classification['code'] || '').trim();
-      const validCode = rawCode && allowedTaxonomyCodes.has(rawCode) ? rawCode : null;
-      if (!validCode && rawCode) {
-        console.warn(`Invalid taxonomy code: "${rawCode}" (not in allowed codes)`);
-      }
+        // 각 문제에 대해 taxonomy 조회하여 code, CEFR, 난이도 추가
+        // items 배열의 인덱스와 problems 배열의 index_in_image가 일치하므로, 배열 인덱스를 직접 사용
+        const labelsPayload = await Promise.all(items.map(async (it: any, idx: number) => {
+          // user_marked_correctness가 "Unknown"인 경우 is_correct를 null로 설정
+          const rawMark = it.user_marked_correctness;
+          const isUnknown = rawMark && String(rawMark).trim().toLowerCase() === 'unknown';
 
-      const taxonomyRow = validCode ? await fetchTaxonomyByCode(supabase, validCode) : null;
-      const depth1 = userLanguage === 'en' ? taxonomyRow?.depth1_en : taxonomyRow?.depth1;
-      const depth2 = userLanguage === 'en' ? taxonomyRow?.depth2_en : taxonomyRow?.depth2;
-      const depth3 = userLanguage === 'en' ? taxonomyRow?.depth3_en : taxonomyRow?.depth3;
-      const depth4 = userLanguage === 'en' ? taxonomyRow?.depth4_en : taxonomyRow?.depth4;
-      
-      // classification에 code, CEFR, 난이도 추가 (유효한 값만 저장)
-      // 빈 문자열도 null로 변환하여 저장 (gemma 모델이 빈 문자열을 반환하는 경우 대비)
-      const enrichedClassification = {
-        '1Depth': (depth1 && String(depth1).trim()) || null,
-        '2Depth': (depth2 && String(depth2).trim()) || null,
-        '3Depth': (depth3 && String(depth3).trim()) || null,
-        '4Depth': (depth4 && String(depth4).trim()) || null,
-        code: validCode,
-        CEFR: taxonomyRow?.cefr ?? null,
-        난이도: taxonomyRow?.difficulty ?? null,
-      };
-      
-      // 배열 인덱스를 직접 사용 (problemsPayload에서 index_in_image: idx로 설정했으므로)
-      const problemId = idByIndex.get(idx);
-      if (!problemId) {
-        console.error(`[Background] Step 5: Problem ID not found for array index ${idx}. This should not happen!`, { 
-          sessionId: createdSessionId,
-          idByIndexSize: idByIndex.size,
-          idByIndexKeys: Array.from(idByIndex.keys()),
-          itemsLength: items.length
-        });
-        return null;
-      }
-      
-      return {
-        problem_id: problemId,
-        user_answer: it.user_answer || '',
-        user_mark: null, // 사용자 검수 전이므로 null
-        is_correct: isCorrect, // AI 분석 결과 저장 (O면 true, X면 false, Unknown이면 null)
-        classification: enrichedClassification,
-      };
-    }));
+          let isCorrect: boolean | null = null;
+          if (!isUnknown) {
+            const normalizedMark = normalizeMark(rawMark);
+            isCorrect = normalizedMark === 'O'; // AI 분석 결과 저장 (O면 true, X면 false)
+          }
+          // Unknown인 경우는 null 유지 (사용자 검수 필요)
+
+          const classification = it.classification || {};
+
+          // ✅ taxonomy 분류: AI는 depth1~4를 출력하고, 서버는 depth→code로 정규화/보강한다.
+          // cleanOrNull은 Step 3a에서 정의한 것을 사용(closure)
+
+          const rawDepth1 = cleanOrNull(classification.depth1 ?? classification['depth1']);
+          const rawDepth2 = cleanOrNull(classification.depth2 ?? classification['depth2']);
+          const rawDepth3 = cleanOrNull(classification.depth3 ?? classification['depth3']);
+          const rawDepth4 = cleanOrNull(classification.depth4 ?? classification['depth4']);
+
+          const rawCode = cleanOrNull(classification.code ?? classification['code']);
+
+          let depth1: string | null = rawDepth1;
+          let depth2: string | null = rawDepth2;
+          let depth3: string | null = rawDepth3;
+          let depth4: string | null = rawDepth4;
+
+          let taxonomyCode: string | null = null;
+          let taxonomyCefr: string | null = null;
+          let taxonomyDifficulty: number | null = null;
+
+          // 1) depth1~4가 모두 있으면 → depth로 code/cefr/difficulty 조회
+          const hasAnyDepth = !!(depth1 || depth2 || depth3 || depth4);
+          const hasAllDepth = !!(depth1 && depth2 && depth3 && depth4);
+
+          if (hasAllDepth) {
+            const mapped = taxonomyByDepthKey.get(makeDepthKey(depth1!, depth2!, depth3!, depth4!));
+            taxonomyCode = mapped?.code ?? null;
+            taxonomyCefr = mapped?.cefr ?? null;
+            taxonomyDifficulty = mapped?.difficulty ?? null;
+            if (!taxonomyCode) {
+              console.warn(`Taxonomy mapping failed for depth: ${depth1}/${depth2}/${depth3}/${depth4}`);
+              // 기준표 밖의 값일 가능성이 높으므로 무효 처리
+              depth1 = depth2 = depth3 = depth4 = null;
+            }
+          } else if (hasAnyDepth) {
+            // depth 일부만 있는 경우는 애매하므로 무효 처리
+            console.warn(`Partial depth provided. Invalid taxonomy depth path: ${depth1}/${depth2}/${depth3}/${depth4}`);
+            depth1 = depth2 = depth3 = depth4 = null;
+          }
+
+          // 2) (호환) depth가 없고 code만 있으면 → code로 depth를 복원
+          if (!taxonomyCode && rawCode) {
+            const mapped = taxonomyByCode.get(rawCode);
+            if (mapped) {
+              taxonomyCode = mapped.code ?? null;
+              taxonomyCefr = mapped.cefr ?? null;
+              taxonomyDifficulty = mapped.difficulty ?? null;
+              depth1 = mapped.depth1 ?? null;
+              depth2 = mapped.depth2 ?? null;
+              depth3 = mapped.depth3 ?? null;
+              depth4 = mapped.depth4 ?? null;
+            } else {
+              console.warn(`Invalid taxonomy code: "${rawCode}" (not found)`);
+            }
+          }
+
+          // classification에 code, CEFR, 난이도 추가 (유효한 값만 저장)
+          // 빈 문자열도 null로 변환하여 저장 (gemma 모델이 빈 문자열을 반환하는 경우 대비)
+          const enrichedClassification = {
+            depth1: depth1,
+            depth2: depth2,
+            depth3: depth3,
+            depth4: depth4,
+
+            // 정규화된 taxonomy 코드/난이도
+            code: taxonomyCode,
+            CEFR: taxonomyCefr,
+            난이도: taxonomyDifficulty,
+          };
+
+          // 배열 인덱스를 직접 사용 (problemsPayload에서 index_in_image: idx로 설정했으므로)
+          const problemId = idByIndex.get(idx);
+          if (!problemId) {
+            console.error(`[Background] Step 5: Problem ID not found for array index ${idx}. This should not happen!`, {
+              sessionId: createdSessionId,
+              idByIndexSize: idByIndex.size,
+              idByIndexKeys: Array.from(idByIndex.keys()),
+              itemsLength: items.length
+            });
+            return null;
+          }
+
+          return {
+            problem_id: problemId,
+            user_answer: it.user_answer || '',
+            user_mark: null, // 사용자 검수 전이므로 null
+            is_correct: isCorrect, // AI 분석 결과 저장 (O면 true, X면 false, Unknown이면 null)
+            classification: enrichedClassification,
+          };
+        }));
 
         // null 값 필터링 (problemId를 찾지 못한 항목 제외)
         const validLabelsPayload = labelsPayload.filter((label): label is NonNullable<typeof label> => label !== null);
-        
+
         if (validLabelsPayload.length === 0) {
           console.warn(`[Background] Step 5 warning: No valid labels to insert`, { sessionId: createdSessionId, labelsPayloadLength: labelsPayload.length });
         } else {
@@ -946,25 +1022,25 @@ serve(async (req) => {
 
         // 6. 문제 메타데이터 생성 및 저장
         console.log(`[Background] Step 6: Generate problem metadata...`, { sessionId: createdSessionId });
-        
+
         if (!problems || problems.length === 0) {
           console.log(`[Background] Step 6 skipped: No problems to process`, { sessionId: createdSessionId });
         } else {
           const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-          
+
           // 문제와 원본 아이템을 매핑
           // items 배열의 인덱스와 problems의 index_in_image가 일치하므로, 배열 인덱스를 직접 사용
           const problemItemMap = new Map<number, any>();
           for (let i = 0; i < items.length; i++) {
             problemItemMap.set(i, items[i]);
           }
-          
+
           // 문제와 labels를 매핑 (classification 정보 가져오기 위해)
           const problemLabelsMap = new Map<string, any>();
           for (const label of validLabelsPayload) {
             problemLabelsMap.set(label.problem_id, label);
           }
-          
+
           console.log(`[Background] Step 6: Preparing batch metadata generation for ${problems.length} problems...`, { sessionId: createdSessionId });
 
           // Step 6은 "문제 수만큼 Gemini 호출" 시 rate limit/시간 초과로 통째로 실패하기 쉬움.
@@ -989,10 +1065,10 @@ serve(async (req) => {
 
             const classification = label?.classification || {};
             const typeParts = [
-              classification['1Depth'],
-              classification['2Depth'],
-              classification['3Depth'],
-              classification['4Depth'],
+              classification.depth1,
+              classification.depth2,
+              classification.depth3,
+              classification.depth4,
             ].filter((v: any) => typeof v === 'string' && v.trim().length > 0) as string[];
             const problemType = typeParts.length > 0
               ? typeParts.join(' - ')
@@ -1033,7 +1109,7 @@ serve(async (req) => {
             try {
               console.log(`[Background] Step 6: Calling Gemini for batch metadata (${batchInputs.length} problems)...`, { sessionId: createdSessionId });
               const metadataResponse = await ai.models.generateContent({
-                model: PRIMARY_MODEL,
+                model: METADATA_MODEL,
                 contents: { parts: [{ text: metadataPrompt }] },
                 generationConfig: {
                   responseMimeType: "application/json",
@@ -1158,7 +1234,7 @@ serve(async (req) => {
           errorName: bgError?.name,
           errorCause: bgError?.cause,
         });
-        
+
         const stage: FailureStage = bgError instanceof StageError ? bgError.stage : 'unknown';
         await markSessionFailed({
           supabase,
@@ -1185,7 +1261,7 @@ serve(async (req) => {
     return response;
   } catch (error: any) {
     console.error('Error in analyze-image function:', error);
-    
+
     // 에러 발생 시 세션 상태를 failed로 업데이트 (세션이 생성된 경우에만)
     if (supabase && typeof createdSessionId !== 'undefined') {
       await markSessionFailed({
@@ -1195,7 +1271,7 @@ serve(async (req) => {
         error,
       });
     }
-    
+
     return errorResponse(error.message || 'Internal server error', 500, error.toString());
   }
 });

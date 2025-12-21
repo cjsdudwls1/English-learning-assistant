@@ -49,10 +49,10 @@ ${structure}
 
 \`\`\`json
 {
-  "1Depth": "위 계층 구조의 depth1 값 중 하나를 정확히 복사",
-  "2Depth": "위 계층 구조의 depth2 값 중 하나를 정확히 복사",
-  "3Depth": "위 계층 구조의 depth3 값 중 하나를 정확히 복사",
-  "4Depth": "위 계층 구조의 depth4 값 중 하나를 정확히 복사",
+  "depth1": "위 계층 구조의 depth1 값 중 하나를 정확히 복사",
+  "depth2": "위 계층 구조의 depth2 값 중 하나를 정확히 복사",
+  "depth3": "위 계층 구조의 depth3 값 중 하나를 정확히 복사",
+  "depth4": "위 계층 구조의 depth4 값 중 하나를 정확히 복사",
   "분류_신뢰도": "높음" | "보통" | "낮음"
 }
 \`\`\`
@@ -158,10 +158,10 @@ serve(async (req) => {
           const classification = JSON.parse(jsonString);
 
           // Gemini가 반환한 원본 값
-          const rawDepth1 = (classification['1Depth'] || '').trim();
-          const rawDepth2 = (classification['2Depth'] || '').trim();
-          const rawDepth3 = (classification['3Depth'] || '').trim();
-          const rawDepth4 = (classification['4Depth'] || '').trim();
+          const rawDepth1 = (classification.depth1 || '').trim();
+          const rawDepth2 = (classification.depth2 || '').trim();
+          const rawDepth3 = (classification.depth3 || '').trim();
+          const rawDepth4 = (classification.depth4 || '').trim();
           
           // 유효성 검증: DB에 있는 값인지 확인
           const validDepth1 = taxonomyData.allValues.depth1.includes(rawDepth1) ? rawDepth1 : '';
@@ -204,14 +204,14 @@ serve(async (req) => {
 
           // classification 업데이트 (유효한 값만 저장)
           const enrichedClassification = {
-            '1Depth': validDepth1 || null,
-            '2Depth': validDepth2 || null,
-            '3Depth': validDepth3 || null,
-            '4Depth': validDepth4 || null,
-            'code': taxonomy.code,
-            'CEFR': taxonomy.cefr,
-            '난이도': taxonomy.difficulty,
-            '분류_신뢰도': confidence,
+            depth1: validDepth1 || null,
+            depth2: validDepth2 || null,
+            depth3: validDepth3 || null,
+            depth4: validDepth4 || null,
+            code: taxonomy.code,
+            CEFR: taxonomy.cefr,
+            난이도: taxonomy.difficulty,
+            분류_신뢰도: confidence,
           };
 
           // DB 업데이트 (무조건 수행)

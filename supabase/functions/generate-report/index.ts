@@ -67,10 +67,10 @@ Deno.serve(async (req) => {
     // 문제 데이터 준비
     const problemData = problems.map((p: any, i: number) => {
       const classification = p.classification || {};
-      const depth1 = classification['1Depth'] || '';
-      const depth2 = classification['2Depth'] || '';
-      const depth3 = classification['3Depth'] || '';
-      const depth4 = classification['4Depth'] || '';
+      const depth1 = classification.depth1 || '';
+      const depth2 = classification.depth2 || '';
+      const depth3 = classification.depth3 || '';
+      const depth4 = classification.depth4 || '';
       const classificationText = [depth1, depth2, depth3, depth4].filter(Boolean).join(' > ');
       
       return `문제 ${i + 1}:

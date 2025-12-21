@@ -167,8 +167,10 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
       if (row.user_mark !== null && row.user_mark !== undefined) {
         stats1.total_count++;
         if (row.is_correct) stats1.correct_count++; else stats1.incorrect_count++;
-        if (row.problems?.session_id && !stats1.sessionIds?.includes(row.problems.session_id)) {
-          stats1.sessionIds?.push(row.problems.session_id);
+        const p = Array.isArray((row as any).problems) ? (row as any).problems?.[0] : (row as any).problems;
+        const sessionId = p?.session_id;
+        if (sessionId && !stats1.sessionIds?.includes(sessionId)) {
+          stats1.sessionIds?.push(sessionId);
         }
       }
     }
@@ -191,8 +193,10 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
       if (row.user_mark !== null && row.user_mark !== undefined) {
         stats2.total_count++;
         if (row.is_correct) stats2.correct_count++; else stats2.incorrect_count++;
-        if (row.problems?.session_id && !stats2.sessionIds?.includes(row.problems.session_id)) {
-          stats2.sessionIds?.push(row.problems.session_id);
+        const p = Array.isArray((row as any).problems) ? (row as any).problems?.[0] : (row as any).problems;
+        const sessionId = p?.session_id;
+        if (sessionId && !stats2.sessionIds?.includes(sessionId)) {
+          stats2.sessionIds?.push(sessionId);
         }
       }
     }
@@ -216,8 +220,10 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
       if (row.user_mark !== null && row.user_mark !== undefined) {
         stats3.total_count++;
         if (row.is_correct) stats3.correct_count++; else stats3.incorrect_count++;
-        if (row.problems?.session_id && !stats3.sessionIds?.includes(row.problems.session_id)) {
-          stats3.sessionIds?.push(row.problems.session_id);
+        const p = Array.isArray((row as any).problems) ? (row as any).problems?.[0] : (row as any).problems;
+        const sessionId = p?.session_id;
+        if (sessionId && !stats3.sessionIds?.includes(sessionId)) {
+          stats3.sessionIds?.push(sessionId);
         }
       }
     }
@@ -242,8 +248,10 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
       if (row.user_mark !== null && row.user_mark !== undefined) {
         stats4.total_count++;
         if (row.is_correct) stats4.correct_count++; else stats4.incorrect_count++;
-        if (row.problems?.session_id && !stats4.sessionIds?.includes(row.problems.session_id)) {
-          stats4.sessionIds?.push(row.problems.session_id);
+        const p = Array.isArray((row as any).problems) ? (row as any).problems?.[0] : (row as any).problems;
+        const sessionId = p?.session_id;
+        if (sessionId && !stats4.sessionIds?.includes(sessionId)) {
+          stats4.sessionIds?.push(sessionId);
         }
       }
     }

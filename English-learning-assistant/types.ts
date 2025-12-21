@@ -9,13 +9,13 @@ export interface UserAnswer extends Text {
 }
 
 export interface ProblemClassification {
-  '1Depth': string;
-  '2Depth': string;
-  '3Depth': string;
-  '4Depth': string;
-  'code'?: string | null;  // taxonomy 조회용 (필수, NULL 가능)
-  'CEFR'?: string | null;  // taxonomy에서 가져옴
-  '난이도'?: number | null;  // taxonomy에서 가져옴
+  depth1?: string | null;
+  depth2?: string | null;
+  depth3?: string | null;
+  depth4?: string | null;
+  code?: string | null; // taxonomy 조회용 (필수, NULL 가능)
+  CEFR?: string | null; // taxonomy에서 가져옴
+  난이도?: number | null; // taxonomy에서 가져옴
 }
 
 export interface Taxonomy {

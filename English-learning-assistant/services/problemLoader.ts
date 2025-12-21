@@ -94,11 +94,16 @@ export async function loadProblemsWithExisting(
     try {
       let existingProblems: GeneratedProblem[] = [];
 
-      if (classification && !exactMatchOnly) {
+      if (classification?.depth1 && !exactMatchOnly) {
         // 분류 우선순위 매칭
         existingProblems = await fetchExistingProblemsByClassificationPriority(
           problemType,
-          classification,
+          {
+            depth1: classification.depth1,
+            depth2: classification.depth2,
+            depth3: classification.depth3,
+            depth4: classification.depth4,
+          },
           requestedCount,
           excludeSolved,
           excludeRecentDays,

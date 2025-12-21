@@ -84,25 +84,25 @@ export const TaxonomyDetailPopup: React.FC<TaxonomyDetailPopupProps> = ({ code, 
                 </h3>
                 <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 space-y-2">
                   <div>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">1Depth:</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">depth1:</span>
                     <span className="ml-2 font-medium text-slate-800 dark:text-slate-200">
                       {language === 'ko' ? taxonomy.depth1 : taxonomy.depth1_en}
                     </span>
                   </div>
                   <div>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">2Depth:</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">depth2:</span>
                     <span className="ml-2 font-medium text-slate-800 dark:text-slate-200">
                       {language === 'ko' ? taxonomy.depth2 : taxonomy.depth2_en}
                     </span>
                   </div>
                   <div>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">3Depth:</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">depth3:</span>
                     <span className="ml-2 font-medium text-slate-800 dark:text-slate-200">
                       {language === 'ko' ? taxonomy.depth3 : taxonomy.depth3_en}
                     </span>
                   </div>
                   <div>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">4Depth:</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">depth4:</span>
                     <span className="ml-2 font-medium text-slate-800 dark:text-slate-200">
                       {language === 'ko' ? taxonomy.depth4 : taxonomy.depth4_en}
                     </span>

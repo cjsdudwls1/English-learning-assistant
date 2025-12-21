@@ -408,7 +408,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     const categoryStats: Record<string, { total: number; correct: number }> = {};
     quizResults.forEach(result => {
       const classification = result.classification || {};
-      const category = classification['1Depth'] || classification.depth1 || '기타';
+      const category = classification.depth1 || '기타';
       if (!categoryStats[category]) {
         categoryStats[category] = { total: 0, correct: 0 };
       }
