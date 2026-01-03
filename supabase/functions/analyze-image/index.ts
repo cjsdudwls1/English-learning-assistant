@@ -64,7 +64,24 @@ If text is unreadable / blank, return an empty array instead of guessing. Do NOT
 5. **Underlined/Bracketed Text**: If a question references underlined or bracketed parts (e.g., "① [increased]"), extract them exactly as shown with the markers.
 6. **Options**: Extract all 5 choices fully. Do not truncate.
 7. **Layout Separators**: When a problem contains multiple parts (boxes, story passages, subquestions), separate major parts with explicit newlines so each part starts on its own line to keep boundaries clear.
-8. **Question vs. Prompt Separation**: For cloze/selection items like "보기 안에서 알맞은 말을 고르시오. I saw her ( to play | play ) badminton in the park.", put the instruction line and the provided sentence on separate lines (or visually boxed). Keep the sentence exactly as shown, on its own line below the instruction.
+8. **Question vs. Prompt Separation**: For cloze/selection items like "보기 안에서 알맞은 말을 고르시오. I saw her ( to play | play ) badminton in the park.", format \`question_text\` with clear line breaks: 
+   - Line 1: \`Q{problem_number} <instruction>\`
+   - Line 2: the provided sentence/prompt exactly as shown (e.g., \`I saw her ( to play | play ) badminton in the park.\`)
+   - Keep options in the \`choices\` array; do NOT merge them into \`question_text\`.
+9. **No grading text in question_text**: Never include "AI:", "정답", "사용자 답안" or scoring/marks inside \`question_text\`. Put only the problem statement/prompt there. User handwriting/answers go to \`user_answer\`; correctness goes to \`user_marked_correctness\`.
+10. **Fill-in-the-blank fidelity**: Keep blank markers exactly as shown (e.g., "(A)", "(B)", "[ ]", "( to play | play )"). Do not reorder or remove them. If multiple blanks, keep the surrounding sentence intact on its own line so blanks stay in place.
+11. **Word-order (재배열) problems**: If the problem provides a word/phrase bank to reorder (e.g., "[phrase1, phrase2, phrase3, ...]"), keep it as a separate section **below** the instruction/target sentence. Format \`question_text\` like:
+    Q{number} <instruction>
+    <target sentence>
+    Word Bank:
+    phrase1
+    phrase2
+    phrase3
+    ...
+   Do NOT inject the bank items into the sentence line. Preserve order and punctuation; one item per line.
+   Do NOT include the original bracketed/slash-separated bank (e.g., "[an essay. / My mom / helped / me / writing / write]"). Only include the cleaned per-line list once, without surrounding brackets or slashes.
+   If the source shows items like "[the students]" or "( the students )", strip ALL brackets/parentheses and list as plain text lines under "Word Bank:". Never output any bracketed/parenthesized version anywhere—only the newline-separated plain items.
+12. **No fake choices**: If the problem does NOT provide multiple-choice options, set \`choices: []\`. Never invent placeholder options (e.g., "NULL", "-", empty strings).
 
 ## Classification Criteria
 \`\`\`
@@ -82,8 +99,8 @@ Respond with JSON only. Do NOT include any markdown, explanations, or HTML.
   "items": [
     {
       "problem_number": "35",
-      "question_text": "Full instruction + passage + all sub-questions/segments. (Combine if split)",
-      "choices": ["① Choice 1", "② Choice 2", "③ Choice 3", "④ Choice 4", "⑤ Choice 5"],
+      "question_text": "Q35 <instruction line>\n<prompt line or passage, exactly as shown>",
+      "choices": ["① Choice 1", "② Choice 2", "③ Choice 3", "④ Choice 4", "⑤ Choice 5"], // or [] for free-response/blanks
       "user_marked_correctness": "O" | "X",
       "user_answer": "marked choice or text",
       "classification": {
@@ -139,17 +156,47 @@ function validateExtractedItems(params: {
     return String(v).trim();
   };
 
+  const isPlaceholderChoice = (text: string) => {
+    const t = text.trim().toLowerCase();
+    return (
+      t === '' ||
+      t === 'null' ||
+      t === 'none' ||
+      t === 'n/a' ||
+      t === 'placeholder' ||
+      t === '-' ||
+      t === '--' ||
+      t === '없음' ||
+      t === '빈칸'
+    );
+  };
+
   for (const item of items) {
     const numRaw = clean(item.problem_number || item.index);
     const stem = clean(item.question_text || item.stem);
     const choices = Array.isArray(item.choices) ? item.choices : [];
 
-    // 선택지 5개 필수
-    if (choices.length !== 5) {
-      throw new StageError('extract_validate', `Invalid choices count: expected 5, got ${choices.length}`, {
+    // 선택지: 다지선다형은 5개, 주관식/서술형은 0개도 허용
+    if (choices.length > 0 && choices.length !== 5) {
+      throw new StageError('extract_validate', `Invalid choices count: expected 5 or 0, got ${choices.length}`, {
         problem_number: numRaw,
         choices_length: choices.length,
       });
+    }
+
+    // 선택지가 있으면 유효한 내용이 최소 1개 이상이어야 함 (placeholder 금지)
+    if (choices.length > 0) {
+      const hasRealChoice = choices.some((c: any) => {
+        const text = typeof c === 'string' ? c : (c?.text ?? '');
+        return !isPlaceholderChoice(String(text));
+      });
+      if (!hasRealChoice) {
+        throw new StageError('extract_validate', 'Invalid choices content: all placeholders/empty', {
+          problem_number: numRaw,
+          choices_length: choices.length,
+          choices_sample: choices.slice(0, 3),
+        });
+      }
     }
 
     // 문제 번호 중복/역순 검사 (숫자로 파싱 가능한 경우)
