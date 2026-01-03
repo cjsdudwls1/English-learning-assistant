@@ -41,6 +41,7 @@ function buildPrompt(classificationData: { structure: string }, language: 'ko' |
 ## Task
 Extract all exam questions from images into structured JSON.
 ${imageCount > 1 ? `**CRITICAL:** You have **${imageCount} sequential images**. Merge split questions across pages into single items.` : ''}
+Images are provided **in order** with captions like "Page X of N. Continues from previous page. Next page follows." Use these captions to respect page order and reconnect passages/questions across pages.
 
 ## Extraction Rules (CRITICAL)
 1. **Verbatim Text**: Extract the ALL text content exactly as it appears. Do NOT summarize or skip any part of the passage, options, or instructions.
@@ -92,12 +93,91 @@ function normalizeMark(raw: unknown): 'O' | 'X' {
   return 'X';
 }
 
+// 검증: 필수 필드, 선택지 개수, 문제 번호 순서/중복, taxonomy 일관성
+function validateExtractedItems(params: {
+  items: any[];
+  taxonomyByDepthKey: Map<string, { code: string | null; cefr: string | null; difficulty: number | null }>;
+  taxonomyByCode: Map<string, { depth1: string | null; depth2: string | null; depth3: string | null; depth4: string | null; code: string | null; cefr: string | null; difficulty: number | null }>;
+}) {
+  const { items, taxonomyByDepthKey, taxonomyByCode } = params;
+
+  const seenNumbers = new Set<string>();
+  let previousNumber: number | null = null;
+
+  const clean = (v: unknown) => {
+    if (v === undefined || v === null) return '';
+    return String(v).trim();
+  };
+
+  for (const item of items) {
+    const numRaw = clean(item.problem_number || item.index);
+    const stem = clean(item.question_text || item.stem);
+    const choices = Array.isArray(item.choices) ? item.choices : [];
+
+    // 선택지 5개 필수
+    if (choices.length !== 5) {
+      throw new StageError('extract_validate', `Invalid choices count: expected 5, got ${choices.length}`, {
+        problem_number: numRaw,
+        choices_length: choices.length,
+      });
+    }
+
+    // 문제 번호 중복/역순 검사 (숫자로 파싱 가능한 경우)
+    const numVal = parseInt(numRaw, 10);
+    if (!Number.isNaN(numVal)) {
+      const numKey = String(numVal);
+      if (seenNumbers.has(numKey)) {
+        throw new StageError('extract_validate', `Duplicate problem number detected: ${numKey}`, {
+          problem_number: numKey,
+        });
+      }
+      if (previousNumber !== null && numVal < previousNumber) {
+        throw new StageError('extract_validate', `Problem numbers out of order (descending): prev=${previousNumber}, current=${numVal}`, {
+          previous: previousNumber,
+          current: numVal,
+        });
+      }
+      seenNumbers.add(numKey);
+      previousNumber = numVal;
+    }
+
+    // taxonomy depth1~4 필수 및 유효성 검사
+    const classification = item.classification || {};
+    const depth1 = clean(classification.depth1 ?? classification['depth1']);
+    const depth2 = clean(classification.depth2 ?? classification['depth2']);
+    const depth3 = clean(classification.depth3 ?? classification['depth3']);
+    const depth4 = clean(classification.depth4 ?? classification['depth4']);
+    const code = clean(classification.code ?? classification['code']);
+
+    const hasAllDepth = !!(depth1 && depth2 && depth3 && depth4);
+    const depthKey = `${depth1}␟${depth2}␟${depth3}␟${depth4}`;
+
+    const depthValid = hasAllDepth && taxonomyByDepthKey.has(depthKey);
+    const codeValid = code && taxonomyByCode.has(code);
+
+    if (!depthValid && !codeValid) {
+      throw new StageError('extract_validate', 'Invalid taxonomy classification', {
+        problem_number: numRaw,
+        depth1,
+        depth2,
+        depth3,
+        depth4,
+        code: code || null,
+        stemPreview: stem.substring(0, 120),
+      });
+    }
+  }
+
+  return true;
+}
+
 // 실패 원인 기록을 위한 에러 타입/유틸
 type FailureStage =
   | 'request'
   | 'extract_call'
   | 'extract_parse'
   | 'extract_empty'
+  | 'extract_validate'
   | 'insert_problems'
   | 'insert_labels'
   | 'unknown';
@@ -641,12 +721,16 @@ serve(async (req) => {
             console.error(`[Background] Step 3b: Image ${i} (${img.fileName}) has no base64 data!`, { sessionId: createdSessionId });
             throw new Error(`Image ${i} (${img.fileName}) has no base64 data`);
           }
+          const pageNumber = i + 1;
+          const pageCaption = `Page ${pageNumber} of ${imageList.length}. ${i === 0 ? 'Start of problem set.' : 'Continues from previous page.'} ${i === imageList.length - 1 ? 'This is the last page.' : 'Next page follows.'}`;
+          parts.push({ text: pageCaption });
           parts.push({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } });
-          console.log(`[Background] Step 3b: Added image ${i + 1}/${imageList.length} to parts array:`, {
+          console.log(`[Background] Step 3b: Added image ${i + 1}/${imageList.length} to parts array with caption`, {
             sessionId: createdSessionId,
             fileName: img.fileName,
             mimeType: img.mimeType,
-            base64Length: img.imageBase64.length
+            base64Length: img.imageBase64.length,
+            pageCaption,
           });
         }
 
@@ -654,7 +738,7 @@ serve(async (req) => {
           sessionId: createdSessionId,
           partsLength: parts.length,
           expectedImages: imageList.length,
-          actualImages: parts.length - 1 // parts[0] is text prompt
+          actualImages: parts.filter((p: any) => !!p.inlineData).length, // image parts only
         });
 
         // parts 배열 검증
@@ -662,9 +746,10 @@ serve(async (req) => {
           throw new Error(`Invalid parts array: ${JSON.stringify(parts)}`);
         }
 
-        if (parts.length - 1 !== imageList.length) {
-          console.error(`[Background] Step 3b: Parts array length mismatch! Expected ${imageList.length + 1} parts (1 text + ${imageList.length} images), got ${parts.length}`, { sessionId: createdSessionId });
-          throw new Error(`Parts array length mismatch: expected ${imageList.length + 1}, got ${parts.length}`);
+        const inlineDataCount = parts.filter((p: any) => !!p.inlineData).length;
+        if (inlineDataCount !== imageList.length) {
+          console.error(`[Background] Step 3b: Parts array inlineData count mismatch! Expected ${imageList.length}, got ${inlineDataCount}`, { sessionId: createdSessionId });
+          throw new Error(`Parts array inlineData count mismatch: expected ${imageList.length}, got ${inlineDataCount}`);
         }
 
         // 모델 호출 + 파싱 + (0문항 포함) 검증까지 포함해서 ordered failover
@@ -782,6 +867,13 @@ serve(async (req) => {
                 }
               );
             }
+
+            // 추가 검증: 선택지, 문제 번호 순서/중복, taxonomy 유효성
+            validateExtractedItems({
+              items: candidateValidated,
+              taxonomyByDepthKey,
+              taxonomyByCode,
+            });
 
             // 성공
             usedModel = model;
