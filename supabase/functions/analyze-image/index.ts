@@ -32,9 +32,21 @@ const MODEL_RETRY_POLICY: Record<(typeof MODEL_SEQUENCE)[number], { maxRetries: 
 // Step 6 (metadata) model: keep it fast/cheap and deterministic
 const METADATA_MODEL = 'gemini-2.5-flash-lite';
 
+// Page-level OCR model
+const OCR_MODEL = 'gemini-2.5-flash-lite';
+
 // 2단계 프롬프트 로직: Step 1 (Raw OCR) + Step 2 (Extraction)
-function buildPrompt(classificationData: { structure: string }, language: 'ko' | 'en' = 'ko', imageCount: number = 1) {
+function buildPrompt(
+  classificationData: { structure: string },
+  language: 'ko' | 'en' = 'ko',
+  imageCount: number = 1,
+  ocrPages: Array<{ page: number; text: string }> = [],
+) {
   const { structure } = classificationData;
+
+  const transcriptBlock = ocrPages.length > 0
+    ? `\n## OCR Transcript (per page, in order)\n${ocrPages.map(p => `Page ${p.page}:\n${p.text || '[blank]'}`).join('\n\n')}\n`
+    : '';
 
   return `
 
@@ -83,7 +95,21 @@ Respond with JSON only. Do NOT include any markdown, explanations, or HTML.
 \`\`\`
 
 If you cannot read any question, return { "items": [] }. Respond with JSON only.
+${transcriptBlock}
 `;
+}
+
+function buildOcrPrompt(imageCount: number) {
+  return `
+You will receive ${imageCount} sequential images with captions ("Page X of N...").
+Extract the full visible text from each page verbatim. Do NOT summarize or omit anything.
+Respond ONLY with JSON:
+{
+  "pages": [
+    { "page": 1, "text": "page text..." }
+  ]
+}
+If a page is unreadable or blank, return an empty string for that page's text. Keep page numbers accurate and in order. No markdown, no code fences.`;
 }
 
 function normalizeMark(raw: unknown): 'O' | 'X' {
@@ -701,12 +727,70 @@ serve(async (req) => {
           }
         }
 
-        const prompt = buildPrompt(taxonomyData, userLanguage, imageList.length);
-        console.log(`[Background] Step 3a completed: Taxonomy data loaded, prompt length: ${prompt.length}`);
+        // Gemini 클라이언트 (OCR 및 추출 공용)
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+        // 3a-1. 페이지별 OCR 수행 (텍스트만 추출)
+        let ocrPages: Array<{ page: number; text: string }> = [];
+        try {
+          const ocrPrompt = buildOcrPrompt(imageList.length);
+          const ocrParts: any[] = [{ text: ocrPrompt }];
+          for (let i = 0; i < imageList.length; i++) {
+            const img = imageList[i];
+            const pageNumber = i + 1;
+            const pageCaption = `Page ${pageNumber} of ${imageList.length}. ${i === 0 ? 'Start of problem set.' : 'Continues from previous page.'} ${i === imageList.length - 1 ? 'This is the last page.' : 'Next page follows.'}`;
+            ocrParts.push({ text: pageCaption });
+            ocrParts.push({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } });
+          }
+
+          console.log(`[Background] Step 3a-1: Running OCR for ${imageList.length} pages (model=${OCR_MODEL})...`, { sessionId: createdSessionId });
+          const ocrAttempt = await generateWithRetry({
+            ai,
+            model: OCR_MODEL,
+            contents: { parts: ocrParts },
+            sessionId: createdSessionId,
+            maxRetries: 1,
+            baseDelayMs: 2000,
+            temperature: 0.0,
+          });
+
+          let ocrText: string = '';
+          const ocrResponse = ocrAttempt.response;
+          if (ocrResponse?.text) {
+            ocrText = typeof ocrResponse.text === 'function' ? await ocrResponse.text() : ocrResponse.text;
+          } else if (ocrResponse?.response?.text) {
+            ocrText = typeof ocrResponse.response.text === 'function' ? await ocrResponse.response.text() : ocrResponse.response.text;
+          } else if (ocrResponse?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            ocrText = ocrResponse.candidates[0].content.parts[0].text;
+          }
+
+          const ocrJsonString = (ocrText || '').replace(/```json/g, '').replace(/```/g, '').trim();
+          const parsedOcr = JSON.parse(ocrJsonString);
+          if (parsedOcr?.pages && Array.isArray(parsedOcr.pages)) {
+            ocrPages = parsedOcr.pages
+              .map((p: any, idx: number) => ({
+                page: Number(p?.page) || idx + 1,
+                text: typeof p?.text === 'string' ? p.text : '',
+              }))
+              .sort((a: any, b: any) => a.page - b.page);
+            console.log(`[Background] Step 3a-1: OCR pages extracted`, {
+              sessionId: createdSessionId,
+              pageCount: ocrPages.length,
+              sample: ocrPages.slice(0, 2).map(p => ({ page: p.page, textPreview: (p.text || '').substring(0, 80) })),
+            });
+          } else {
+            console.warn(`[Background] Step 3a-1: OCR response missing pages array; skipping transcript`, { sessionId: createdSessionId, ocrJsonStringPreview: ocrJsonString.substring(0, 300) });
+          }
+        } catch (ocrError) {
+          console.error(`[Background] Step 3a-1: OCR failed; continuing without transcript`, { sessionId: createdSessionId, error: summarizeError(ocrError) });
+          ocrPages = [];
+        }
+
+        const prompt = buildPrompt(taxonomyData, userLanguage, imageList.length, ocrPages);
+        console.log(`[Background] Step 3a completed: Taxonomy data loaded, prompt length: ${prompt.length}, ocrPages=${ocrPages.length}`);
 
         // 3. Gemini API로 분석 (여러 이미지를 한 번에 전송)
         console.log(`[Background] Step 3b: Analyzing ${imageList.length} image(s) with Gemini...`, { sessionId: createdSessionId });
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
         // 모든 이미지를 parts 배열에 추가
         console.log(`[Background] Step 3b: Preparing ${imageList.length} image(s) for Gemini API...`, {
