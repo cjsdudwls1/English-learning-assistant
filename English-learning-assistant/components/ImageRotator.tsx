@@ -113,7 +113,7 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
         }}
       />
       
-      <div className="absolute top-2 right-2 flex gap-2">
+      <div className="absolute bottom-2 left-2 flex gap-2">
         <button
           onClick={handleRotateLeft}
           className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}

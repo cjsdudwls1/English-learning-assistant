@@ -178,7 +178,8 @@ nav a:hover {
 .page-content {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 2.5rem;
+  margin-top: 1.25rem; /* create breathing room below sticky top bar */
 }
 
 .hero {
@@ -1606,4 +1607,3 @@ nav a:hover {
     -webkit-overflow-scrolling: touch;
   }
 }
-
