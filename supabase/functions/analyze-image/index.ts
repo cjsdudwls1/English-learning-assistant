@@ -32,22 +32,56 @@ const MODEL_RETRY_POLICY: Record<(typeof MODEL_SEQUENCE)[number], { maxRetries: 
 // Step 6 (metadata) model: keep it fast/cheap and deterministic
 const METADATA_MODEL = 'gemini-2.5-flash-lite';
 
+// Page-level OCR model
+const OCR_MODEL = 'gemini-2.5-flash-lite';
+
 // 2단계 프롬프트 로직: Step 1 (Raw OCR) + Step 2 (Extraction)
-function buildPrompt(classificationData: { structure: string }, language: 'ko' | 'en' = 'ko', imageCount: number = 1) {
+function buildPrompt(
+  classificationData: { structure: string },
+  language: 'ko' | 'en' = 'ko',
+  imageCount: number = 1,
+  ocrPages: Array<{ page: number; text: string }> = [],
+) {
   const { structure } = classificationData;
+
+  const transcriptBlock = ocrPages.length > 0
+    ? `\n## OCR Transcript (per page, in order)\n${ocrPages.map(p => `Page ${p.page}:\n${p.text || '[blank]'}`).join('\n\n')}\n`
+    : '';
 
   return `
 
 ## Task
 Extract all exam questions from images into structured JSON.
 ${imageCount > 1 ? `**CRITICAL:** You have **${imageCount} sequential images**. Merge split questions across pages into single items.` : ''}
+Images are provided **in order** with captions like "Page X of N. Continues from previous page. Next page follows." Use these captions to respect page order and reconnect passages/questions across pages.
+If text is unreadable / blank, return an empty array instead of guessing. Do NOT hallucinate problems or content.
 
 ## Extraction Rules (CRITICAL)
 1. **Verbatim Text**: Extract the ALL text content exactly as it appears. Do NOT summarize or skip any part of the passage, options, or instructions.
 2. **Missing Content**: NEVER return placeholders like "[Missing paragraph]" or "[Passage]". If the text is in the image, you MUST extract it.
 3. **Structure Markers**: Preserve all structural markers in passages, such as (A), (B), (C) or [A], [B]. For insertion questions, keep the insertion points (e.g. " (A) ") and their surrounding text clearly visible.
-4. **Underlined/Bracketed Text**: If a question references underlined or bracketed parts (e.g., "① [increased]"), extract them exactly as shown with the markers.
-5. **Options**: Extract all 5 choices fully. Do not truncate.
+4. **Handwriting vs. Printed Text**: Treat handwritten answers/marks (e.g., pencil/pen writing, red circles/✓) as user answers only. Do NOT merge handwriting into question_text or passage. Capture handwriting in "user_answer"; keep question_text purely from printed/typed prompt.
+5. **Underlined/Bracketed Text**: If a question references underlined or bracketed parts (e.g., "① [increased]"), extract them exactly as shown with the markers.
+6. **Options**: Extract all 5 choices fully. Do not truncate.
+7. **Layout Separators**: When a problem contains multiple parts (boxes, story passages, subquestions), separate major parts with explicit newlines so each part starts on its own line to keep boundaries clear.
+8. **Question vs. Prompt Separation**: For cloze/selection items like "보기 안에서 알맞은 말을 고르시오. I saw her ( to play | play ) badminton in the park.", format \`question_text\` with clear line breaks: 
+   - Line 1: \`Q{problem_number} <instruction>\`
+   - Line 2: the provided sentence/prompt exactly as shown (e.g., \`I saw her ( to play | play ) badminton in the park.\`)
+   - Keep options in the \`choices\` array; do NOT merge them into \`question_text\`.
+9. **No grading text in question_text**: Never include "AI:", "정답", "사용자 답안" or scoring/marks inside \`question_text\`. Put only the problem statement/prompt there. User handwriting/answers go to \`user_answer\`; correctness goes to \`user_marked_correctness\`.
+10. **Fill-in-the-blank fidelity**: Keep blank markers exactly as shown (e.g., "(A)", "(B)", "[ ]", "( to play | play )"). Do not reorder or remove them. If multiple blanks, keep the surrounding sentence intact on its own line so blanks stay in place.
+11. **Word-order (재배열) problems**: If the problem provides a word/phrase bank to reorder (e.g., "[phrase1, phrase2, phrase3, ...]"), keep it as a separate section **below** the instruction/target sentence. Format \`question_text\` like:
+    Q{number} <instruction>
+    <target sentence>
+    Word Bank:
+    phrase1
+    phrase2
+    phrase3
+    ...
+   Do NOT inject the bank items into the sentence line. Preserve order and punctuation; one item per line.
+   Do NOT include the original bracketed/slash-separated bank (e.g., "[an essay. / My mom / helped / me / writing / write]"). Only include the cleaned per-line list once, without surrounding brackets or slashes.
+   If the source shows items like "[the students]" or "( the students )", strip ALL brackets/parentheses and list as plain text lines under "Word Bank:". Never output any bracketed/parenthesized version anywhere—only the newline-separated plain items.
+12. **No fake choices**: If the problem does NOT provide multiple-choice options, set \`choices: []\`. Never invent placeholder options (e.g., "NULL", "-", empty strings).
 
 ## Classification Criteria
 \`\`\`
@@ -65,8 +99,8 @@ Respond with JSON only. Do NOT include any markdown, explanations, or HTML.
   "items": [
     {
       "problem_number": "35",
-      "question_text": "Full instruction + passage + all sub-questions/segments. (Combine if split)",
-      "choices": ["① Choice 1", "② Choice 2", "③ Choice 3", "④ Choice 4", "⑤ Choice 5"],
+      "question_text": "Q35 <instruction line>\n<prompt line or passage, exactly as shown>",
+      "choices": ["① Choice 1", "② Choice 2", "③ Choice 3", "④ Choice 4", "⑤ Choice 5"], // or [] for free-response/blanks
       "user_marked_correctness": "O" | "X",
       "user_answer": "marked choice or text",
       "classification": {
@@ -80,8 +114,22 @@ Respond with JSON only. Do NOT include any markdown, explanations, or HTML.
 }
 \`\`\`
 
-**⚠️ CRITICAL: The \`items\` array must contain at least 1 question. Do NOT return empty array. Respond with JSON only.**
+If you cannot read any question, return { "items": [] }. Respond with JSON only.
+${transcriptBlock}
 `;
+}
+
+function buildOcrPrompt(imageCount: number) {
+  return `
+You will receive ${imageCount} sequential images with captions ("Page X of N...").
+Extract the full visible text from each page verbatim. Do NOT summarize or omit anything.
+Respond ONLY with JSON:
+{
+  "pages": [
+    { "page": 1, "text": "page text..." }
+  ]
+}
+If a page is unreadable or blank, return an empty string for that page's text. Keep page numbers accurate and in order. No markdown, no code fences.`;
 }
 
 function normalizeMark(raw: unknown): 'O' | 'X' {
@@ -92,12 +140,121 @@ function normalizeMark(raw: unknown): 'O' | 'X' {
   return 'X';
 }
 
+// 검증: 필수 필드, 선택지 개수, 문제 번호 순서/중복, taxonomy 일관성
+function validateExtractedItems(params: {
+  items: any[];
+  taxonomyByDepthKey: Map<string, { code: string | null; cefr: string | null; difficulty: number | null }>;
+  taxonomyByCode: Map<string, { depth1: string | null; depth2: string | null; depth3: string | null; depth4: string | null; code: string | null; cefr: string | null; difficulty: number | null }>;
+}) {
+  const { items, taxonomyByDepthKey, taxonomyByCode } = params;
+
+  const seenNumbers = new Set<string>();
+  let previousNumber: number | null = null;
+
+  const clean = (v: unknown) => {
+    if (v === undefined || v === null) return '';
+    return String(v).trim();
+  };
+
+  const isPlaceholderChoice = (text: string) => {
+    const t = text.trim().toLowerCase();
+    return (
+      t === '' ||
+      t === 'null' ||
+      t === 'none' ||
+      t === 'n/a' ||
+      t === 'placeholder' ||
+      t === '-' ||
+      t === '--' ||
+      t === '없음' ||
+      t === '빈칸'
+    );
+  };
+
+  for (const item of items) {
+    const numRaw = clean(item.problem_number || item.index);
+    const stem = clean(item.question_text || item.stem);
+    const choices = Array.isArray(item.choices) ? item.choices : [];
+
+    // 선택지: 다지선다형은 5개, 주관식/서술형은 0개도 허용
+    if (choices.length > 0 && choices.length !== 5) {
+      throw new StageError('extract_validate', `Invalid choices count: expected 5 or 0, got ${choices.length}`, {
+        problem_number: numRaw,
+        choices_length: choices.length,
+      });
+    }
+
+    // 선택지가 있으면 유효한 내용이 최소 1개 이상이어야 함 (placeholder 금지)
+    if (choices.length > 0) {
+      const hasRealChoice = choices.some((c: any) => {
+        const text = typeof c === 'string' ? c : (c?.text ?? '');
+        return !isPlaceholderChoice(String(text));
+      });
+      if (!hasRealChoice) {
+        throw new StageError('extract_validate', 'Invalid choices content: all placeholders/empty', {
+          problem_number: numRaw,
+          choices_length: choices.length,
+          choices_sample: choices.slice(0, 3),
+        });
+      }
+    }
+
+    // 문제 번호 중복/역순 검사 (숫자로 파싱 가능한 경우)
+    const numVal = parseInt(numRaw, 10);
+    if (!Number.isNaN(numVal)) {
+      const numKey = String(numVal);
+      if (seenNumbers.has(numKey)) {
+        throw new StageError('extract_validate', `Duplicate problem number detected: ${numKey}`, {
+          problem_number: numKey,
+        });
+      }
+      if (previousNumber !== null && numVal < previousNumber) {
+        throw new StageError('extract_validate', `Problem numbers out of order (descending): prev=${previousNumber}, current=${numVal}`, {
+          previous: previousNumber,
+          current: numVal,
+        });
+      }
+      seenNumbers.add(numKey);
+      previousNumber = numVal;
+    }
+
+    // taxonomy depth1~4 필수 및 유효성 검사
+    const classification = item.classification || {};
+    const depth1 = clean(classification.depth1 ?? classification['depth1']);
+    const depth2 = clean(classification.depth2 ?? classification['depth2']);
+    const depth3 = clean(classification.depth3 ?? classification['depth3']);
+    const depth4 = clean(classification.depth4 ?? classification['depth4']);
+    const code = clean(classification.code ?? classification['code']);
+
+    const hasAllDepth = !!(depth1 && depth2 && depth3 && depth4);
+    const depthKey = `${depth1}␟${depth2}␟${depth3}␟${depth4}`;
+
+    const depthValid = hasAllDepth && taxonomyByDepthKey.has(depthKey);
+    const codeValid = code && taxonomyByCode.has(code);
+
+    if (!depthValid && !codeValid) {
+      throw new StageError('extract_validate', 'Invalid taxonomy classification', {
+        problem_number: numRaw,
+        depth1,
+        depth2,
+        depth3,
+        depth4,
+        code: code || null,
+        stemPreview: stem.substring(0, 120),
+      });
+    }
+  }
+
+  return true;
+}
+
 // 실패 원인 기록을 위한 에러 타입/유틸
 type FailureStage =
   | 'request'
   | 'extract_call'
   | 'extract_parse'
   | 'extract_empty'
+  | 'extract_validate'
   | 'insert_problems'
   | 'insert_labels'
   | 'unknown';
@@ -620,12 +777,70 @@ serve(async (req) => {
           }
         }
 
-        const prompt = buildPrompt(taxonomyData, userLanguage, imageList.length);
-        console.log(`[Background] Step 3a completed: Taxonomy data loaded, prompt length: ${prompt.length}`);
+        // Gemini 클라이언트 (OCR 및 추출 공용)
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+        // 3a-1. 페이지별 OCR 수행 (텍스트만 추출)
+        let ocrPages: Array<{ page: number; text: string }> = [];
+        try {
+          const ocrPrompt = buildOcrPrompt(imageList.length);
+          const ocrParts: any[] = [{ text: ocrPrompt }];
+          for (let i = 0; i < imageList.length; i++) {
+            const img = imageList[i];
+            const pageNumber = i + 1;
+            const pageCaption = `Page ${pageNumber} of ${imageList.length}. ${i === 0 ? 'Start of problem set.' : 'Continues from previous page.'} ${i === imageList.length - 1 ? 'This is the last page.' : 'Next page follows.'}`;
+            ocrParts.push({ text: pageCaption });
+            ocrParts.push({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } });
+          }
+
+          console.log(`[Background] Step 3a-1: Running OCR for ${imageList.length} pages (model=${OCR_MODEL})...`, { sessionId: createdSessionId });
+          const ocrAttempt = await generateWithRetry({
+            ai,
+            model: OCR_MODEL,
+            contents: { parts: ocrParts },
+            sessionId: createdSessionId,
+            maxRetries: 1,
+            baseDelayMs: 2000,
+            temperature: 0.0,
+          });
+
+          let ocrText: string = '';
+          const ocrResponse = ocrAttempt.response;
+          if (ocrResponse?.text) {
+            ocrText = typeof ocrResponse.text === 'function' ? await ocrResponse.text() : ocrResponse.text;
+          } else if (ocrResponse?.response?.text) {
+            ocrText = typeof ocrResponse.response.text === 'function' ? await ocrResponse.response.text() : ocrResponse.response.text;
+          } else if (ocrResponse?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            ocrText = ocrResponse.candidates[0].content.parts[0].text;
+          }
+
+          const ocrJsonString = (ocrText || '').replace(/```json/g, '').replace(/```/g, '').trim();
+          const parsedOcr = JSON.parse(ocrJsonString);
+          if (parsedOcr?.pages && Array.isArray(parsedOcr.pages)) {
+            ocrPages = parsedOcr.pages
+              .map((p: any, idx: number) => ({
+                page: Number(p?.page) || idx + 1,
+                text: typeof p?.text === 'string' ? p.text : '',
+              }))
+              .sort((a: any, b: any) => a.page - b.page);
+            console.log(`[Background] Step 3a-1: OCR pages extracted`, {
+              sessionId: createdSessionId,
+              pageCount: ocrPages.length,
+              sample: ocrPages.slice(0, 2).map(p => ({ page: p.page, textPreview: (p.text || '').substring(0, 80) })),
+            });
+          } else {
+            console.warn(`[Background] Step 3a-1: OCR response missing pages array; skipping transcript`, { sessionId: createdSessionId, ocrJsonStringPreview: ocrJsonString.substring(0, 300) });
+          }
+        } catch (ocrError) {
+          console.error(`[Background] Step 3a-1: OCR failed; continuing without transcript`, { sessionId: createdSessionId, error: summarizeError(ocrError) });
+          ocrPages = [];
+        }
+
+        const prompt = buildPrompt(taxonomyData, userLanguage, imageList.length, ocrPages);
+        console.log(`[Background] Step 3a completed: Taxonomy data loaded, prompt length: ${prompt.length}, ocrPages=${ocrPages.length}`);
 
         // 3. Gemini API로 분석 (여러 이미지를 한 번에 전송)
         console.log(`[Background] Step 3b: Analyzing ${imageList.length} image(s) with Gemini...`, { sessionId: createdSessionId });
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
         // 모든 이미지를 parts 배열에 추가
         console.log(`[Background] Step 3b: Preparing ${imageList.length} image(s) for Gemini API...`, {
@@ -641,12 +856,16 @@ serve(async (req) => {
             console.error(`[Background] Step 3b: Image ${i} (${img.fileName}) has no base64 data!`, { sessionId: createdSessionId });
             throw new Error(`Image ${i} (${img.fileName}) has no base64 data`);
           }
+          const pageNumber = i + 1;
+          const pageCaption = `Page ${pageNumber} of ${imageList.length}. ${i === 0 ? 'Start of problem set.' : 'Continues from previous page.'} ${i === imageList.length - 1 ? 'This is the last page.' : 'Next page follows.'}`;
+          parts.push({ text: pageCaption });
           parts.push({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } });
-          console.log(`[Background] Step 3b: Added image ${i + 1}/${imageList.length} to parts array:`, {
+          console.log(`[Background] Step 3b: Added image ${i + 1}/${imageList.length} to parts array with caption`, {
             sessionId: createdSessionId,
             fileName: img.fileName,
             mimeType: img.mimeType,
-            base64Length: img.imageBase64.length
+            base64Length: img.imageBase64.length,
+            pageCaption,
           });
         }
 
@@ -654,7 +873,7 @@ serve(async (req) => {
           sessionId: createdSessionId,
           partsLength: parts.length,
           expectedImages: imageList.length,
-          actualImages: parts.length - 1 // parts[0] is text prompt
+          actualImages: parts.filter((p: any) => !!p.inlineData).length, // image parts only
         });
 
         // parts 배열 검증
@@ -662,9 +881,10 @@ serve(async (req) => {
           throw new Error(`Invalid parts array: ${JSON.stringify(parts)}`);
         }
 
-        if (parts.length - 1 !== imageList.length) {
-          console.error(`[Background] Step 3b: Parts array length mismatch! Expected ${imageList.length + 1} parts (1 text + ${imageList.length} images), got ${parts.length}`, { sessionId: createdSessionId });
-          throw new Error(`Parts array length mismatch: expected ${imageList.length + 1}, got ${parts.length}`);
+        const inlineDataCount = parts.filter((p: any) => !!p.inlineData).length;
+        if (inlineDataCount !== imageList.length) {
+          console.error(`[Background] Step 3b: Parts array inlineData count mismatch! Expected ${imageList.length}, got ${inlineDataCount}`, { sessionId: createdSessionId });
+          throw new Error(`Parts array inlineData count mismatch: expected ${imageList.length}, got ${inlineDataCount}`);
         }
 
         // 모델 호출 + 파싱 + (0문항 포함) 검증까지 포함해서 ordered failover
@@ -771,16 +991,20 @@ serve(async (req) => {
             }
 
             const candidateValidated = validateAndSplitProblems(parsed.items);
-            if (!candidateValidated || candidateValidated.length === 0) {
-              throw new StageError(
-                'extract_empty',
-                `No problems extracted (0 items) (model=${model})`,
-                {
-                  model,
-                  rawItemsLength: Array.isArray(parsed.items) ? parsed.items.length : null,
-                  responseTextPreview: jsonString.substring(0, 1200),
-                }
-              );
+
+            if (candidateValidated && candidateValidated.length > 0) {
+              // 추가 검증: 선택지, 문제 번호 순서/중복, taxonomy 유효성
+              validateExtractedItems({
+                items: candidateValidated,
+                taxonomyByDepthKey,
+                taxonomyByCode,
+              });
+            } else {
+              console.warn(`[Background] Step 3b: Model returned 0 items (model=${model}). Accepting empty extraction to avoid hallucination.`, {
+                sessionId: createdSessionId,
+                model,
+                responseTextPreview: jsonString.substring(0, 400),
+              });
             }
 
             // 성공
@@ -823,6 +1047,22 @@ serve(async (req) => {
           rawItems: Array.isArray(result?.items) ? result.items.length : null,
           validatedItems: validatedItems.length,
         });
+
+        // 0문항인 경우: 환각 방지 지침 준수로 간주하고 세션을 실패 처리
+        if (!validatedItems || validatedItems.length === 0) {
+          console.warn(`[Background] Step 3 result: 0 items extracted. Marking session as failed to avoid hallucination.`, {
+            sessionId: createdSessionId,
+            usedModel,
+          });
+          await markSessionFailed({
+            supabase,
+            sessionId: createdSessionId,
+            stage: 'extract_empty',
+            error: new Error('No problems extracted (model returned empty items)'),
+            extra: { usedModel },
+          });
+          return;
+        }
 
         // 4. 문제 저장 (메타데이터 포함)
         console.log(`[Background] Step 4: Save problems to database...`, { sessionId: createdSessionId, itemCount: validatedItems.length });

@@ -206,6 +206,19 @@ export const StatsPage: React.FC = () => {
     }
   }, [language, statsData]);
 
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    const confirmText = language === 'ko'
+      ? '이 세션을 삭제하시겠습니까? 통계에서 제거됩니다.'
+      : 'Delete this session? It will be removed from stats.';
+    if (!window.confirm(confirmText)) return;
+    try {
+      await deleteSession(sessionId);
+      await statsData.loadData(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : (language === 'ko' ? '삭제 실패' : 'Delete failed'));
+    }
+  }, [language, statsData]);
+
   if (statsData.loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">{t.common.loading}</div>;
   if (statsData.error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{statsData.error}</div>;
 
@@ -217,6 +230,7 @@ export const StatsPage: React.FC = () => {
           key={session.id}
           sessionId={session.id}
           imageUrl={session.image_url}
+          onDelete={handleDeleteSession}
         />
       ))}
 
@@ -233,6 +247,7 @@ export const StatsPage: React.FC = () => {
           imageUrl={session.image_url}
           analysisModel={session.analysis_model}
           onSave={statsData.handleLabelingComplete}
+          onDelete={handleDeleteSession}
         />
       ))}
 
