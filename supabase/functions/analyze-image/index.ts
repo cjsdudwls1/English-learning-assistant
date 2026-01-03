@@ -60,8 +60,10 @@ If text is unreadable / blank, return an empty array instead of guessing. Do NOT
 1. **Verbatim Text**: Extract the ALL text content exactly as it appears. Do NOT summarize or skip any part of the passage, options, or instructions.
 2. **Missing Content**: NEVER return placeholders like "[Missing paragraph]" or "[Passage]". If the text is in the image, you MUST extract it.
 3. **Structure Markers**: Preserve all structural markers in passages, such as (A), (B), (C) or [A], [B]. For insertion questions, keep the insertion points (e.g. " (A) ") and their surrounding text clearly visible.
-4. **Underlined/Bracketed Text**: If a question references underlined or bracketed parts (e.g., "① [increased]"), extract them exactly as shown with the markers.
-5. **Options**: Extract all 5 choices fully. Do not truncate.
+4. **Handwriting vs. Printed Text**: Treat handwritten answers/marks (e.g., pencil/pen writing, red circles/✓) as user answers only. Do NOT merge handwriting into question_text or passage. Capture handwriting in "user_answer"; keep question_text purely from printed/typed prompt.
+5. **Underlined/Bracketed Text**: If a question references underlined or bracketed parts (e.g., "① [increased]"), extract them exactly as shown with the markers.
+6. **Options**: Extract all 5 choices fully. Do not truncate.
+7. **Layout Separators**: When a problem contains multiple parts (boxes, story passages, subquestions), separate major parts with explicit newlines so each part starts on its own line to keep boundaries clear.
 
 ## Classification Criteria
 \`\`\`
