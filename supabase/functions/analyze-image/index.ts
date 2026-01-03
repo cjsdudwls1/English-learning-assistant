@@ -64,6 +64,7 @@ If text is unreadable / blank, return an empty array instead of guessing. Do NOT
 5. **Underlined/Bracketed Text**: If a question references underlined or bracketed parts (e.g., "① [increased]"), extract them exactly as shown with the markers.
 6. **Options**: Extract all 5 choices fully. Do not truncate.
 7. **Layout Separators**: When a problem contains multiple parts (boxes, story passages, subquestions), separate major parts with explicit newlines so each part starts on its own line to keep boundaries clear.
+8. **Question vs. Prompt Separation**: For cloze/selection items like "보기 안에서 알맞은 말을 고르시오. I saw her ( to play | play ) badminton in the park.", put the instruction line and the provided sentence on separate lines (or visually boxed). Keep the sentence exactly as shown, on its own line below the instruction.
 
 ## Classification Criteria
 \`\`\`
