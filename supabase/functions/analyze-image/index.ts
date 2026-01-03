@@ -42,6 +42,7 @@ function buildPrompt(classificationData: { structure: string }, language: 'ko' |
 Extract all exam questions from images into structured JSON.
 ${imageCount > 1 ? `**CRITICAL:** You have **${imageCount} sequential images**. Merge split questions across pages into single items.` : ''}
 Images are provided **in order** with captions like "Page X of N. Continues from previous page. Next page follows." Use these captions to respect page order and reconnect passages/questions across pages.
+If text is unreadable / blank, return an empty array instead of guessing. Do NOT hallucinate problems or content.
 
 ## Extraction Rules (CRITICAL)
 1. **Verbatim Text**: Extract the ALL text content exactly as it appears. Do NOT summarize or skip any part of the passage, options, or instructions.
@@ -81,7 +82,7 @@ Respond with JSON only. Do NOT include any markdown, explanations, or HTML.
 }
 \`\`\`
 
-**⚠️ CRITICAL: The \`items\` array must contain at least 1 question. Do NOT return empty array. Respond with JSON only.**
+If you cannot read any question, return { "items": [] }. Respond with JSON only.
 `;
 }
 
@@ -856,24 +857,21 @@ serve(async (req) => {
             }
 
             const candidateValidated = validateAndSplitProblems(parsed.items);
-            if (!candidateValidated || candidateValidated.length === 0) {
-              throw new StageError(
-                'extract_empty',
-                `No problems extracted (0 items) (model=${model})`,
-                {
-                  model,
-                  rawItemsLength: Array.isArray(parsed.items) ? parsed.items.length : null,
-                  responseTextPreview: jsonString.substring(0, 1200),
-                }
-              );
-            }
 
-            // 추가 검증: 선택지, 문제 번호 순서/중복, taxonomy 유효성
-            validateExtractedItems({
-              items: candidateValidated,
-              taxonomyByDepthKey,
-              taxonomyByCode,
-            });
+            if (candidateValidated && candidateValidated.length > 0) {
+              // 추가 검증: 선택지, 문제 번호 순서/중복, taxonomy 유효성
+              validateExtractedItems({
+                items: candidateValidated,
+                taxonomyByDepthKey,
+                taxonomyByCode,
+              });
+            } else {
+              console.warn(`[Background] Step 3b: Model returned 0 items (model=${model}). Accepting empty extraction to avoid hallucination.`, {
+                sessionId: createdSessionId,
+                model,
+                responseTextPreview: jsonString.substring(0, 400),
+              });
+            }
 
             // 성공
             usedModel = model;
@@ -915,6 +913,22 @@ serve(async (req) => {
           rawItems: Array.isArray(result?.items) ? result.items.length : null,
           validatedItems: validatedItems.length,
         });
+
+        // 0문항인 경우: 환각 방지 지침 준수로 간주하고 세션을 실패 처리
+        if (!validatedItems || validatedItems.length === 0) {
+          console.warn(`[Background] Step 3 result: 0 items extracted. Marking session as failed to avoid hallucination.`, {
+            sessionId: createdSessionId,
+            usedModel,
+          });
+          await markSessionFailed({
+            supabase,
+            sessionId: createdSessionId,
+            stage: 'extract_empty',
+            error: new Error('No problems extracted (model returned empty items)'),
+            extra: { usedModel },
+          });
+          return;
+        }
 
         // 4. 문제 저장 (메타데이터 포함)
         console.log(`[Background] Step 4: Save problems to database...`, { sessionId: createdSessionId, itemCount: validatedItems.length });
