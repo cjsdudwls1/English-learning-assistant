@@ -157,6 +157,7 @@ export const RecentProblemsPage: React.FC = () => {
           key={session.id}
           sessionId={session.id}
           imageUrl={session.image_url}
+          onDelete={handleDelete}
         />
       ))}
 
@@ -202,6 +203,7 @@ export const RecentProblemsPage: React.FC = () => {
           imageUrl={session.image_url}
           analysisModel={session.analysis_model}
           onSave={handleLabelingComplete}
+          onDelete={handleDelete}
         />
       ))}
 

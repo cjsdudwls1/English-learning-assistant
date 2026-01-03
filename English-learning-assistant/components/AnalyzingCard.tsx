@@ -5,16 +5,30 @@ import { getTranslation } from '../utils/translations';
 interface AnalyzingCardProps {
   sessionId: string;
   imageUrl: string;
+  onDelete?: (sessionId: string) => void;
 }
 
 export const AnalyzingCard: React.FC<AnalyzingCardProps> = ({ 
-  imageUrl 
+  sessionId,
+  imageUrl,
+  onDelete,
 }) => {
   const { language } = useLanguage();
   const t = getTranslation(language);
   
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6">
+    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6">
+      {onDelete && (
+        <button
+          type="button"
+          onClick={() => onDelete(sessionId)}
+          aria-label={language === 'ko' ? '세션 삭제' : 'Delete session'}
+          title={language === 'ko' ? '삭제' : 'Delete'}
+          className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200 dark:hover:bg-red-900/40"
+        >
+          <span className="text-xl leading-none">×</span>
+        </button>
+      )}
       <div className="flex items-start gap-6">
         {/* 이미지 썸네일 */}
         <img 
