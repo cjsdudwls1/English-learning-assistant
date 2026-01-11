@@ -140,7 +140,7 @@ const MainPage: React.FC<{
 
   return (
     <div className="page-shell">
-      <div className="bg-grid" aria-hidden="true" />
+      <div className="bg-grid" aria-hidden={true} />
       <TopBar status={status} />
 
       <main className="page-content">
@@ -152,14 +152,14 @@ const MainPage: React.FC<{
               한 번에 분석하는 <span>AI 영어 문제 분석기</span>
             </h1>
             <p className="lede">
-              {language === 'ko' 
+              {language === 'ko'
                 ? '문제 이미지를 업로드하면 AI가 자동으로 인식하고 채점합니다. 틀린 문제는 다시 풀어보고, 상세한 학습 통계를 확인할 수 있습니다.'
                 : 'Upload problem images and AI will automatically recognize and grade them. Review incorrect problems and check detailed learning statistics.'}
             </p>
             <div className="hero-actions">
-              <a className="primary" href="#lab">
+              <label className="primary" htmlFor="hero-image-input">
                 {language === 'ko' ? '지금 시작하기' : 'Get Started'}
-              </a>
+              </label>
               <Link className="ghost" to="/stats">
                 {language === 'ko' ? '통계 보기' : 'View Stats'}
               </Link>
@@ -177,17 +177,80 @@ const MainPage: React.FC<{
                 <p className="eyebrow">실시간 분석</p>
                 <strong>{language === 'ko' ? '간단히 업로드 → AI 분석 → 결과 확인' : 'Upload → AI Analysis → View Results'}</strong>
               </div>
-              <span className="hero-badge">{imageFiles.length > 0 ? (language === 'ko' ? '이미지 준비 완료' : 'Images Ready') : (language === 'ko' ? '이미지를 올려보세요' : 'Upload Images')}</span>
             </div>
-            <div className="hero-mini">
-              <div className="mini-row">
-                <span>{language === 'ko' ? '파일' : 'Files'}</span>
-                <p>{imageFiles.length > 0 ? `${imageFiles.length} ${language === 'ko' ? '개' : 'files'}` : (language === 'ko' ? '선택된 파일 없음' : 'No files selected')}</p>
+
+            <div className="upload-panel-moved" style={{ marginTop: '1.5rem' }}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label
+                  htmlFor="hero-image-input"
+                  className="file-label"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '100%',
+                    padding: '1.5rem',
+                    border: '2px dashed rgba(255,255,255,0.2)',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    background: 'rgba(255,255,255,0.05)',
+                    color: 'var(--text-main)',
+                    fontWeight: 500
+                  }}
+                >
+                  {imageFiles.length > 0
+                    ? (language === 'ko' ? `${imageFiles.length}개 파일 선택됨 (클릭하여 추가)` : `${imageFiles.length} files selected (Click to add more)`)
+                    : (language === 'ko' ? '+ 이미지 업로드' : '+ Upload Images')}
+                </label>
+                <input
+                  id="hero-image-input"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={onFileChange}
+                  style={{ display: 'none' }}
+                />
               </div>
-              <div className="mini-row">
-                <span>{language === 'ko' ? '상태' : 'Status'}</span>
-                <p>{status === 'idle' ? (language === 'ko' ? '대기 중' : 'Idle') : status === 'loading' ? (language === 'ko' ? '분석 중' : 'Analyzing') : status === 'done' ? (language === 'ko' ? '완료' : 'Done') : (language === 'ko' ? '오류' : 'Error')}</p>
-              </div>
+
+              {imageFiles.length > 0 && (
+                <div className="image-previews" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+                  {imageFiles.map((imageFile, index) => (
+                    <div key={imageFile.id} style={{ position: 'relative', flexShrink: 0, width: '60px', height: '60px' }}>
+                      <img
+                        src={imageFile.previewUrl}
+                        alt="preview"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }}
+                      />
+                      <button
+                        onClick={(e) => { e.preventDefault(); onRemove(index); }}
+                        style={{
+                          position: 'absolute', top: -5, right: -5,
+                          background: '#ff4444', color: 'white',
+                          borderRadius: '50%', width: '18px', height: '18px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: 'none', cursor: 'pointer', fontSize: '10px'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                className="primary"
+                onClick={onAnalyzeClick}
+                disabled={imageFiles.length === 0 || isLoading}
+                style={{ width: '100%', padding: '1rem', fontSize: '1.1rem' }}
+              >
+                {isLoading
+                  ? (language === 'ko' ? '분석 중…' : 'Analyzing...')
+                  : (language === 'ko' ? 'AI 분석 시작하기' : 'Start AI Analysis')
+                }
+              </button>
+              {error && <p className="error-text" style={{ marginTop: '0.5rem', color: '#ff6b6b', fontSize: '0.9rem' }}>{error}</p>}
             </div>
           </div>
         </section>
@@ -199,7 +262,7 @@ const MainPage: React.FC<{
               <h2>{language === 'ko' ? '높은 정확도의 AI 분석' : 'High Accuracy AI Analysis'}</h2>
             </div>
             <p className="muted">
-              {language === 'ko' 
+              {language === 'ko'
                 ? '실제 서비스 환경에서 측정된 정확도와 성능을 제공합니다.'
                 : 'We provide accuracy and performance measured in real service environments.'}
             </p>
@@ -222,7 +285,7 @@ const MainPage: React.FC<{
               <h2>{language === 'ko' ? '학습자와 교육자를 위한 솔루션' : 'Solutions for Learners and Educators'}</h2>
             </div>
             <p className="muted">
-              {language === 'ko' 
+              {language === 'ko'
                 ? '학생, 학부모, 선생님 모두가 활용할 수 있는 다양한 기능을 제공합니다.'
                 : 'We provide various features that students, parents, and teachers can all use.'}
             </p>
@@ -262,6 +325,7 @@ const MainPage: React.FC<{
         </section>
 
         <section className="lab" id="lab">
+          {/*
           <div className="section-head">
             <div>
               <p className="eyebrow">{language === 'ko' ? '이미지 업로드 · AI 분석' : 'Image Upload · AI Analysis'}</p>
@@ -273,7 +337,9 @@ const MainPage: React.FC<{
                 : 'Upload problem images and AI will automatically analyze them. Analysis runs in the background, and you can check results on the statistics page.'}
             </p>
           </div>
+          */}
           {error && <p className="error-text">{error}</p>}
+          {/*
           <div className="lab-grid">
             <div className="lab-left">
               <div className="panel upload-panel">
@@ -390,6 +456,7 @@ const MainPage: React.FC<{
               </section>
             </div>
           </div>
+          */}
         </section>
 
         <section className="panel pipeline" id="pipeline">
@@ -399,7 +466,7 @@ const MainPage: React.FC<{
               <h2>{language === 'ko' ? 'AI 분석 파이프라인' : 'AI Analysis Pipeline'}</h2>
             </div>
             <p className="muted">
-              {language === 'ko' 
+              {language === 'ko'
                 ? '이미지 업로드부터 AI 분석, 데이터 저장까지 순차적으로 실행합니다.'
                 : 'Runs sequentially from image upload to AI analysis to data storage.'}
             </p>
@@ -439,7 +506,7 @@ const MainPage: React.FC<{
             <p className="eyebrow">{language === 'ko' ? '지금 시작하기' : 'Get Started'}</p>
             <h2>{language === 'ko' ? 'AI 영어 문제 분석을 시작하세요' : 'Start AI English Problem Analysis'}</h2>
             <p className="muted">
-              {language === 'ko' 
+              {language === 'ko'
                 ? '이미지 업로드부터 통계 확인까지 모든 기능을 무료로 이용할 수 있습니다.'
                 : 'All features from image upload to statistics are available for free.'}
             </p>
@@ -501,7 +568,7 @@ const App: React.FC = () => {
         setStatus('error');
         return;
       }
-      
+
       const currentLanguage = language;
 
       if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
@@ -545,12 +612,12 @@ const App: React.FC = () => {
             console.log(`[${index}] Processing file:`, imageFile.file.name, 'Size:', imageFile.file.size, 'Type:', imageFile.file.type);
             const { base64, mimeType } = await fileToBase64(imageFile.file);
             console.log(`[${index}] File converted to base64:`, imageFile.file.name, 'Base64 length:', base64?.length, 'MimeType:', mimeType);
-            
+
             if (!base64 || typeof base64 !== 'string' || !base64.trim()) {
               console.error(`[${index}] Invalid base64:`, imageFile.file.name);
               throw new Error(`Invalid base64 for file: ${imageFile.file.name}`);
             }
-            
+
             return {
               imageBase64: base64,
               mimeType: mimeType || 'image/jpeg',
@@ -608,7 +675,7 @@ const App: React.FC = () => {
       navigate('/stats');
     } catch (err) {
       console.error(err);
-      const errorMessage = language === 'ko' 
+      const errorMessage = language === 'ko'
         ? '업로드 중 오류가 발생했습니다. 다시 시도해주세요.'
         : 'An error occurred during upload. Please try again.';
       setError(err instanceof Error ? err.message : errorMessage);
@@ -620,13 +687,13 @@ const App: React.FC = () => {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-    
+
     const imageFilesArray = Array.from(files).filter(f => f.type.startsWith('image/'));
     if (imageFilesArray.length === 0) {
       setError(language === 'ko' ? '이미지 파일만 선택할 수 있습니다.' : 'Only image files can be selected.');
       return;
     }
-    
+
     // 각 파일을 Promise로 변환하여 모든 파일이 로드될 때까지 대기
     const filePromises = imageFilesArray.map((file) => {
       return new Promise<ImageFile>((resolve) => {
@@ -645,7 +712,7 @@ const App: React.FC = () => {
         reader.readAsDataURL(file);
       });
     });
-    
+
     // 모든 파일이 로드되면 상태 업데이트
     Promise.all(filePromises).then((loadedFiles) => {
       // 유효한 파일만 필터링 (previewUrl이 있는 것만)
@@ -658,7 +725,7 @@ const App: React.FC = () => {
       console.error('Error loading files:', error);
       setError(language === 'ko' ? '파일을 읽는 중 오류가 발생했습니다.' : 'Error reading files.');
     });
-    
+
     // input 값 초기화 (같은 파일을 다시 선택할 수 있도록)
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -679,18 +746,18 @@ const App: React.FC = () => {
     setImageFiles(prev => {
       const imageFile = prev[index];
       if (!imageFile) return prev;
-      
+
       const rotatedFile = new File([rotatedBlob], imageFile.file.name, {
         type: rotatedBlob.type,
         lastModified: Date.now(),
       });
-      
+
       const previewUrl = URL.createObjectURL(rotatedBlob);
-      
+
       if (imageFile.previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(imageFile.previewUrl);
       }
-      
+
       const updated = [...prev];
       updated[index] = { ...imageFile, file: rotatedFile, previewUrl };
       return updated;

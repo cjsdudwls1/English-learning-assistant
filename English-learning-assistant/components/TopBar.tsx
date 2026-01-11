@@ -5,7 +5,7 @@ import { LanguageToggle } from './LanguageToggle';
 import { LogoutButton } from './LoginButton';
 import { useLanguage } from '../contexts/LanguageContext';
 
-type Status = 'idle' | 'loading' | 'done' | 'error';
+export type Status = 'idle' | 'loading' | 'done' | 'error';
 
 interface TopBarProps {
   status?: Status;
@@ -13,7 +13,7 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ status = 'idle' }) => {
   const { language } = useLanguage();
-  
+
   return (
     <header className="topbar">
       <div className="brand">
