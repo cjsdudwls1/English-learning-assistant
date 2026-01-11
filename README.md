@@ -15,7 +15,8 @@ npm run dev
 ```
 
 ## 배포 (Netlify)
-Netlify는 레포 루트의 `netlify.toml` 설정에 따라 `English-learning-assistant`를 빌드/배포합니다.
+-Netlify는 레포 루트의 `netlify.toml` 설정에 따라 `English-learning-assistant`를 빌드/배포합니다.
+-웹사이트 주소: https://english-learningassistant.netlify.app/
 
 ## 라이선스
 MIT
