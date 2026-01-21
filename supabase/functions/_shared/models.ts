@@ -18,5 +18,3 @@ export const MODEL_RETRY_POLICY: Record<(typeof MODEL_SEQUENCE)[number], { maxRe
     'gemma-3-27b-it': { maxRetries: 1, baseDelayMs: 3000 },
 };
 
-// Page-level OCR model
-export const OCR_MODEL = 'gemini-2.5-flash-lite';

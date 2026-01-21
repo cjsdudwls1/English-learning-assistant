@@ -13,6 +13,7 @@ export {
   fetchPendingLabelingSessions,
   deleteSession,
   getSessionStatus,
+  getSessionProgress,
 } from './db/sessions';
 
 // Problems

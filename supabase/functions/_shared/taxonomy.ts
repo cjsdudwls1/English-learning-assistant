@@ -21,6 +21,7 @@ export async function loadTaxonomyData(
 
   const { data, error } = await supabase
     .from('taxonomy')
+    // 프롬프트 기준표 생성 목적: depth1~4만 로딩
     .select(`${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`)
     .order(`${depth1Col}, ${depth2Col}, ${depth3Col}, ${depth4Col}`);
 

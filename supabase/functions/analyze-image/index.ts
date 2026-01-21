@@ -1,200 +1,44 @@
-// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
-import { createServiceSupabaseClient } from './_shared/supabaseClient.ts'
-import { requireEnv } from './_shared/env.ts'
-import { errorResponse, handleOptions, jsonResponse } from './_shared/http.ts'
-import { loadTaxonomyData } from './_shared/taxonomy.ts'
-import { MODEL_SEQUENCE, MODEL_RETRY_POLICY, EXTRACTION_TEMPERATURE, OCR_MODEL } from './_shared/models.ts'
-import { buildPrompt, buildOcrPrompt } from './_shared/prompts.ts'
+import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
+import { requireEnv } from '../_shared/env.ts'
+import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
+import { loadTaxonomyData } from '../_shared/taxonomy.ts'
+import { buildPrompt } from './_shared/prompts.ts'
+
+// 에러 처리 모듈
+import {
+  StageError,
+  summarizeError,
+  markSessionFailed,
+  type FailureStage
+} from '../_shared/errors.ts'
+
+// 검증 모듈
+import {
+  cleanOrNull,
+  makeDepthKey,
+  type TaxonomyByDepthKey,
+  type TaxonomyByCode
+} from './_shared/validation.ts'
+
+// 모델 시퀀스 (UI 표시용)
+import { MODEL_SEQUENCE } from '../_shared/models.ts'
+
+// OCR 처리 모듈
+import { processOcr, type ImageItem } from './_shared/ocrProcessor.ts'
+
+// 분석 처리 모듈
+import { analyzeImagesWithFailover, buildImageParts, validateParts } from './_shared/analysisProcessor.ts'
+
+// Labels 생성 모듈
+import { buildLabelsPayload } from './_shared/labelProcessor.ts'
+
+// 메타데이터 생성 모듈
+import { generateBatchMetadata, type MetadataInput } from './_shared/metadataGenerator.ts'
+import { buildStemText } from './_shared/problemProcessor.ts'
 
 
-// 실패 원인 기록을 위한 에러 타입/유틸
-
-type FailureStage =
-  | 'extract_call'
-  | 'extract_parse'
-  | 'extract_empty'
-  | 'insert_problems'
-  | 'insert_labels'
-  | 'request'
-  | 'unknown';
-
-class StageError extends Error {
-  stage: FailureStage;
-  details: any;
-
-  constructor(stage: FailureStage, message: string, details?: any) {
-    super(message);
-    this.name = 'StageError';
-    this.stage = stage;
-    this.details = details;
-  }
-}
-
-function summarizeError(error: any) {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-      cause: error.cause,
-    };
-  }
-  return String(error);
-}
-
-function parseModelError(error: any) {
-  return {
-    errorCode: error?.code,
-    errorStatus: error?.status,
-    errorMessage: error?.message,
-    isRateLimit: error?.status === 429,
-    isServerOverload: error?.status === 503,
-    isTimeout: error?.message?.includes('timeout') || error?.code === 'ETIMEDOUT',
-  };
-}
-
-function normalizeMark(mark: any): string {
-  if (mark === null || mark === undefined) return 'Unknown';
-  const s = String(mark).trim().toUpperCase();
-  if (['O', 'CORRECT', 'TRUE', 'YES', 'PASS'].includes(s)) return 'O';
-  if (['X', 'INCORRECT', 'FALSE', 'NO', 'FAIL'].includes(s)) return 'X';
-  return 'Unknown';
-}
-
-function validateAndSplitProblems(items: any[]): any[] {
-  if (!Array.isArray(items)) return [];
-  // Basic validation: must have at least a stem or question_text
-  return items.filter(item => {
-    const hasContent = item.question_text || item.stem;
-    return !!hasContent;
-  });
-}
-
-function validateExtractedItems(params: { items: any[]; taxonomyByDepthKey: Map<string, any>; taxonomyByCode: Map<string, any> }) {
-  // Pass-through validation for now
-  // In a real implementation this might check against the taxonomy maps
-  // and throw or log warnings.
-  const { items, taxonomyByDepthKey, taxonomyByCode } = params;
-  for (const item of items) {
-    const c = item.classification || {};
-    // Just a sanity check log could go here, but for now we trust the flow
-  }
-}
-
-async function markSessionFailed(params: {
-  supabase: any;
-  sessionId: string;
-  stage: FailureStage;
-  error: any;
-  extra?: any;
-}) {
-  const { supabase, sessionId, stage, error, extra } = params;
-  try {
-    const failureMessage = {
-      message: error?.message || String(error),
-      stage,
-      details: extra,
-      timestamp: new Date().toISOString(),
-    };
-    await supabase
-      .from('sessions')
-      .update({
-        status: 'failed',
-        failure_message: failureMessage
-      })
-      .eq('id', sessionId);
-  } catch (e) {
-    console.error('Failed to mark session as failed:', e);
-  }
-}
-
-
-
-function computeBackoffDelayMs(base: number, attempt: number) {
-  // exponential backoff + jitter (0.85~1.15)
-  const raw = base * Math.pow(2, Math.max(0, attempt - 1));
-  const jitter = 0.85 + Math.random() * 0.30;
-  return Math.round(raw * jitter);
-}
-
-async function generateWithRetry(params: {
-  ai: any;
-  model: string;
-  contents: any;
-  sessionId: string;
-  maxRetries: number;
-  baseDelayMs: number;
-  temperature: number;
-}) {
-  const { ai, model, contents, sessionId, maxRetries, baseDelayMs, temperature } = params;
-  let attempt = 0;
-  let lastParsed: any = null;
-  let lastErr: any = null;
-
-  while (attempt < maxRetries) {
-    try {
-      console.log(`[Background] Step 3b: Model call attempt ${attempt + 1}/${maxRetries} (model=${model})...`, { sessionId });
-
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature,
-        },
-        // ✅ RECITATION 및 기타 안전 필터로 인한 차단을 방지하기 위해 BLOCK_NONE 설정
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        ],
-      });
-      return { response, attemptCount: attempt + 1 };
-    } catch (apiError: any) {
-      attempt++;
-      lastErr = apiError;
-      lastParsed = parseModelError(apiError);
-      const { errorCode, errorStatus, errorMessage, isRateLimit, isServerOverload, isTimeout } = lastParsed;
-
-      console.error(`[Background] Step 3b: Model error (attempt ${attempt}/${maxRetries}, model=${model}):`, {
-        sessionId,
-        errorCode,
-        errorStatus,
-        errorMessage: String(errorMessage).substring(0, 200),
-      });
-
-      const retryable = isRateLimit || isServerOverload || isTimeout;
-      if (attempt >= maxRetries || !retryable) {
-        throw new StageError(
-          'extract_call',
-          `Model call failed after ${attempt} attempts (model=${model})`,
-          {
-            model,
-            attempt,
-            maxRetries,
-            errorCode,
-            errorStatus,
-            errorMessage: String(errorMessage).substring(0, 500),
-          }
-        );
-      }
-
-      const delay = computeBackoffDelayMs(baseDelayMs, attempt);
-      console.warn(`[Background] Step 3b: Retrying in ${Math.round(delay / 1000)}s... (attempt ${attempt}/${maxRetries}, model=${model})`, { sessionId });
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-
-  // should not reach here
-  throw new StageError(
-    'extract_call',
-    `Model call failed (no response) (model=${params.model})`,
-    { model: params.model, lastParsed, lastError: summarizeError(lastErr) }
-  );
-}
 
 
 
@@ -347,7 +191,8 @@ serve(async (req) => {
     }
 
     // 최종 저장할 image_urls 배열 (최소 1개는 있어야 함)
-    const finalImageUrls = cleanedImageUrls.length > 0 ? cleanedImageUrls : (imageUrls.length > 0 ? imageUrls : [imageUrl]);
+    // 최종 저장할 image_urls 배열 (최소 1개는 있어야 함)
+    const finalImageUrls = cleanedImageUrls.length > 0 ? cleanedImageUrls : imageUrls;
 
     console.log('Step 2: Final image URLs to save', {
       originalCount: imageUrls.length,
@@ -360,12 +205,12 @@ serve(async (req) => {
       .from('sessions')
       .insert({
         user_id: userId,
-        image_url: imageUrl, // 하위 호환성을 위해 첫 번째 이미지 URL 유지
+        // image_url 컬럼 삭제됨 (image_urls jsonb로 완전 대체)
         image_urls: finalImageUrls, // 다중 이미지 URL 배열
         analysis_model: MODEL_SEQUENCE[0],
         status: 'processing'
       })
-      .select('id, image_url, image_urls')
+      .select('id, image_urls')
       .single();
 
     if (sessionError) {
@@ -378,7 +223,6 @@ serve(async (req) => {
     // 저장된 데이터 검증
     console.log('Step 2: Session created', {
       sessionId: createdSessionId,
-      insertedImageUrl: sessionData.image_url,
       insertedImageUrls: sessionData.image_urls,
       imageUrlsType: typeof sessionData.image_urls,
       imageUrlsIsArray: Array.isArray(sessionData.image_urls),
@@ -440,14 +284,10 @@ serve(async (req) => {
           });
         }
 
-        const taxonomyByDepthKey = new Map<string, { code: string | null; cefr: string | null; difficulty: number | null }>();
-        const taxonomyByCode = new Map<string, { depth1: string | null; depth2: string | null; depth3: string | null; depth4: string | null; code: string | null; cefr: string | null; difficulty: number | null }>();
-        const makeDepthKey = (d1: string, d2: string, d3: string, d4: string) => `${d1}␟${d2}␟${d3}␟${d4}`;
-        const cleanOrNull = (v: unknown) => {
-          if (v === undefined || v === null) return null;
-          const s = String(v).trim();
-          return s ? s : null;
-        };
+        const taxonomyByDepthKey: TaxonomyByDepthKey = new Map();
+        const taxonomyByCode: TaxonomyByCode = new Map();
+        // makeDepthKey와 cleanOrNull은 _shared/validation.ts에서 import됨
+
 
         for (const row of taxonomyRows || []) {
           const code = cleanOrNull(row.code);
@@ -469,271 +309,49 @@ serve(async (req) => {
         // Gemini 클라이언트 (OCR 및 추출 공용)
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
-        // 3a-1. 페이지별 OCR 수행 (텍스트만 추출)
-        let ocrPages: Array<{ page: number; text: string }> = [];
-        try {
-          const ocrPrompt = buildOcrPrompt(imageList.length);
-          const ocrParts: any[] = [{ text: ocrPrompt }];
-          for (let i = 0; i < imageList.length; i++) {
-            const img = imageList[i];
-            const pageNumber = i + 1;
-            const pageCaption = `Page ${pageNumber} of ${imageList.length}. ${i === 0 ? 'Start of problem set.' : 'Continues from previous page.'} ${i === imageList.length - 1 ? 'This is the last page.' : 'Next page follows.'}`;
-            ocrParts.push({ text: pageCaption });
-            ocrParts.push({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } });
-          }
-
-          console.log(`[Background] Step 3a-1: Running OCR for ${imageList.length} pages (model=${OCR_MODEL})...`, { sessionId: createdSessionId });
-          const ocrAttempt = await generateWithRetry({
-            ai,
-            model: OCR_MODEL,
-            contents: { parts: ocrParts },
-            sessionId: createdSessionId,
-            maxRetries: 1,
-            baseDelayMs: 2000,
-            temperature: 0.0,
-          });
-
-          let ocrText: string = '';
-          const ocrResponse = ocrAttempt.response;
-          if (ocrResponse?.text) {
-            ocrText = typeof ocrResponse.text === 'function' ? await ocrResponse.text() : ocrResponse.text;
-          } else if (ocrResponse?.response?.text) {
-            ocrText = typeof ocrResponse.response.text === 'function' ? await ocrResponse.response.text() : ocrResponse.response.text;
-          } else if (ocrResponse?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            ocrText = ocrResponse.candidates[0].content.parts[0].text;
-          }
-
-          const ocrJsonString = (ocrText || '').replace(/```json/g, '').replace(/```/g, '').trim();
-          const parsedOcr = JSON.parse(ocrJsonString);
-          if (parsedOcr?.pages && Array.isArray(parsedOcr.pages)) {
-            ocrPages = parsedOcr.pages
-              .map((p: any, idx: number) => ({
-                page: Number(p?.page) || idx + 1,
-                text: typeof p?.text === 'string' ? p.text : '',
-              }))
-              .sort((a: any, b: any) => a.page - b.page);
-            console.log(`[Background] Step 3a-1: OCR pages extracted`, {
-              sessionId: createdSessionId,
-              pageCount: ocrPages.length,
-              sample: ocrPages.slice(0, 2).map(p => ({ page: p.page, textPreview: (p.text || '').substring(0, 80) })),
-            });
-          } else {
-            console.warn(`[Background] Step 3a-1: OCR response missing pages array; skipping transcript`, { sessionId: createdSessionId, ocrJsonStringPreview: ocrJsonString.substring(0, 300) });
-          }
-        } catch (ocrError) {
-          console.error(`[Background] Step 3a-1: OCR failed; continuing without transcript`, { sessionId: createdSessionId, error: summarizeError(ocrError) });
-          ocrPages = [];
-        }
+        // 3a-1. 페이지별 OCR 수행 (텍스트만 추출) - ocrProcessor 모듈 사용
+        const ocrResult = await processOcr({
+          ai,
+          imageList: imageList as ImageItem[],
+          sessionId: createdSessionId!,
+        });
+        const ocrPages = ocrResult.ocrPages;
 
         const prompt = buildPrompt(taxonomyData, userLanguage, imageList.length, ocrPages);
         console.log(`[Background] Step 3a completed: Taxonomy data loaded, prompt length: ${prompt.length}, ocrPages=${ocrPages.length}`);
 
-        // 3. Gemini API로 분석 (여러 이미지를 한 번에 전송)
+        // 3. Gemini API로 분석 (여러 이미지를 한 번에 전송) - analysisProcessor 모듈 사용
         console.log(`[Background] Step 3b: Analyzing ${imageList.length} image(s) with Gemini...`, { sessionId: createdSessionId });
 
-        // 모든 이미지를 parts 배열에 추가
-        console.log(`[Background] Step 3b: Preparing ${imageList.length} image(s) for Gemini API...`, {
-          sessionId: createdSessionId,
-          imageListLength: imageList.length,
-          imageFileNames: imageList.map((img, idx) => ({ index: idx, fileName: img.fileName, hasBase64: !!img.imageBase64, base64Length: img.imageBase64?.length || 0 }))
-        });
+        // 이미지 parts 배열 생성
+        const parts = buildImageParts(prompt, imageList as ImageItem[], createdSessionId!);
 
-        const parts: any[] = [{ text: prompt }];
-        for (let i = 0; i < imageList.length; i++) {
-          const img = imageList[i];
-          if (!img.imageBase64) {
-            console.error(`[Background] Step 3b: Image ${i} (${img.fileName}) has no base64 data!`, { sessionId: createdSessionId });
-            throw new Error(`Image ${i} (${img.fileName}) has no base64 data`);
-          }
-          const pageNumber = i + 1;
-          const pageCaption = `Page ${pageNumber} of ${imageList.length}. ${i === 0 ? 'Start of problem set.' : 'Continues from previous page.'} ${i === imageList.length - 1 ? 'This is the last page.' : 'Next page follows.'}`;
-          parts.push({ text: pageCaption });
-          parts.push({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } });
-          console.log(`[Background] Step 3b: Added image ${i + 1}/${imageList.length} to parts array with caption`, {
-            sessionId: createdSessionId,
-            fileName: img.fileName,
-            mimeType: img.mimeType,
-            base64Length: img.imageBase64.length,
-            pageCaption,
-          });
-        }
+        // parts 배열 검증
+        validateParts(parts, imageList.length, createdSessionId!);
 
         console.log(`[Background] Step 3b: Calling Gemini API with ${imageList.length} image(s)...`, {
           sessionId: createdSessionId,
           partsLength: parts.length,
           expectedImages: imageList.length,
-          actualImages: parts.filter((p: any) => !!p.inlineData).length, // image parts only
+          actualImages: parts.filter((p: any) => !!p.inlineData).length,
         });
 
-        // parts 배열 검증
-        if (!parts || !Array.isArray(parts) || parts.length === 0) {
-          throw new Error(`Invalid parts array: ${JSON.stringify(parts)}`);
-        }
+        // 모델 Failover 분석 실행
+        const analysisResult = await analyzeImagesWithFailover({
+          ai,
+          supabase,
+          sessionId: createdSessionId!,
+          parts,
+          imageCount: imageList.length,
+          taxonomyByDepthKey,
+          taxonomyByCode,
+        });
 
-        const inlineDataCount = parts.filter((p: any) => !!p.inlineData).length;
-        if (inlineDataCount !== imageList.length) {
-          console.error(`[Background] Step 3b: Parts array inlineData count mismatch! Expected ${imageList.length}, got ${inlineDataCount}`, { sessionId: createdSessionId });
-          throw new Error(`Parts array inlineData count mismatch: expected ${imageList.length}, got ${inlineDataCount}`);
-        }
-
-        // 모델 호출 + 파싱 + (0문항 포함) 검증까지 포함해서 ordered failover
-        let usedModel: string = MODEL_SEQUENCE[0];
-        let responseText: string = '';
-        let result: any = null;
-        let validatedItems: any[] = [];
-        const modelAttemptErrors: Array<{ model: string; error: any }> = [];
-
-        for (let i = 0; i < MODEL_SEQUENCE.length; i++) {
-          const model = MODEL_SEQUENCE[i];
-          const policy = MODEL_RETRY_POLICY[model];
-
-          // 세션에 현재 시도 모델 기록 (UI에서 표시)
-          try {
-            await supabase
-              .from('sessions')
-              .update({ analysis_model: model })
-              .eq('id', createdSessionId);
-          } catch (e) {
-            console.error(`[Background] Failed to update analysis_model`, { sessionId: createdSessionId, model, error: e });
-          }
-
-          try {
-            console.log(`[Background] Step 3b: Trying model ${i + 1}/${MODEL_SEQUENCE.length}: ${model}`, {
-              sessionId: createdSessionId,
-              maxRetries: policy?.maxRetries,
-              baseDelayMs: policy?.baseDelayMs,
-              temperature: EXTRACTION_TEMPERATURE,
-            });
-
-            const attempt = await generateWithRetry({
-              ai,
-              model,
-              contents: { parts },
-              sessionId: createdSessionId,
-              maxRetries: policy?.maxRetries ?? 2,
-              baseDelayMs: policy?.baseDelayMs ?? 3000,
-              temperature: EXTRACTION_TEMPERATURE,
-            });
-
-            const response = attempt.response;
-
-            // 응답 텍스트 추출 (content 없는 경우는 "성공"으로 보지 말고 다음 모델로 failover)
-            let candidateText: string = '';
-            if (response?.text) {
-              candidateText = typeof response.text === 'function'
-                ? await response.text()
-                : response.text;
-            } else if (response?.response?.text) {
-              candidateText = typeof response.response.text === 'function'
-                ? await response.response.text()
-                : response.response.text;
-            } else if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-              candidateText = response.candidates[0].content.parts[0].text;
-            } else {
-              const finishReason = response?.candidates?.[0]?.finishReason ?? null;
-              throw new StageError(
-                'extract_call',
-                `Model returned no content (model=${model})`,
-                {
-                  model,
-                  finishReason,
-                  hasCandidates: !!response?.candidates,
-                  candidatesLength: response?.candidates?.length,
-                  firstCandidate: response?.candidates?.[0]
-                    ? {
-                      finishReason: response.candidates[0].finishReason,
-                      hasContent: !!response.candidates[0].content,
-                      hasParts: !!response.candidates[0].content?.parts,
-                    }
-                    : null,
-                }
-              );
-            }
-
-            if (!candidateText || typeof candidateText !== 'string') {
-              throw new StageError(
-                'extract_call',
-                `Invalid response text (model=${model})`,
-                { model, responseTextType: typeof candidateText, responseTextLength: candidateText?.length }
-              );
-            }
-
-            // JSON 파싱 + 최소 유효성 검사 (여기서 0문항이면 다음 모델로 넘어감)
-            const jsonString = candidateText.replace(/```json/g, '').replace(/```/g, '').trim();
-            let parsed: any;
-            try {
-              parsed = JSON.parse(jsonString);
-            } catch (parseError: any) {
-              throw new StageError(
-                'extract_parse',
-                `JSON parse failed (model=${model}): ${parseError.message}`,
-                { model, jsonStringPreview: jsonString.substring(0, 800) }
-              );
-            }
-
-            if (!parsed || !Array.isArray(parsed.items)) {
-              throw new StageError(
-                'extract_parse',
-                `Invalid response format: items is missing (model=${model})`,
-                { model, parsedKeys: parsed ? Object.keys(parsed) : null, jsonStringPreview: jsonString.substring(0, 800) }
-              );
-            }
-
-            const candidateValidated = validateAndSplitProblems(parsed.items);
-
-            if (candidateValidated && candidateValidated.length > 0) {
-              // 추가 검증: 선택지, 문제 번호 순서/중복, taxonomy 유효성
-              validateExtractedItems({
-                items: candidateValidated,
-                taxonomyByDepthKey,
-                taxonomyByCode,
-              });
-            } else {
-              console.warn(`[Background] Step 3b: Model returned 0 items (model=${model}). Accepting empty extraction to avoid hallucination.`, {
-                sessionId: createdSessionId,
-                model,
-                responseTextPreview: jsonString.substring(0, 400),
-              });
-            }
-
-            // 성공
-            usedModel = model;
-            responseText = candidateText;
-            result = parsed;
-            validatedItems = candidateValidated;
-            break;
-          } catch (err: any) {
-            modelAttemptErrors.push({ model, error: err });
-            console.warn(`[Background] Step 3b: Model attempt failed, moving to next (model=${model})`, {
-              sessionId: createdSessionId,
-              modelIndex: i,
-              stage: err instanceof StageError ? err.stage : null,
-              error: err instanceof StageError ? err.details : summarizeError(err),
-            });
-
-            const isLast = i === MODEL_SEQUENCE.length - 1;
-            if (isLast) {
-              throw new StageError(
-                err instanceof StageError ? err.stage : 'extract_call',
-                `All model attempts failed (last=${model})`,
-                {
-                  modelSequence: MODEL_SEQUENCE,
-                  attempts: modelAttemptErrors.map(({ model: m, error }) => ({
-                    model: m,
-                    stage: error instanceof StageError ? error.stage : null,
-                    error: error instanceof StageError ? error.details : summarizeError(error),
-                  })),
-                }
-              );
-            }
-          }
-        }
+        const { usedModel, result, validatedItems } = analysisResult;
 
         console.log(`[Background] Step 3 completed: Model response received`, {
           sessionId: createdSessionId,
           usedModel,
-          responseLength: responseText.length,
-          rawItems: Array.isArray(result?.items) ? result.items.length : null,
           validatedItems: validatedItems.length,
         });
 
@@ -753,28 +371,69 @@ serve(async (req) => {
           return;
         }
 
-        // 4. 문제 저장 (메타데이터 포함)
+        // 4. 문제 저장 (새로운 JSONB content 구조 포함)
         console.log(`[Background] Step 4: Save problems to database...`, { sessionId: createdSessionId, itemCount: validatedItems.length });
         const items = validatedItems;
+
+        // 공유 지문 저장 (result.shared_passages가 있으면)
+        const sharedPassages = result?.shared_passages || [];
+
         // 여러 이미지에서 온 문제들이 중복된 index를 가질 수 있으므로, 배열 인덱스를 사용하여 고유한 index_in_image 보장
-        const problemsPayload = items.map((it: any, idx: number) => ({
-          session_id: createdSessionId,
-          index_in_image: idx, // 항상 배열 인덱스 사용 (0부터 순차적으로 증가)
-          stem: it.question_text || '',
-          choices: (it.choices || []).map((c: any) => {
-            // choices가 문자열 배열인 경우와 객체 배열인 경우 모두 처리
+        const problemsPayload = items.map((it: any, idx: number) => {
+          // choices 정규화: 문자열 배열 또는 객체 배열 모두 지원
+          const normalizedChoices = (it.choices || []).map((c: any) => {
             if (typeof c === 'string') {
               return { text: c };
             }
-            return { text: c.text || c };
-          }),
-          problem_metadata: it.metadata || {
-            difficulty: '중',
-            word_difficulty: 5,
-            problem_type: '분석 대기',
-            analysis: '분석 정보 없음'
+            // 새 구조: { label: "①", text: "..." }
+            if (c.label && c.text) {
+              return { label: c.label, text: c.text };
+            }
+            return { text: c.text || String(c) };
+          });
+
+          // stem 생성: 새 구조에서는 instruction + passage/question_body 조합
+          // 기존 question_text가 있으면 그것을 사용 (하위 호환성)
+          let stemText = it.question_text || '';
+          if (!stemText && it.instruction) {
+            // 새로운 구조: instruction을 기본으로 하고, passage가 있으면 앞에 추가
+            const passageText = it._resolved_passage || it.passage || '';
+            const questionBody = it.question_body || '';
+            stemText = [
+              passageText ? `[지문]\n${passageText}` : '',
+              it.visual_context ? `[${it.visual_context.type || '자료'}] ${it.visual_context.title || ''}\n${it.visual_context.content || ''}` : '',
+              `[문제] ${it.instruction}`,
+              questionBody ? `\n${questionBody}` : ''
+            ].filter(Boolean).join('\n\n');
           }
-        }));
+
+          // 새로운 content JSONB 구조 (UI에서 유연하게 활용 가능)
+          const contentJson = {
+            stem: stemText, // 조합된 전체 지문+문제 텍스트
+            problem_number: it.problem_number || null,
+            shared_passage_ref: it.shared_passage_ref || null,
+            passage: it._resolved_passage || it.passage || null,
+            visual_context: it.visual_context || null,
+            instruction: it.instruction || null,
+            question_body: it.question_body || null,
+            choices: normalizedChoices,
+            user_answer: it.user_answer || null,
+            user_marked_correctness: it.user_marked_correctness || null,
+          };
+
+          return {
+            session_id: createdSessionId,
+            index_in_image: idx, // 항상 배열 인덱스 사용 (0부터 순차적으로 증가)
+            // stem, choices 컬럼 제거됨 -> content에 포함됨
+            content: contentJson, // 새로운 JSONB 필드
+            problem_metadata: it.metadata || {
+              difficulty: '중',
+              word_difficulty: 5,
+              problem_type: '분석 대기',
+              analysis: '분석 정보 없음'
+            }
+          };
+        });
 
         const { data: problems, error: problemsError } = await supabase
           .from('problems')
@@ -800,129 +459,19 @@ serve(async (req) => {
           return;
         }
 
-        // 5. AI 분석 결과를 labels에 저장 (user_mark는 null로 - 사용자 검수 대기)
+        // 5. AI 분석 결과를 labels에 저장 (user_mark는 null로 - 사용자 검수 대기) - labelProcessor 모듈 사용
         console.log(`[Background] Step 5: Save AI analysis results to labels (pending user review)...`, { sessionId: createdSessionId, problemCount: problems?.length || 0 });
-        // index_in_image를 키로 사용하되, 배열 인덱스와 매칭되므로 중복 없음
-        const idByIndex = new Map<number, string>();
-        for (const row of problems || []) {
-          // 중복 체크: 같은 index_in_image가 이미 있으면 경고 (이론적으로는 발생하지 않아야 함)
-          if (idByIndex.has(row.index_in_image)) {
-            console.error(`[Background] Step 5: Duplicate index_in_image detected: ${row.index_in_image}. This should not happen!`, { sessionId: createdSessionId, problemId: row.id });
-          }
-          idByIndex.set(row.index_in_image, row.id);
-        }
 
-        // 각 문제에 대해 taxonomy 조회하여 code, CEFR, 난이도 추가
-        // items 배열의 인덱스와 problems 배열의 index_in_image가 일치하므로, 배열 인덱스를 직접 사용
-        const labelsPayload = await Promise.all(items.map(async (it: any, idx: number) => {
-          // user_marked_correctness가 "Unknown"인 경우 is_correct를 null로 설정
-          const rawMark = it.user_marked_correctness;
-          const isUnknown = rawMark && String(rawMark).trim().toLowerCase() === 'unknown';
-
-          let isCorrect: boolean | null = null;
-          if (!isUnknown) {
-            const normalizedMark = normalizeMark(rawMark);
-            isCorrect = normalizedMark === 'O'; // AI 분석 결과 저장 (O면 true, X면 false)
-          }
-          // Unknown인 경우는 null 유지 (사용자 검수 필요)
-
-          const classification = it.classification || {};
-
-          // ✅ taxonomy 분류: AI는 depth1~4를 출력하고, 서버는 depth→code로 정규화/보강한다.
-          // cleanOrNull은 Step 3a에서 정의한 것을 사용(closure)
-
-          const rawDepth1 = cleanOrNull(classification.depth1 ?? classification['depth1']);
-          const rawDepth2 = cleanOrNull(classification.depth2 ?? classification['depth2']);
-          const rawDepth3 = cleanOrNull(classification.depth3 ?? classification['depth3']);
-          const rawDepth4 = cleanOrNull(classification.depth4 ?? classification['depth4']);
-
-          const rawCode = cleanOrNull(classification.code ?? classification['code']);
-
-          let depth1: string | null = rawDepth1;
-          let depth2: string | null = rawDepth2;
-          let depth3: string | null = rawDepth3;
-          let depth4: string | null = rawDepth4;
-
-          let taxonomyCode: string | null = null;
-          let taxonomyCefr: string | null = null;
-          let taxonomyDifficulty: number | null = null;
-
-          // 1) depth1~4가 모두 있으면 → depth로 code/cefr/difficulty 조회
-          const hasAnyDepth = !!(depth1 || depth2 || depth3 || depth4);
-          const hasAllDepth = !!(depth1 && depth2 && depth3 && depth4);
-
-          if (hasAllDepth) {
-            const mapped = taxonomyByDepthKey.get(makeDepthKey(depth1!, depth2!, depth3!, depth4!));
-            taxonomyCode = mapped?.code ?? null;
-            taxonomyCefr = mapped?.cefr ?? null;
-            taxonomyDifficulty = mapped?.difficulty ?? null;
-            if (!taxonomyCode) {
-              console.warn(`Taxonomy mapping failed for depth: ${depth1}/${depth2}/${depth3}/${depth4}`);
-              // 기준표 밖의 값일 가능성이 높으므로 무효 처리
-              depth1 = depth2 = depth3 = depth4 = null;
-            }
-          } else if (hasAnyDepth) {
-            // depth 일부만 있는 경우는 애매하므로 무효 처리
-            console.warn(`Partial depth provided. Invalid taxonomy depth path: ${depth1}/${depth2}/${depth3}/${depth4}`);
-            depth1 = depth2 = depth3 = depth4 = null;
-          }
-
-          // 2) (호환) depth가 없고 code만 있으면 → code로 depth를 복원
-          if (!taxonomyCode && rawCode) {
-            const mapped = taxonomyByCode.get(rawCode);
-            if (mapped) {
-              taxonomyCode = mapped.code ?? null;
-              taxonomyCefr = mapped.cefr ?? null;
-              taxonomyDifficulty = mapped.difficulty ?? null;
-              depth1 = mapped.depth1 ?? null;
-              depth2 = mapped.depth2 ?? null;
-              depth3 = mapped.depth3 ?? null;
-              depth4 = mapped.depth4 ?? null;
-            } else {
-              console.warn(`Invalid taxonomy code: "${rawCode}" (not found)`);
-            }
-          }
-
-          // classification에 code, CEFR, 난이도 추가 (유효한 값만 저장)
-          // 빈 문자열도 null로 변환하여 저장 (gemma 모델이 빈 문자열을 반환하는 경우 대비)
-          const enrichedClassification = {
-            depth1: depth1,
-            depth2: depth2,
-            depth3: depth3,
-            depth4: depth4,
-
-            // 정규화된 taxonomy 코드/난이도
-            code: taxonomyCode,
-            CEFR: taxonomyCefr,
-            난이도: taxonomyDifficulty,
-          };
-
-          // 배열 인덱스를 직접 사용 (problemsPayload에서 index_in_image: idx로 설정했으므로)
-          const problemId = idByIndex.get(idx);
-          if (!problemId) {
-            console.error(`[Background] Step 5: Problem ID not found for array index ${idx}. This should not happen!`, {
-              sessionId: createdSessionId,
-              idByIndexSize: idByIndex.size,
-              idByIndexKeys: Array.from(idByIndex.keys()),
-              itemsLength: items.length
-            });
-            return null;
-          }
-
-          return {
-            problem_id: problemId,
-            user_answer: it.user_answer || '',
-            user_mark: null, // 사용자 검수 전이므로 null
-            is_correct: isCorrect, // AI 분석 결과 저장 (O면 true, X면 false, Unknown이면 null)
-            classification: enrichedClassification,
-          };
-        }));
-
-        // null 값 필터링 (problemId를 찾지 못한 항목 제외)
-        const validLabelsPayload = labelsPayload.filter((label): label is NonNullable<typeof label> => label !== null);
+        const validLabelsPayload = await buildLabelsPayload({
+          items,
+          problems: problems || [],
+          taxonomyByDepthKey,
+          taxonomyByCode,
+          sessionId: createdSessionId!,
+        });
 
         if (validLabelsPayload.length === 0) {
-          console.warn(`[Background] Step 5 warning: No valid labels to insert`, { sessionId: createdSessionId, labelsPayloadLength: labelsPayload.length });
+          console.warn(`[Background] Step 5 warning: No valid labels to insert`, { sessionId: createdSessionId });
         } else {
           console.log(`[Background] Step 5: Inserting ${validLabelsPayload.length} labels...`, { sessionId: createdSessionId });
           const { error: labelsError } = await supabase.from('labels').insert(validLabelsPayload);
@@ -937,16 +486,13 @@ serve(async (req) => {
         // Step 5.5 (Early Status Update) removed to prevent race condition.
         // Session status will be updated to 'completed' only after metadata generation (Step 6) is finished.
 
-        // 6. 문제 메타데이터 생성 및 저장
+        // 6. 문제 메타데이터 생성 및 저장 - metadataGenerator 모듈 사용
         console.log(`[Background] Step 6: Generate problem metadata...`, { sessionId: createdSessionId });
 
         if (!problems || problems.length === 0) {
           console.log(`[Background] Step 6 skipped: No problems to process`, { sessionId: createdSessionId });
         } else {
-          const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
           // 문제와 원본 아이템을 매핑
-          // items 배열의 인덱스와 problems의 index_in_image가 일치하므로, 배열 인덱스를 직접 사용
           const problemItemMap = new Map<number, any>();
           for (let i = 0; i < items.length; i++) {
             problemItemMap.set(i, items[i]);
@@ -958,18 +504,8 @@ serve(async (req) => {
             problemLabelsMap.set(label.problem_id, label);
           }
 
-          console.log(`[Background] Step 6: Preparing batch metadata generation for ${problems.length} problems...`, { sessionId: createdSessionId });
-
-          // Step 6은 "문제 수만큼 Gemini 호출" 시 rate limit/시간 초과로 통째로 실패하기 쉬움.
-          // -> 한 번의 호출로 배열(JSON)로 받는 배치 방식으로 안정화.
-          const batchInputs: Array<{
-            problem_id: string;
-            problem_type: string;
-            stem: string;
-            choices: string;
-            user_answer: string;
-            is_correct: boolean | null;
-          }> = [];
+          // 배치 입력 데이터 준비
+          const batchInputs: MetadataInput[] = [];
           const problemTypeById = new Map<string, string>();
 
           for (const p of problems) {
@@ -977,7 +513,8 @@ serve(async (req) => {
             const label = problemLabelsMap.get(p.id);
 
             if (!originalItem) continue;
-            const stem = String(p.stem || '').trim();
+            if (!originalItem) continue;
+            const stem = String(buildStemText(originalItem) || '').trim();
             if (!stem) continue;
 
             const classification = label?.classification || {};
@@ -991,7 +528,10 @@ serve(async (req) => {
               ? typeParts.join(' - ')
               : (userLanguage === 'ko' ? '분류 없음' : 'Unclassified');
 
-            const choices = (p.choices || []).map((c: any) => c.text || c).join('\n');
+            const choices = (originalItem.choices || []).map((c: any) => {
+              if (typeof c === 'string') return c;
+              return c?.text || '';
+            }).join('\n');
             const userAnswer = originalItem.user_answer || '';
             const isCorrect = label?.is_correct ?? null;
 
@@ -1006,146 +546,15 @@ serve(async (req) => {
             });
           }
 
-          if (batchInputs.length === 0) {
-            console.log(`[Background] Step 6 skipped: No valid problems to generate metadata`, { sessionId: createdSessionId });
-          } else {
-            const formattedList = batchInputs.map((it, idx) => {
-              const correctness = it.is_correct === null ? (userLanguage === 'ko' ? '미상' : 'Unknown') : (it.is_correct ? (userLanguage === 'ko' ? '정답' : 'Correct') : (userLanguage === 'ko' ? '오답' : 'Incorrect'));
-              return userLanguage === 'ko'
-                ? `#${idx + 1}\nproblem_id: ${it.problem_id}\n문제 유형: ${it.problem_type}\n문제 내용:\n${it.stem}\n선택지:\n${it.choices}\n사용자 답안: ${it.user_answer}\n정답 여부: ${correctness}\n`
-                : `#${idx + 1}\nproblem_id: ${it.problem_id}\nProblem Type: ${it.problem_type}\nProblem:\n${it.stem}\nChoices:\n${it.choices}\nUser Answer: ${it.user_answer}\nIs Correct: ${correctness}\n`;
-            }).join('\n');
-
-            const metadataPrompt = userLanguage === 'ko'
-              ? `아래 영어 문제 목록에 대해 메타데이터를 생성해주세요.\n\n- 반드시 **JSON 배열만** 응답하세요 (설명/마크다운/코드펜스 금지).\n- 각 항목은 반드시 입력의 problem_id를 그대로 포함해야 합니다.\n\n응답 형식:\n[\n  {\n    \"problem_id\": \"...\",\n    \"difficulty\": \"상\" | \"중\" | \"하\",\n    \"word_difficulty\": 1-9 사이의 숫자,\n    \"analysis\": \"문제에 대한 상세 분석 정보 (한국어)\"\n  }\n]\n\n난이도 기준:\n- 상: 고등학교 수준 이상의 어려운 문제\n- 중: 중학교 수준의 문제\n- 하: 초등학교 수준의 쉬운 문제\n\n단어 난이도 기준:\n- 1-3: 초등학교 수준의 쉬운 단어\n- 4-6: 중학교 수준의 보통 단어\n- 7-9: 고등학교 수준 이상의 어려운 단어\n\n문제 목록:\n${formattedList}`
-              : `Generate metadata for the following English problems.\n\n- Respond with **JSON array only** (no explanations/markdown/code fences).\n- Each item must include the exact problem_id from the input.\n\nResponse format:\n[\n  {\n    \"problem_id\": \"...\",\n    \"difficulty\": \"high\" | \"medium\" | \"low\",\n    \"word_difficulty\": 1-9,\n    \"analysis\": \"Detailed analysis (English)\"\n  }\n]\n\nProblems:\n${formattedList}`;
-
-            let successCount = 0;
-            let errorCount = 0;
-
-            let metadataSuccess = false;
-            let lastMetadataError: any = null;
-
-            for (let mIdx = 0; mIdx < MODEL_SEQUENCE.length; mIdx++) {
-              const model = MODEL_SEQUENCE[mIdx];
-              const policy = MODEL_RETRY_POLICY[model];
-
-              if (metadataSuccess) break;
-
-              try {
-                console.log(`[Background] Step 6: Calling Gemini for batch metadata (${batchInputs.length} problems) using ${model} (${mIdx + 1}/${MODEL_SEQUENCE.length})...`, { sessionId: createdSessionId });
-
-                const response = await ai.models.generateContent({
-                  model,
-                  contents: { parts: [{ text: metadataPrompt }] },
-                  generationConfig: {
-                    responseMimeType: "application/json",
-                    temperature: 0.0,
-                  },
-                });
-
-                let metadataText: string = '';
-                if (response?.text) {
-                  metadataText = typeof response.text === 'function'
-                    ? await response.text()
-                    : response.text;
-                } else if (response?.response?.text) {
-                  metadataText = typeof response.response.text === 'function'
-                    ? await response.response.text()
-                    : response.response.text;
-                } else if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                  metadataText = response.candidates[0].content.parts[0].text;
-                }
-
-                if (!metadataText || typeof metadataText !== 'string') {
-                  throw new Error(`Invalid metadata response text from ${model}`);
-                }
-
-                const jsonString = metadataText.replace(/```json/g, '').replace(/```/g, '').trim();
-                let parsed: any;
-                try {
-                  parsed = JSON.parse(jsonString);
-                } catch {
-                  const arrMatch = jsonString.match(/\[[\s\S]*\]/);
-                  if (!arrMatch) throw new Error('No JSON array found in metadata response');
-                  parsed = JSON.parse(arrMatch[0]);
-                }
-
-                if (!Array.isArray(parsed)) {
-                  throw new Error('Metadata response is not an array');
-                }
-
-                // 성공적으로 파싱됨 -> 저장 진행
-                for (const row of parsed) {
-                  const problemId = String(row?.problem_id || '').trim();
-                  if (!problemId) {
-                    errorCount++;
-                    continue;
-                  }
-                  const problemType = problemTypeById.get(problemId) || (userLanguage === 'ko' ? '분류 없음' : 'Unclassified');
-
-                  // 난이도 정규화
-                  let difficulty = row?.difficulty;
-                  if (userLanguage === 'en') {
-                    const valid = ['high', 'medium', 'low'];
-                    if (!valid.includes(difficulty)) {
-                      if (difficulty === '상') difficulty = 'high';
-                      else if (difficulty === '중') difficulty = 'medium';
-                      else if (difficulty === '하') difficulty = 'low';
-                      else difficulty = 'medium';
-                    }
-                  } else {
-                    const valid = ['상', '중', '하'];
-                    if (!valid.includes(difficulty)) {
-                      if (difficulty === 'high') difficulty = '상';
-                      else if (difficulty === 'medium') difficulty = '중';
-                      else if (difficulty === 'low') difficulty = '하';
-                      else difficulty = '중';
-                    }
-                  }
-
-                  // 단어 난이도 1-9
-                  const wdNum = Number(row?.word_difficulty);
-                  const wordDifficulty = (!isNaN(wdNum) && wdNum >= 1 && wdNum <= 9) ? Math.round(wdNum) : 5;
-
-                  const analysis = typeof row?.analysis === 'string' ? row.analysis : '';
-
-                  const { error: updateError } = await supabase
-                    .from('problems')
-                    .update({
-                      problem_metadata: {
-                        difficulty,
-                        word_difficulty: wordDifficulty,
-                        problem_type: problemType,
-                        analysis,
-                      }
-                    })
-                    .eq('id', problemId);
-
-                  if (updateError) {
-                    console.error(`[Background] Step 6: Error updating metadata for problem ${problemId}:`, updateError, { sessionId: createdSessionId });
-                    errorCount++;
-                    continue; // 개별 저장 실패는 전체 실패로 간주하지 않음 (부분 성공)
-                  }
-                  successCount++;
-                }
-
-                metadataSuccess = true;
-                console.log(`[Background] Step 6 completed: Batch metadata saved for ${successCount}/${batchInputs.length} problems using ${model}`, { sessionId: createdSessionId });
-
-              } catch (error) {
-                lastMetadataError = error;
-                console.warn(`[Background] Step 6: Metadata generation failed with ${model}:`, error, { sessionId: createdSessionId });
-                // loop continues to next model
-              }
-            }
-
-            if (!metadataSuccess) {
-              console.error(`[Background] Step 6: All metadata models failed.`, { sessionId: createdSessionId, lastError: lastMetadataError });
-              // Throw error to capture it in session failure_message
-              throw new Error(`Metadata generation failed for all models. Last error: ${lastMetadataError?.message || 'Unknown'}`);
-            }
-          }
+          // generateBatchMetadata 모듈 함수 호출
+          await generateBatchMetadata({
+            ai: new GoogleGenAI({ apiKey: geminiApiKey }),
+            supabase,
+            batchInputs,
+            problemTypeById,
+            userLanguage,
+            sessionId: createdSessionId!,
+          });
         }
 
         // 7. 세션 상태를 completed로 업데이트

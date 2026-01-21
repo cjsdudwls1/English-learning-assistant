@@ -9,12 +9,12 @@ export function transformToProblemItem(
   label: any = {}
 ): ProblemItem {
   const classification = label.classification || {};
-  
+
   // user_mark가 null이면 AI 분석 결과(is_correct)를 기본값으로 사용
   const userMark = label.user_mark !== null && label.user_mark !== undefined
     ? normalizeMark(label.user_mark)
     : (label.is_correct ? 'O' : 'X'); // AI 분석 결과를 기본값으로
-  
+
   return {
     index: p.index_in_image,
     사용자가_직접_채점한_정오답: userMark,
@@ -22,9 +22,9 @@ export function transformToProblemItem(
       ? (label.is_correct ? '정답' : '오답')
       : undefined,
     문제내용: {
-      text: p.stem || '',
+      text: p.content?.stem || p.stem || '',
     },
-    문제_보기: (p.choices || []).map((c: any) => ({
+    문제_보기: (p.content?.choices || p.choices || []).map((c: any) => ({
       text: c.text || '',
     })),
     사용자가_기술한_정답: {
@@ -57,9 +57,9 @@ export function transformFromLabelJoin(row: any): ProblemItem {
       ? (row.is_correct ? '정답' : '오답')
       : undefined,
     문제내용: {
-      text: row.problems.stem || '',
+      text: row.problems.content?.stem || row.problems.stem || '',
     },
-    문제_보기: (row.problems.choices || []).map((c: any) => ({
+    문제_보기: (row.problems.content?.choices || row.problems.choices || []).map((c: any) => ({
       text: c.text || '',
     })),
     사용자가_기술한_정답: {

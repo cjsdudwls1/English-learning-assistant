@@ -1,12 +1,13 @@
-// @ts-nocheck
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
-import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
-import { requireEnv } from '../_shared/env.ts'
-import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
-import { fetchTaxonomyByCode } from '../_shared/taxonomy.ts'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0";
+import { createServiceSupabaseClient } from "../_shared/supabaseClient.ts";
+import { requireEnv } from "../_shared/env.ts";
+import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_shared/http.ts";
+import { fetchTaxonomyByCode } from "../_shared/taxonomy.ts";
+import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from "../_shared/aiClient.ts";
+import { summarizeError } from "../_shared/errors.ts";
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return handleOptions();
   }
@@ -34,7 +35,7 @@ serve(async (req) => {
       return errorResponse('Taxonomy not found', 404);
     }
 
-    // 2. 사용자 프로필 정보 조회 (연령, 학년)
+    // 2. 사용자 프로필 정보 조회
     console.log('Step 2: Fetching user profile');
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -46,22 +47,23 @@ serve(async (req) => {
       throw profileError;
     }
 
-    const userAge = profile?.age ? parseInt(profile.age) || 14 : 14; // 기본값: 14세
-    const userGrade = profile?.grade || '중학생'; // 기본값: 중학생
+    const userAge = profile?.age ? parseInt(profile.age) || 14 : 14;
+    const userGrade = profile?.grade || '중학생';
 
     // 3. Gemini로 예시 문장 생성
     console.log('Step 3: Generating example with Gemini', { language });
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    const sessionId = `gen-ex-${userId}-${Date.now()}`;
 
     // 언어에 따라 프롬프트 생성
     const isEnglish = language === 'en';
-    const coreRule = isEnglish 
+    const coreRule = isEnglish
       ? (taxonomy.core_rule_en || taxonomy.core_rule_ko || 'N/A')
       : (taxonomy.core_rule_ko || taxonomy.core_rule_en || 'N/A');
     const definition = isEnglish
       ? (taxonomy.definition_en || taxonomy.definition_ko || 'N/A')
       : (taxonomy.definition_ko || taxonomy.definition_en || 'N/A');
-    
+
     const depth1Display = isEnglish ? (taxonomy.depth1_en || taxonomy.depth1) : taxonomy.depth1;
     const depth2Display = isEnglish ? (taxonomy.depth2_en || taxonomy.depth2) : taxonomy.depth2;
     const depth3Display = isEnglish ? (taxonomy.depth3_en || taxonomy.depth3) : taxonomy.depth3;
@@ -150,60 +152,49 @@ Output in the following JSON format:
 \`\`\`
 `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const modelName = 'gemini-2.0-flash-exp'; // 또는 gemini-2.5-flash
+    const result = await generateWithRetry({
+      ai,
+      model: modelName,
       contents: { parts: [{ text: prompt }] },
+      sessionId,
+      maxRetries: 2,
+      baseDelayMs: 2000,
+      temperature: 0.7,
     });
 
-    const responseText = response.text;
+    const responseText = await extractTextFromResponse(result.response, modelName);
     console.log('Step 3 completed: Gemini response received, length:', responseText.length);
 
-    // JSON 파싱
-    let jsonString = responseText.trim();
-    // ```json 또는 ```로 감싸진 경우 제거
-    jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    let result;
-    try {
-      result = JSON.parse(jsonString);
-    } catch (parseError) {
-      console.error('JSON parsing error:', parseError);
-      console.error('Response text:', responseText);
-      // JSON 파싱 실패 시 텍스트에서 JSON 부분만 추출 시도
-      const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          result = JSON.parse(jsonMatch[0]);
-        } catch (e) {
-          throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-        }
-      } else {
-        throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-      }
-    }
+    // JSON 파싱 (공통 함수 사용)
+    const parsed: any = parseJsonResponse(responseText, modelName);
 
     // 결과 검증
-    if (!result || typeof result !== 'object') {
+    if (!parsed || typeof parsed !== 'object') {
       throw new Error('Invalid response format from AI');
     }
 
     // 필수 필드 확인
-    if (!result.wrong_example && !result.correct_example) {
+    if (!parsed.wrong_example && !parsed.correct_example) {
       throw new Error('AI response missing required fields: wrong_example or correct_example');
     }
 
     return jsonResponse({
       success: true,
       example: {
-        wrong_example: result.wrong_example || '',
-        correct_example: result.correct_example || '',
-        explanation: result.explanation || '',
+        wrong_example: parsed.wrong_example || '',
+        correct_example: parsed.correct_example || '',
+        explanation: parsed.explanation || '',
       },
     });
+
   } catch (error: any) {
     console.error('Error in generate-example function:', error);
-
-    return errorResponse(error.message || 'Internal server error', 500, error.toString());
+    return errorResponse(
+      error.message || 'Internal server error',
+      500,
+      summarizeError(error)
+    );
   }
 });
 

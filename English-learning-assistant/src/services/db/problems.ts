@@ -7,27 +7,28 @@ import { transformToProblemItem, transformFromLabelJoin } from '../../utils/prob
 // 특정 세션의 문제 조회
 export async function fetchSessionProblems(sessionId: string): Promise<ProblemItem[]> {
   const userId = await getCurrentUserId();
-  
+
   // 세션 소유권 검증
   const { data: session, error: sessionError } = await supabase
     .from('sessions')
     .select('user_id')
     .eq('id', sessionId)
     .single();
-  
+
   if (sessionError) throw sessionError;
   if (session.user_id !== userId) {
     throw new Error('이 세션에 접근할 권한이 없습니다.');
   }
-  
+
   // problems와 labels 조회
   const { data: problems, error: problemsError } = await supabase
     .from('problems')
     .select(`
       id,
       index_in_image,
-      stem,
-      choices,
+      id,
+      index_in_image,
+      content,
       labels (
         user_answer,
         user_mark,
@@ -37,15 +38,15 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
     `)
     .eq('session_id', sessionId)
     .order('index_in_image', { ascending: true });
-  
+
   if (problemsError) throw problemsError;
-  
+
   // ProblemItem 형식으로 변환 (AI 분석 결과 포함)
   const items: ProblemItem[] = (problems || []).map((p: any) => {
     const label = p.labels?.[0] || {};
     return transformToProblemItem(p, label);
   });
-  
+
   return items;
 }
 
@@ -67,8 +68,9 @@ export async function fetchProblemsByIds(problemIds: string[]): Promise<ProblemI
       problems!inner (
         id,
         index_in_image,
-        stem,
-        choices,
+        id,
+        index_in_image,
+        content,
         session_id,
         sessions!inner (
           user_id
@@ -92,7 +94,7 @@ export async function fetchProblemsByClassification(
   isCorrect: boolean | null
 ): Promise<any[]> {
   const userId = await getCurrentUserId();
-  
+
   let query = supabase
     .from('labels')
     .select(`
@@ -104,17 +106,19 @@ export async function fetchProblemsByClassification(
         id,
         session_id,
         index_in_image,
-        stem,
-        choices,
+        id,
+        session_id,
+        index_in_image,
+        content,
         sessions!inner (
           user_id,
           created_at,
-          image_url
+          image_urls
         )
       )
     `)
     .eq('problems.sessions.user_id', userId);
-  
+
   // 분류 필터링
   if (depth1) {
     query = query.eq('classification->>depth1', depth1);
@@ -128,16 +132,16 @@ export async function fetchProblemsByClassification(
   if (depth4) {
     query = query.eq('classification->>depth4', depth4);
   }
-  
+
   // 정답/오답 필터링
   if (isCorrect !== null) {
     query = query.eq('is_correct', isCorrect);
   }
-  
+
   const { data, error } = await query;
-  
+
   if (error) throw error;
-  
+
   // 데이터 포맷 변환
   return (data || []).map((item: any) => ({
     problem_id: item.problem_id,
@@ -148,12 +152,12 @@ export async function fetchProblemsByClassification(
       id: item.problems.id,
       session_id: item.problems.session_id,
       index_in_image: item.problems.index_in_image,
-      stem: item.problems.stem,
-      choices: item.problems.choices,
+      stem: item.problems.content?.stem || item.problems.stem,
+      choices: item.problems.content?.choices || item.problems.choices,
       session: {
         id: item.problems.session_id,
         created_at: item.problems.sessions.created_at,
-        image_url: item.problems.sessions.image_url,
+        image_url: item.problems.sessions.image_urls?.[0] || '',
       },
     },
   }));
@@ -162,19 +166,19 @@ export async function fetchProblemsByClassification(
 // 문제별 라벨링 정보 조회 (라벨링 UI용) - AI 분석 결과 포함
 export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id: string; index_in_image: number; ai_is_correct: boolean | null }[]> {
   const userId = await getCurrentUserId();
-  
+
   // 세션 소유권 검증
   const { data: session, error: sessionError } = await supabase
     .from('sessions')
     .select('user_id')
     .eq('id', sessionId)
     .single();
-  
+
   if (sessionError) throw sessionError;
   if (session.user_id !== userId) {
     throw new Error('이 세션에 접근할 권한이 없습니다.');
   }
-  
+
   // problems와 labels 조회 (AI 분석 결과 포함)
   const { data: problems, error: problemsError } = await supabase
     .from('problems')
@@ -187,9 +191,9 @@ export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id:
     `)
     .eq('session_id', sessionId)
     .order('index_in_image', { ascending: true });
-  
+
   if (problemsError) throw problemsError;
-  
+
   return (problems || []).map((p: any) => ({
     id: p.id,
     index_in_image: p.index_in_image,
@@ -202,32 +206,44 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
   // 먼저 해당 세션의 문제 ID들을 가져옴
   const { data: problems, error: fetchError } = await supabase
     .from('problems')
-    .select('id, index_in_image')
+    .select('id, index_in_image, content')
     .eq('session_id', sessionId);
-  
+
   if (fetchError) throw fetchError;
-  
+
   const idByIndex = new Map<number, string>();
   for (const row of problems || []) {
     idByIndex.set(row.index_in_image, row.id);
   }
-  
+
+  // content 맵핑 (업데이트 시 기존 content 유지 위함)
+  const contentById = new Map<string, any>();
+  for (const row of problems || []) {
+    contentById.set(row.id, row.content || {});
+  }
+
   // 각 문제에 대해 업데이트
   for (const item of items) {
     const problemId = idByIndex.get(item.index);
     if (!problemId) continue;
-    
-    // problems 테이블 업데이트
+
+    // problems 테이블 업데이트 (content JSONB)
+    const currentContent = contentById.get(problemId) || {};
+    const updatedContent = {
+      ...currentContent,
+      stem: item.문제내용.text,
+      choices: item.문제_보기.map(c => ({ text: c.text })),
+    };
+
     const { error: problemUpdateError } = await supabase
       .from('problems')
       .update({
-        stem: item.문제내용.text,
-        choices: item.문제_보기.map(c => ({ text: c.text })),
+        content: updatedContent,
       })
       .eq('id', problemId);
-    
+
     if (problemUpdateError) throw problemUpdateError;
-    
+
     // labels 테이블 업데이트
     const { error: labelUpdateError } = await supabase
       .from('labels')
@@ -238,7 +254,7 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
         classification: item.문제_유형_분류,
       })
       .eq('problem_id', problemId);
-    
+
     if (labelUpdateError) throw labelUpdateError;
   }
 

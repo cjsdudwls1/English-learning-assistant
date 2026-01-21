@@ -120,15 +120,15 @@ export const StatsPage: React.FC = () => {
     try {
       setIsLoadingMetadata(true);
       setMetadataIsCorrect(isCorrect);
-      
+
       // 분류 정보 추출
       const depth1 = node.depth1 || undefined;
       const depth2 = node.depth2 || undefined;
       const depth3 = node.depth3 || undefined;
       const depth4 = node.depth4 || undefined;
-      
+
       console.log('Fetching metadata with params:', { depth1, depth2, depth3, depth4, isCorrect });
-      
+
       // 메타데이터 조회
       const items = await fetchProblemsMetadataByCorrectness(
         depth1,
@@ -137,15 +137,15 @@ export const StatsPage: React.FC = () => {
         depth4,
         isCorrect
       );
-      
+
       console.log('Metadata items received:', items);
       setProblemMetadataItems(items);
       setShowMetadataModal(true);
       console.log('Modal should be shown now');
     } catch (error) {
       console.error('Error fetching problem metadata:', error);
-      alert(language === 'ko' 
-        ? '문제 분석 정보를 불러오는 중 오류가 발생했습니다.' 
+      alert(language === 'ko'
+        ? '문제 분석 정보를 불러오는 중 오류가 발생했습니다.'
         : 'Error loading problem analysis information.');
     } finally {
       setIsLoadingMetadata(false);
@@ -231,6 +231,7 @@ export const StatsPage: React.FC = () => {
           sessionId={session.id}
           imageUrl={session.image_url}
           onDelete={handleDeleteSession}
+          analysisModel={session.analysis_model}
         />
       ))}
 
@@ -253,7 +254,7 @@ export const StatsPage: React.FC = () => {
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 w-full max-w-full min-w-0">
         <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-200">{t.stats.statsByType}</h2>
-        
+
         {/* 기간 설정 UI */}
         <StatsDateFilter
           startDate={filters.startDate}
@@ -318,9 +319,9 @@ export const StatsPage: React.FC = () => {
                 {language === 'ko' ? '새로 생성' : 'Generate New'}
               </button>
             </div>
-            <TestSheetView 
-              problems={problemGen.generatedProblems} 
-              problemType={problemGen.generatedProblems[0]?.problem_type || problemGen.selectedProblemType} 
+            <TestSheetView
+              problems={problemGen.generatedProblems}
+              problemType={problemGen.generatedProblems[0]?.problem_type || problemGen.selectedProblemType}
             />
           </div>
         )}
@@ -336,16 +337,16 @@ export const StatsPage: React.FC = () => {
             labels={chartLabels}
           />
         </div>
-        
+
         {reclassify.reclassificationStatus && (
           <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-200">{reclassify.reclassificationStatus}</p>
           </div>
         )}
-        
-        <HierarchicalStatsTable 
-          data={statsData.hierarchicalData} 
-          onImageClick={() => {}}
+
+        <HierarchicalStatsTable
+          data={statsData.hierarchicalData}
+          onImageClick={() => { }}
           onNumberClick={handleNodeClick}
           selectedNodes={nodes.selectedNodes}
           onNodeSelect={nodes.handleNodeSelect}
@@ -371,7 +372,7 @@ export const StatsPage: React.FC = () => {
             }
           }}
         />
-        
+
         {/* Taxonomy 정보 모달 */}
         {selectedTaxonomyCode && (
           <TaxonomyDetailPopup
@@ -402,7 +403,7 @@ export const StatsPage: React.FC = () => {
             </div>
           </div>
         )}
-        
+
         {/* 예시 문장 모달 */}
         <StatsExampleModal
           language={language}

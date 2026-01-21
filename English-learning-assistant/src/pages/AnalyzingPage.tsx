@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getSessionStatus } from '../services/db';
+import { getSessionProgress } from '../services/db';
 import { supabase } from '../services/supabaseClient';
 
 export const AnalyzingPage: React.FC = () => {
@@ -8,6 +8,7 @@ export const AnalyzingPage: React.FC = () => {
   const navigate = useNavigate();
   const [dots, setDots] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [currentModel, setCurrentModel] = useState<string | null>(null);
 
   // 애니메이션 텍스트 효과
   useEffect(() => {
@@ -27,8 +28,9 @@ export const AnalyzingPage: React.FC = () => {
 
     const checkStatus = async () => {
       try {
-        const status = await getSessionStatus(sessionId);
-        
+        const { status, analysisModel } = await getSessionProgress(sessionId);
+        setCurrentModel(analysisModel);
+
         if (status === 'completed') {
           navigate(`/session/${sessionId}`);
         } else if (status === 'failed') {
@@ -42,13 +44,14 @@ export const AnalyzingPage: React.FC = () => {
           try {
             const { data: sessions } = await supabase
               .from('sessions')
-              .select('id, status')
+              .select('id, status, analysis_model')
               .eq('user_id', sessionId.split('_')[0])
               .order('created_at', { ascending: false })
               .limit(1);
-            
+
             if (sessions && sessions.length > 0) {
               const recentSession = sessions[0];
+              setCurrentModel(recentSession.analysis_model);
               if (recentSession.status === 'completed') {
                 navigate(`/session/${recentSession.id}`);
               } else if (recentSession.status === 'failed') {
@@ -115,14 +118,22 @@ export const AnalyzingPage: React.FC = () => {
         <h2 className="text-3xl font-bold text-slate-800 mb-4">
           분석중{'.'.repeat(dots)}
         </h2>
-        <p className="text-slate-600 mb-8 text-lg">
+        <p className="text-slate-600 mb-6 text-lg">
           AI가 이미지를 분석하고 있습니다
         </p>
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-          <p className="text-green-800 text-sm font-medium">
+
+        {currentModel && (
+          <div className="mb-8 inline-flex items-center px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700">
+            <span className="mr-2 animate-pulse">🤖</span>
+            <span className="font-medium">분석 중인 AI: {currentModel}</span>
+          </div>
+        )}
+
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-left max-w-lg mx-auto">
+          <p className="text-green-800 text-sm font-medium flex items-center gap-2">
             ✅ 분석이 백그라운드에서 진행 중입니다
           </p>
-          <p className="text-green-700 text-xs mt-1">
+          <p className="text-green-700 text-xs mt-1 pl-6">
             💡 웹에서 나가셔도 분석이 자동으로 완료됩니다. 통계 페이지에서 결과를 확인하세요.
           </p>
         </div>
@@ -134,7 +145,7 @@ export const AnalyzingPage: React.FC = () => {
             통계 페이지로 이동
           </button>
         </div>
-        <div className="flex justify-center">
+        <div className="flex justify-center mt-6">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
         </div>
       </div>

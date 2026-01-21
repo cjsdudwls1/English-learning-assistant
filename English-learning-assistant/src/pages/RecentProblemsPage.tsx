@@ -31,7 +31,7 @@ export const RecentProblemsPage: React.FC = () => {
       setLoading(true);
       const sessionsData = await fetchUserSessions();
       setSessions(sessionsData);
-      
+
       // 분석 중인 세션 조회
       const analyzing = await fetchAnalyzingSessions();
       setAnalyzingSessions(analyzing);
@@ -39,11 +39,11 @@ export const RecentProblemsPage: React.FC = () => {
       // 분석 실패 세션 조회 (UI에 표시하지 않으면 사용자가 원인을 알 수 없음)
       const failed = await fetchFailedSessions();
       setFailedSessions(failed);
-      
+
       // 라벨링이 필요한 세션 조회
       const pendingSessions = await fetchPendingLabelingSessions();
       setPendingLabelingSessions(pendingSessions);
-      
+
       // 폴링 로직:
       // - analyzing/pending이 있으면 계속
       // - analyzing이 막 끝난 직후(=status가 processing->completed/failed로 바뀌는 순간)에는
@@ -69,20 +69,20 @@ export const RecentProblemsPage: React.FC = () => {
   // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 2초마다 상태 확인
   useEffect(() => {
     if (!pollingActive) return;
-    
+
     const interval = setInterval(() => {
       loadData();
     }, 2000);
-    
+
     return () => clearInterval(interval);
   }, [pollingActive]);
 
   const handleDelete = async (sessionId: string) => {
-    const confirmMessage = language === 'ko' 
+    const confirmMessage = language === 'ko'
       ? '이 세션을 삭제하시겠습니까?'
       : 'Are you sure you want to delete this session?';
     if (!window.confirm(confirmMessage)) return;
-    
+
     try {
       await deleteSession(sessionId);
       await loadData();
@@ -97,7 +97,7 @@ export const RecentProblemsPage: React.FC = () => {
       return;
     }
 
-    const confirmMessage = language === 'ko' 
+    const confirmMessage = language === 'ko'
       ? `${selectedSessions.size}개의 세션을 삭제하시겠습니까?`
       : `Are you sure you want to delete ${selectedSessions.size} session(s)?`;
     if (!window.confirm(confirmMessage)) return;
@@ -158,6 +158,7 @@ export const RecentProblemsPage: React.FC = () => {
           sessionId={session.id}
           imageUrl={session.image_url}
           onDelete={handleDelete}
+          analysisModel={session.analysis_model}
         />
       ))}
 
@@ -245,9 +246,9 @@ export const RecentProblemsPage: React.FC = () => {
                   onChange={() => toggleSessionSelection(session.id)}
                   className="w-5 h-5"
                 />
-                <img 
-                  src={session.image_url} 
-                  alt={language === 'ko' ? '문제 이미지' : 'Problem Image'} 
+                <img
+                  src={session.image_url}
+                  alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
                   className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80"
                   onClick={() => handleSessionImageClick(session.id, session.image_url)}
                 />
@@ -267,7 +268,7 @@ export const RecentProblemsPage: React.FC = () => {
                     </p>
                   ) : (
                     <p className="text-slate-700 mt-1">
-                      {language === 'ko' 
+                      {language === 'ko'
                         ? `문제 ${session.problem_count}개 | 정답 ${session.correct_count}개 | 오답 ${session.incorrect_count}개`
                         : `${t.recent.problemCount} ${session.problem_count} | ${t.stats.correct}: ${session.correct_count} | ${t.stats.incorrect}: ${session.incorrect_count}`}
                     </p>
@@ -277,11 +278,10 @@ export const RecentProblemsPage: React.FC = () => {
                   <button
                     onClick={() => navigate(`/session/${session.id}`)}
                     disabled={session.problem_count === 0}
-                    className={`px-4 py-2 text-white text-sm rounded-lg ${
-                      session.problem_count === 0 
-                        ? 'bg-gray-400 cursor-not-allowed' 
+                    className={`px-4 py-2 text-white text-sm rounded-lg ${session.problem_count === 0
+                        ? 'bg-gray-400 cursor-not-allowed'
                         : 'bg-indigo-600 hover:bg-indigo-700'
-                    }`}
+                      }`}
                   >
                     {t.recent.viewDetails}
                   </button>
@@ -301,7 +301,7 @@ export const RecentProblemsPage: React.FC = () => {
           </div>
         )}
       </div>
-      
+
       <ImageModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

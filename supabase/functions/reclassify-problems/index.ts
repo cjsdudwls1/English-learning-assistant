@@ -1,14 +1,15 @@
-// @ts-nocheck
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
-import { createServiceSupabaseClient } from './_shared/supabaseClient.ts'
-import { requireEnv } from './_shared/env.ts'
-import { CORS_HEADERS, errorResponse, handleOptions, jsonResponse } from './_shared/http.ts'
-import { loadTaxonomyData, findTaxonomyByDepth } from './_shared/taxonomy.ts'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0";
+import { createServiceSupabaseClient } from "../_shared/supabaseClient.ts";
+import { requireEnv } from "../_shared/env.ts";
+import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_shared/http.ts";
+import { loadTaxonomyData, findTaxonomyByDepth } from "../_shared/taxonomy.ts";
+import { generateWithRetry, parseJsonResponse, extractTextFromResponse } from "../_shared/aiClient.ts";
+import { summarizeError } from "../_shared/errors.ts";
 
 function buildPrompt(classificationData: { structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }) {
   const { structure, allValues } = classificationData;
-  
+
   return `
 # 영어 문제 분류 작업
 
@@ -68,7 +69,7 @@ ${structure}
 `;
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return handleOptions();
   }
@@ -89,6 +90,13 @@ serve(async (req) => {
 
     // 1. 사용자의 모든 문제 조회
     console.log('Step 1: Fetching user problems');
+    // DB Schema Change: problems.stem has been moved to problems.content->>'stem'
+    // but here we select *, so we just need to adapt usage.
+    // Actually in the original code: .select(`..., problems!inner(id, stem, ...)`)
+    // If stem column is deleted, this reclassify function will fail unless we update the query.
+    // However, for safety, let's select '*' from problems or just select 'content' if possible.
+    // But Supabase query syntax for joining is strict.
+    // Let's rely on '*' for problems to avoid listing missing columns.
     const { data: labels, error: labelsError } = await supabase
       .from('labels')
       .select(`
@@ -97,7 +105,7 @@ serve(async (req) => {
         classification,
         problems!inner (
           id,
-          stem,
+          content,
           sessions!inner (
             user_id
           )
@@ -108,14 +116,11 @@ serve(async (req) => {
     if (labelsError) throw labelsError;
 
     if (!labels || labels.length === 0) {
-      return new Response(JSON.stringify({ 
+      return jsonResponse({
         success: true,
         message: 'No problems to reclassify',
         total: 0,
         processed: 0
-      }), {
-        status: 200,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
       });
     }
 
@@ -123,12 +128,13 @@ serve(async (req) => {
 
     // 2. Taxonomy 데이터 로드
     console.log('Step 2: Loading taxonomy data');
-    // 언어 설정 (기본값: ko)
     const userLanguage: 'ko' | 'en' = language === 'en' ? 'en' : 'ko';
-    
+
     const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
     const prompt = buildPrompt(taxonomyData);
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    const sessionId = `reclassify-${userId}-${Date.now()}`;
+    const modelName = 'gemini-2.5-flash';
 
     // 3. 배치 처리
     let processed = 0;
@@ -141,48 +147,44 @@ serve(async (req) => {
 
       await Promise.all(batch.map(async (label: any) => {
         try {
-          const stem = label.problems?.stem;
+          // DB 스키마 대응: content JSONB 우선 사용
+          const problem = label.problems;
+          const stem = problem?.stem || problem?.content?.stem;
+
           if (!stem || stem.trim() === '') {
             console.warn(`Skipping problem ${label.problem_id}: empty stem`);
             return;
           }
 
-          // Gemini로 재분류
-          const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+          // Gemini로 재분류 (재시도 로직 사용)
+          const result = await generateWithRetry({
+            ai,
+            model: modelName,
             contents: { parts: [{ text: `${prompt}\n\n문제: ${stem}` }] },
+            sessionId,
+            maxRetries: 2,
+            baseDelayMs: 2000,
+            temperature: 0.1 // 분류 작업이므로 temperature 낮게 설정
           });
 
-          const responseText = typeof response.text === 'function' ? await response.text() : String(response.text);
-          const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-          const classification = JSON.parse(jsonString);
+          const responseText = await extractTextFromResponse(result.response, modelName);
+          const classification: any = parseJsonResponse(responseText, modelName);
 
           // Gemini가 반환한 원본 값
           const rawDepth1 = (classification.depth1 || '').trim();
           const rawDepth2 = (classification.depth2 || '').trim();
           const rawDepth3 = (classification.depth3 || '').trim();
           const rawDepth4 = (classification.depth4 || '').trim();
-          
+
           // 유효성 검증: DB에 있는 값인지 확인
           const validDepth1 = taxonomyData.allValues.depth1.includes(rawDepth1) ? rawDepth1 : '';
           const validDepth2 = taxonomyData.allValues.depth2.includes(rawDepth2) ? rawDepth2 : '';
           const validDepth3 = taxonomyData.allValues.depth3.includes(rawDepth3) ? rawDepth3 : '';
           const validDepth4 = taxonomyData.allValues.depth4.includes(rawDepth4) ? rawDepth4 : '';
-          
+
           // 유효하지 않은 값이 있으면 경고
-          if (!validDepth1 && rawDepth1) {
-            console.warn(`Invalid depth1: "${rawDepth1}" - not in taxonomy. Valid values: ${taxonomyData.allValues.depth1.slice(0, 3).join(', ')}...`);
-          }
-          if (!validDepth2 && rawDepth2) {
-            console.warn(`Invalid depth2: "${rawDepth2}" - not in taxonomy`);
-          }
-          if (!validDepth3 && rawDepth3) {
-            console.warn(`Invalid depth3: "${rawDepth3}" - not in taxonomy`);
-          }
-          if (!validDepth4 && rawDepth4) {
-            console.warn(`Invalid depth4: "${rawDepth4}" - not in taxonomy`);
-          }
-          
+          if (!validDepth1 && rawDepth1) console.warn(`Invalid depth1: "${rawDepth1}"`);
+
           // 유효한 값으로만 taxonomy 조회
           const taxonomy = await findTaxonomyByDepth(
             supabase,
@@ -197,9 +199,6 @@ serve(async (req) => {
           let confidence = classification['분류_신뢰도'] || '보통';
           if (!validDepth1 || !taxonomy.code) {
             confidence = '낮음';
-            if (!validDepth1) {
-              console.warn(`Invalid classification: depth1="${rawDepth1}" is not in taxonomy. Saving with null.`);
-            }
           }
 
           // classification 업데이트 (유효한 값만 저장)
@@ -228,11 +227,10 @@ serve(async (req) => {
           if (taxonomy.code) {
             successCount++;
           } else {
-            console.warn(`Classification saved but no taxonomy code found for: ${validDepth1 || 'null'}/${validDepth2 || 'null'}/${validDepth3 || 'null'}/${validDepth4 || 'null'}`);
-            successCount++; // 여전히 성공으로 카운트 (분류는 저장됨)
+            successCount++; // 분류는 저장됨
           }
-        } catch (error) {
-          console.error(`Error processing label ${label.id}:`, error);
+        } catch (error: any) {
+          console.error(`Error processing label ${label.id}:`, summarizeError(error));
           failCount++;
         }
       }));
@@ -252,8 +250,11 @@ serve(async (req) => {
 
   } catch (error: any) {
     console.error('Error in reclassify-problems function:', error);
-    
-    return errorResponse(error.message || 'Internal server error', 500, error.toString());
+    return errorResponse(
+      error.message || 'Internal server error',
+      500,
+      summarizeError(error)
+    );
   }
 });
 

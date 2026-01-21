@@ -1,68 +1,54 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { GoogleGenAI } from 'npm:@google/genai@1.21.0';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_shared/http.ts";
+import { generateWithRetry, extractTextFromResponse } from "../_shared/aiClient.ts";
+import { summarizeError } from "../_shared/errors.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-requested-with',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
-  'Access-Control-Max-Age': '86400',
-  'Access-Control-Allow-Credentials': 'true'
-};
-
-Deno.serve(async (req) => {
-  // OPTIONS 요청 처리
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders
-    });
+    return handleOptions();
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return errorResponse('Method not allowed', 405);
   }
 
   try {
     console.log('generate-report Edge Function called');
     const { problems, userId } = await req.json();
-    
+
     if (!problems || !userId) {
       console.log('Missing required fields');
-      return new Response(JSON.stringify({ error: 'Missing required fields: problems, userId' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return errorResponse('Missing required fields: problems, userId', 400);
     }
 
     // 환경 변수 확인
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    
+
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing Supabase environment variables');
     }
-    
+
     if (!geminiApiKey) {
       throw new Error('GEMINI_API_KEY environment variable is not set');
     }
 
     // Supabase 클라이언트 생성
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
+
     // 사용자 인증 확인
     const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
-    
+
     if (userError || !userData.user) {
       throw new Error('Invalid user ID');
     }
 
-    // Gemini API로 문제 분석 리포트 생성
+    // Gemini API 클라이언트 생성
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    const sessionId = `gen-report-${userId}-${Date.now()}`;
 
     // 문제 데이터 준비
     const problemData = problems.map((p: any, i: number) => {
@@ -72,16 +58,26 @@ Deno.serve(async (req) => {
       const depth3 = classification.depth3 || '';
       const depth4 = classification.depth4 || '';
       const classificationText = [depth1, depth2, depth3, depth4].filter(Boolean).join(' > ');
-      
+
+      // DB 스키마 변경 대응: root 레벨의 stem/choices 우선 확인 후, content 내부 확인
+      const stem = p.problem.stem || p.problem.content?.stem || '내용 없음';
+      const choices = p.problem.choices || p.problem.content?.choices || [];
+
+      // choices가 문자열 배열일 수도 있고 객체 배열일 수도 있음
+      const choicesText = choices.map((c: any, idx: number) => {
+        const text = typeof c === 'string' ? c : (c.text || JSON.stringify(c));
+        return `${idx + 1}. ${text}`;
+      }).join(', ');
+
       return `문제 ${i + 1}:
-- 문제 내용: ${p.problem.stem || '내용 없음'}
+- 문제 내용: ${stem}
 - 문제 분류: ${classificationText || '분류 없음'}
 - 정답 여부: ${p.is_correct ? '정답' : '오답'}
 - 사용자 답안: ${p.user_answer || '답안 없음'}
-- 보기: ${(p.problem.choices || []).map((c: any, idx: number) => `${idx + 1}. ${c.text || ''}`).join(', ')}`;
+- 보기: ${choicesText}`;
     }).join('\n\n');
 
-    const text = `안녕하세요, 영어 교육 전문가입니다. 
+    const prompt = `안녕하세요, 영어 교육 전문가입니다. 
 
 제공해주신 사용자 오답 문제에 대한 학습 리포트를 작성해 드리겠습니다. 다음은 제공받은 문제 정보입니다:
 
@@ -97,30 +93,33 @@ ${problemData}
 
 한국어로 상세하게 작성해주세요.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts: [{ text }] }
+    const modelName = 'gemini-2.5-flash';
+    // 재시도 로직 사용
+    const result = await generateWithRetry({
+      ai,
+      model: modelName,
+      contents: { parts: [{ text: prompt }] },
+      sessionId,
+      maxRetries: 2,
+      baseDelayMs: 2000,
+      temperature: 0.7
     });
 
-    const report = response.text.trim();
+    const report = await extractTextFromResponse(result.response, modelName);
     console.log('Problem analysis report generated successfully');
 
-    return new Response(JSON.stringify({
+    return jsonResponse({
       success: true,
-      report: report
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      report: report.trim()
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating problem analysis report:', error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Internal server error'
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return errorResponse(
+      error.message || 'Internal server error',
+      500,
+      summarizeError(error)
+    );
   }
 });
 

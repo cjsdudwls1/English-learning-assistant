@@ -87,7 +87,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
 
     try {
       setGeneratingExampleIndex(problemIndex);
-      
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('로그인이 필요합니다.');
@@ -95,7 +95,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
 
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-example`;
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
@@ -115,7 +115,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
       }
 
       const result = await response.json();
-      
+
       if (result.success && result.example) {
         // result.example이 문자열이거나 객체일 수 있음
         let exampleData;
@@ -148,28 +148,27 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
   return (
     <div className="space-y-6">
       {items.map((it, i) => (
-        <div key={i} className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
+        <div key={i} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 bg-white dark:bg-slate-800">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">문항 #{i + 1}</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">문항 #{i + 1}</h3>
             </div>
             {!hideMarking && (
               <div className="flex gap-2">
                 {marks.map(m => {
                   const isUserSelected = it.사용자가_직접_채점한_정오답 === m;
                   const isAISelected = it.AI가_판단한_정오답 === m;
-                  
+
                   return (
                     <button
                       key={m}
                       type="button"
-                      className={`px-4 py-2 rounded font-medium transition-colors ${
-                        isUserSelected
-                          ? 'bg-blue-600 text-white'
-                          : isAISelected
+                      className={`px-4 py-2 rounded font-medium transition-colors ${isUserSelected
+                        ? 'bg-blue-600 text-white'
+                        : isAISelected
                           ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 ring-2 ring-blue-500'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
+                        }`}
                       onClick={() => updateMark(i, m)}
                     >
                       {m}
@@ -190,8 +189,8 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           </div>
 
           <div className="mt-3">
-            <label className="text-sm text-slate-600">문제 본문</label>
-            <div className="w-full border rounded px-3 py-2 mt-1 min-h-[100px] max-h-[40vh] sm:max-h-[300px] overflow-auto bg-slate-50 text-slate-700">
+            <label className="text-sm text-slate-600 dark:text-slate-400">문제 본문</label>
+            <div className="w-full border dark:border-slate-600 rounded px-3 py-2 mt-1 min-h-[100px] max-h-[40vh] sm:max-h-[300px] overflow-auto bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300">
               {it.문제내용.text}
               {it.문제_보기 && it.문제_보기.length > 0 && (
                 <div className="mt-2 space-y-1">
@@ -209,22 +208,22 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           {!hideClassification && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
               <div>
-                <label className="block text-sm text-slate-600">depth1</label>
-                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류.depth1 || ''}
+                <label className="block text-sm text-slate-600 dark:text-slate-400">depth1</label>
+                <input className="w-full border dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth1 || ''}
                   onChange={(e) => updateClassification(i, { depth1: e.target.value })} />
               </div>
               <div>
-                <label className="block text-sm text-slate-600">depth2</label>
-                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류.depth2 || ''}
+                <label className="block text-sm text-slate-600 dark:text-slate-400">depth2</label>
+                <input className="w-full border dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth2 || ''}
                   onChange={(e) => updateClassification(i, { depth2: e.target.value })} />
               </div>
               <div>
-                <label className="block text-sm text-slate-600">depth3</label>
-                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류.depth3 || ''}
+                <label className="block text-sm text-slate-600 dark:text-slate-400">depth3</label>
+                <input className="w-full border dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth3 || ''}
                   onChange={(e) => updateClassification(i, { depth3: e.target.value })} />
               </div>
               <div>
-                <label className="block text-sm text-slate-600 flex items-center gap-2">
+                <label className="block text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2">
                   depth4
                   {it.문제_유형_분류.depth4 && it.문제_유형_분류.code && (
                     <button
@@ -240,7 +239,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
                     </button>
                   )}
                 </label>
-                <input className="w-full border rounded px-2 py-1" value={it.문제_유형_분류.depth4 || ''}
+                <input className="w-full border dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth4 || ''}
                   onChange={(e) => updateClassification(i, { depth4: e.target.value })} />
               </div>
             </div>
@@ -257,7 +256,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
               >
                 {generatingExampleIndex === i ? '생성 중...' : '📝 예시 문장 생성'}
               </button>
-              
+
               {exampleResults[i] && (
                 <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
                   <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">예시 문장</h4>
@@ -293,7 +292,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           </button>
         </div>
       )}
-      
+
       {!hideReport && (
         <ReportModal
           isOpen={reportModalOpen}
@@ -301,7 +300,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           onSubmit={handleReportSubmit}
         />
       )}
-      
+
       {taxonomyPopupOpen && (
         <TaxonomyDetailPopup
           code={selectedTaxonomyCode}

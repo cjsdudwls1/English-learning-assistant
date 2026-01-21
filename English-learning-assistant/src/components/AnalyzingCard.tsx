@@ -6,16 +6,18 @@ interface AnalyzingCardProps {
   sessionId: string;
   imageUrl: string;
   onDelete?: (sessionId: string) => void;
+  analysisModel?: string | null;
 }
 
-export const AnalyzingCard: React.FC<AnalyzingCardProps> = ({ 
+export const AnalyzingCard: React.FC<AnalyzingCardProps> = ({
   sessionId,
   imageUrl,
   onDelete,
+  analysisModel,
 }) => {
   const { language } = useLanguage();
   const t = getTranslation(language);
-  
+
   return (
     <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6">
       {onDelete && (
@@ -31,12 +33,12 @@ export const AnalyzingCard: React.FC<AnalyzingCardProps> = ({
       )}
       <div className="flex items-start gap-6">
         {/* 이미지 썸네일 */}
-        <img 
-          src={imageUrl} 
-          alt={language === 'ko' ? '문제 이미지' : 'Problem Image'} 
+        <img
+          src={imageUrl}
+          alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
           className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 flex-shrink-0"
         />
-        
+
         {/* 분석 중 메시지 */}
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
@@ -45,11 +47,18 @@ export const AnalyzingCard: React.FC<AnalyzingCardProps> = ({
               {language === 'ko' ? 'AI 분석 중...' : 'AI Analyzing...'}
             </h3>
           </div>
-          <p className="text-slate-600 dark:text-slate-400">
-            {language === 'ko' 
+          <p className="text-slate-600 dark:text-slate-400 mb-2">
+            {language === 'ko'
               ? '이미지를 분석하고 있습니다. 잠시만 기다려주세요.'
               : 'Analyzing the image. Please wait a moment.'}
           </p>
+          {analysisModel && (
+            <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-sm font-medium">
+              <span className="mr-1.5">🤖</span>
+              {language === 'ko' ? '분석 중인 AI: ' : 'AI Model: '}
+              {analysisModel}
+            </div>
+          )}
         </div>
       </div>
     </div>

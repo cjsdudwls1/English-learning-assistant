@@ -1,18 +1,23 @@
+// 실패 원인 기록을 위한 에러 타입 및 유틸리티
+
 export type FailureStage =
     | 'request'
     | 'extract_call'
     | 'extract_parse'
     | 'extract_empty'
     | 'extract_validate'
+    | 'extract_all_failed'
     | 'insert_problems'
     | 'insert_labels'
     | 'unknown';
 
 export class StageError extends Error {
     stage: FailureStage;
-    details: any;
-    constructor(stage: FailureStage, message: string, details?: any) {
+    details: unknown;
+
+    constructor(stage: FailureStage, message: string, details?: unknown) {
         super(message);
+        this.name = 'StageError';
         this.stage = stage;
         this.details = details;
     }
@@ -33,19 +38,38 @@ export function safeStringify(value: unknown, maxLen = 1800): string {
     return s;
 }
 
-export function summarizeError(err: any) {
-    const message = err?.message ? String(err.message) : String(err ?? 'Unknown error');
-    const code = err?.status ?? err?.error?.code ?? err?.code ?? null;
-    const status = err?.error?.status ?? err?.statusText ?? null;
-    const name = err?.name ?? null;
-    const stack = err?.stack ?? null;
+export function summarizeError(err: unknown): {
+    message: string;
+    code: string | number | null;
+    status: string | null;
+    name: string | null;
+    stack: string | null;
+} {
+    const error = err as Record<string, unknown> | null;
+    const message = error?.message ? String(error.message) : String(err ?? 'Unknown error');
+    const errorObj = error?.error as Record<string, unknown> | undefined;
+    const code = (error?.status ?? errorObj?.code ?? error?.code ?? null) as string | number | null;
+    const status = (errorObj?.status ?? error?.statusText ?? null) as string | null;
+    const name = (error?.name ?? null) as string | null;
+    const stack = (error?.stack ?? null) as string | null;
     return { message, code, status, name, stack };
 }
 
-export function parseModelError(apiError: any) {
-    const errorCode = apiError?.status || apiError?.error?.code || 0;
-    const errorMessage = apiError?.message || apiError?.error?.message || String(apiError);
-    const errorStatus = apiError?.error?.status || '';
+export interface ParsedModelError {
+    errorCode: number;
+    errorStatus: string;
+    errorMessage: string;
+    isRateLimit: boolean;
+    isServerOverload: boolean;
+    isTimeout: boolean;
+}
+
+export function parseModelError(apiError: unknown): ParsedModelError {
+    const error = apiError as Record<string, unknown> | null;
+    const errorObj = error?.error as Record<string, unknown> | undefined;
+    const errorCode = (error?.status || errorObj?.code || 0) as number;
+    const errorMessage = (error?.message || errorObj?.message || String(apiError)) as string;
+    const errorStatus = (errorObj?.status || '') as string;
     const lower = String(errorMessage).toLowerCase();
     const isRateLimit = errorCode === 429 || lower.includes('rate limit') || lower.includes('quota');
     const isServerOverload = errorCode === 503 || lower.includes('overloaded') || lower.includes('unavailable') || errorStatus === 'UNAVAILABLE';
@@ -53,13 +77,21 @@ export function parseModelError(apiError: any) {
     return { errorCode, errorStatus, errorMessage, isRateLimit, isServerOverload, isTimeout };
 }
 
-export async function markSessionFailed(params: {
-    supabase: any;
+export interface MarkSessionFailedParams {
+    supabase: {
+        from: (table: string) => {
+            update: (data: Record<string, unknown>) => {
+                eq: (column: string, value: string) => Promise<unknown>;
+            };
+        };
+    };
     sessionId: string;
     stage: FailureStage;
-    error: any;
-    extra?: any;
-}) {
+    error: unknown;
+    extra?: unknown;
+}
+
+export async function markSessionFailed(params: MarkSessionFailedParams): Promise<void> {
     const { supabase, sessionId, stage, error, extra } = params;
     const summary = summarizeError(error);
     const failureMessage = safeStringify({ stage, ...summary, extra });

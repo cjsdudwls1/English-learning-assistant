@@ -199,8 +199,8 @@ const MainPage: React.FC<{
                   }}
                 >
                   {imageFiles.length > 0
-                    ? (language === 'ko' ? `${imageFiles.length}개 파일 선택됨 (클릭하여 추가)` : `${imageFiles.length} files selected (Click to add more)`)
-                    : (language === 'ko' ? '+ 이미지 업로드' : '+ Upload Images')}
+                    ? (language === 'ko' ? `${imageFiles.length}/3장 선택됨 (클릭하여 추가)` : `${imageFiles.length}/3 selected (Click to add more)`)
+                    : (language === 'ko' ? '+ 이미지 업로드 (최대 3장)' : '+ Upload Images (max 3)')}
                 </label>
                 <input
                   id="hero-image-input"
@@ -665,6 +665,9 @@ const App: React.FC = () => {
       setIsLoading(false);
       setStatus('done');
 
+      // 분석 완료 후 이미지 목록 초기화 (다음 분석을 위해)
+      setImageFiles([]);
+
       const uploadMessage =
         language === 'ko'
           ? `${imagesArray.length}개 이미지 업로드 완료. AI 분석이 진행중입니다. (세션: ${createdSessionId}) 앱에서 나가도 좋습니다.`
@@ -685,6 +688,7 @@ const App: React.FC = () => {
   }, [imageFiles, language]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const MAX_IMAGES = 3; // RECITATION 에러 방지를 위한 최대 이미지 수 제한
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
@@ -694,8 +698,27 @@ const App: React.FC = () => {
       return;
     }
 
+    // 현재 이미지 수 + 새로 추가할 이미지 수가 최대치를 초과하는지 확인
+    const currentCount = imageFiles.length;
+    const remainingSlots = MAX_IMAGES - currentCount;
+
+    if (remainingSlots <= 0) {
+      setError(language === 'ko'
+        ? `최대 ${MAX_IMAGES}장까지만 업로드할 수 있습니다.`
+        : `You can upload up to ${MAX_IMAGES} images only.`);
+      return;
+    }
+
+    // 추가 가능한 만큼만 선택
+    const filesToAdd = imageFilesArray.slice(0, remainingSlots);
+    if (filesToAdd.length < imageFilesArray.length) {
+      setError(language === 'ko'
+        ? `최대 ${MAX_IMAGES}장까지만 업로드할 수 있습니다. ${filesToAdd.length}장만 추가됩니다.`
+        : `You can upload up to ${MAX_IMAGES} images only. Only ${filesToAdd.length} will be added.`);
+    }
+
     // 각 파일을 Promise로 변환하여 모든 파일이 로드될 때까지 대기
-    const filePromises = imageFilesArray.map((file) => {
+    const filePromises = filesToAdd.map((file) => {
       return new Promise<ImageFile>((resolve) => {
         const id = `${Date.now()}_${Math.random()}_${file.name}`;
         const reader = new FileReader();

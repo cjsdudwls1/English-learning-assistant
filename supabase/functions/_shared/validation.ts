@@ -1,5 +1,5 @@
 // 검증 관련 유틸리티 함수들
-import { StageError } from '../../_shared/errors.ts';
+import { StageError } from './errors.ts';
 
 // 공유 지문 정보 인터페이스
 export interface SharedPassage {

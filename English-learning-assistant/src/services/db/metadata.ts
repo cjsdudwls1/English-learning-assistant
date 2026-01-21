@@ -26,7 +26,7 @@ export async function fetchProblemsMetadataByCorrectness(
   isCorrect: boolean | null = null
 ): Promise<ProblemMetadataItem[]> {
   const userId = await getCurrentUserId();
-  
+
   let query = supabase
     .from('labels')
     .select(`
@@ -40,12 +40,12 @@ export async function fetchProblemsMetadataByCorrectness(
         sessions!inner (
           user_id,
           created_at,
-          image_url
+          image_urls
         )
       )
     `)
     .eq('problems.sessions.user_id', userId);
-  
+
   // 분류 필터링
   if (depth1) {
     query = query.eq('classification->>depth1', depth1);
@@ -59,19 +59,19 @@ export async function fetchProblemsMetadataByCorrectness(
   if (depth4) {
     query = query.eq('classification->>depth4', depth4);
   }
-  
+
   // 정답/오답 필터링
   if (isCorrect !== null) {
     query = query.eq('is_correct', isCorrect);
   }
-  
+
   // Note: Supabase는 조인된 테이블의 컬럼으로 직접 정렬할 수 없으므로
   // 데이터를 가져온 후 클라이언트에서 정렬합니다.
-  
+
   const { data, error } = await query;
-  
+
   if (error) throw error;
-  
+
   // 데이터 포맷 변환 및 정렬 (최신순)
   const items = (data || []).map((item: any) => ({
     problem_id: item.problem_id,
@@ -79,12 +79,12 @@ export async function fetchProblemsMetadataByCorrectness(
     session: {
       id: item.problems.session_id,
       created_at: item.problems.sessions.created_at,
-      image_url: item.problems.sessions.image_url,
+      image_url: item.problems.sessions.image_urls?.[0] || '',
     },
     classification: item.classification || {},
     is_correct: item.is_correct,
   }));
-  
+
   // 시간 순서: 최신순 (클라이언트에서 정렬)
   return items.sort((a, b) => {
     const dateA = new Date(a.session.created_at).getTime();
