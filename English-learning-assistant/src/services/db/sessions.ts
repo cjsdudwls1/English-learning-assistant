@@ -192,8 +192,8 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
     .filter((session) => {
       const status = session.status ?? 'pending';
       const isActiveStatus = status === 'processing' || status === 'pending';
-      // 분석 중으로 간주: 문제 데이터가 아직 없고, 상태가 진행 중일 때만
-      return session.problem_count === 0 && isActiveStatus;
+      // 분석 중으로 간주: 상태가 진행 중일 때
+      return isActiveStatus;
     });
 
   return analyzingSessions;
