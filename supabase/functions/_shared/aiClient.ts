@@ -1,6 +1,13 @@
 // AI 모델 호출 관련 유틸리티
 import { StageError, parseModelError, summarizeError } from './errors.ts';
 
+// 토큰 사용량 메타데이터 타입
+export interface UsageMetadata {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+}
+
 // 모델 응답 타입
 export interface ModelResponse {
     text?: string | (() => Promise<string>);
@@ -13,6 +20,7 @@ export interface ModelResponse {
             parts?: Array<{ text?: string }>;
         };
     }>;
+    usageMetadata?: UsageMetadata;
 }
 
 // 생성 설정 타입
@@ -56,6 +64,7 @@ export interface GenerateWithRetryParams {
 export interface GenerateWithRetryResult {
     response: ModelResponse;
     attemptCount: number;
+    usageMetadata?: UsageMetadata;
 }
 
 // 재시도 로직이 포함된 모델 생성 함수
@@ -84,7 +93,19 @@ export async function generateWithRetry(params: GenerateWithRetryParams): Promis
                     { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
                 ],
             });
-            return { response, attemptCount: attempt + 1 };
+
+            // 토큰 사용량 추출 및 로깅
+            const usageMetadata = response.usageMetadata;
+            if (usageMetadata) {
+                console.log(`[Background] Token usage (model=${model}):`, {
+                    sessionId,
+                    promptTokenCount: usageMetadata.promptTokenCount,
+                    candidatesTokenCount: usageMetadata.candidatesTokenCount,
+                    totalTokenCount: usageMetadata.totalTokenCount,
+                });
+            }
+
+            return { response, attemptCount: attempt + 1, usageMetadata };
         } catch (apiError: unknown) {
             attempt++;
             lastErr = apiError;

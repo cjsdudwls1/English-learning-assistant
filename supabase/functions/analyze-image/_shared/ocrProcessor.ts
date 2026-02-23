@@ -1,5 +1,5 @@
 // OCR 처리 로직
-import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from '../../_shared/aiClient.ts';
+import { generateWithRetry, extractTextFromResponse, parseJsonResponse, type UsageMetadata } from '../../_shared/aiClient.ts';
 import { MODEL_SEQUENCE, MODEL_RETRY_POLICY } from '../../_shared/models.ts';
 import { summarizeError } from '../../_shared/errors.ts';
 import { buildOcrPrompt } from './prompts.ts';
@@ -28,6 +28,7 @@ export interface ProcessOcrParams {
 export interface ProcessOcrResult {
     ocrPages: OcrPage[];
     usedModel: string | null;
+    usageMetadata?: UsageMetadata;
 }
 
 /**
@@ -39,6 +40,7 @@ export async function processOcr(params: ProcessOcrParams): Promise<ProcessOcrRe
 
     let ocrPages: OcrPage[] = [];
     let usedModel: string | null = null;
+    let totalUsageMetadata: UsageMetadata = {};
 
     // OCR 프롬프트 및 이미지 파트 준비
     const ocrPrompt = buildOcrPrompt(imageList.length);
@@ -86,9 +88,15 @@ export async function processOcr(params: ProcessOcrParams): Promise<ProcessOcrRe
                     .sort((a, b) => a.page - b.page);
 
                 usedModel = model;
+                // 토큰 사용량 저장
+                if (ocrAttempt.usageMetadata) {
+                    totalUsageMetadata = ocrAttempt.usageMetadata;
+                }
                 console.log(`[Background] Step 3a-1: OCR success with ${model}`, {
                     sessionId,
                     pageCount: ocrPages.length,
+                    promptTokenCount: ocrAttempt.usageMetadata?.promptTokenCount,
+                    candidatesTokenCount: ocrAttempt.usageMetadata?.candidatesTokenCount,
                 });
                 break; // OCR 성공 시 루프 종료
             } else {
@@ -103,5 +111,5 @@ export async function processOcr(params: ProcessOcrParams): Promise<ProcessOcrRe
         }
     }
 
-    return { ocrPages, usedModel };
+    return { ocrPages, usedModel, usageMetadata: totalUsageMetadata };
 }

@@ -4,6 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_shared/http.ts";
 import { generateWithRetry, extractTextFromResponse } from "../_shared/aiClient.ts";
 import { summarizeError } from "../_shared/errors.ts";
+import { logAiUsage } from "../_shared/usageLogger.ts";
+import { MODEL_SEQUENCE } from "../_shared/models.ts";
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -93,7 +95,7 @@ ${problemData}
 
 한국어로 상세하게 작성해주세요.`;
 
-    const modelName = 'gemini-2.5-flash';
+    const modelName = MODEL_SEQUENCE[0]; // models.ts 기본 모델 사용
     // 재시도 로직 사용
     const result = await generateWithRetry({
       ai,
@@ -107,6 +109,18 @@ ${problemData}
 
     const report = await extractTextFromResponse(result.response, modelName);
     console.log('Problem analysis report generated successfully');
+
+    // 토큰 사용량 로깅
+    if (result.usageMetadata) {
+      await logAiUsage({
+        supabase,
+        userId,
+        functionName: 'generate-report',
+        modelUsed: modelName,
+        usageMetadata: result.usageMetadata,
+        metadata: { problemCount: problems.length },
+      });
+    }
 
     return jsonResponse({
       success: true,

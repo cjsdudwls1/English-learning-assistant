@@ -6,6 +6,8 @@ import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_sh
 import { fetchTaxonomyByCode } from "../_shared/taxonomy.ts";
 import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from "../_shared/aiClient.ts";
 import { summarizeError } from "../_shared/errors.ts";
+import { logAiUsage } from "../_shared/usageLogger.ts";
+import { MODEL_SEQUENCE } from "../_shared/models.ts";
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -152,7 +154,7 @@ Output in the following JSON format:
 \`\`\`
 `;
 
-    const modelName = 'gemini-2.0-flash-exp'; // 또는 gemini-2.5-flash
+    const modelName = MODEL_SEQUENCE[0]; // models.ts 기본 모델 사용
     const result = await generateWithRetry({
       ai,
       model: modelName,
@@ -177,6 +179,18 @@ Output in the following JSON format:
     // 필수 필드 확인
     if (!parsed.wrong_example && !parsed.correct_example) {
       throw new Error('AI response missing required fields: wrong_example or correct_example');
+    }
+
+    // 토큰 사용량 로깅
+    if (result.usageMetadata) {
+      await logAiUsage({
+        supabase,
+        userId,
+        functionName: 'generate-example',
+        modelUsed: modelName,
+        usageMetadata: result.usageMetadata,
+        metadata: { taxonomyCode: code },
+      });
     }
 
     return jsonResponse({

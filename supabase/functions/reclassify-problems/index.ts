@@ -6,6 +6,9 @@ import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_sh
 import { loadTaxonomyData, findTaxonomyByDepth } from "../_shared/taxonomy.ts";
 import { generateWithRetry, parseJsonResponse, extractTextFromResponse } from "../_shared/aiClient.ts";
 import { summarizeError } from "../_shared/errors.ts";
+import { logAiUsage, sumUsageMetadata } from "../_shared/usageLogger.ts";
+import type { UsageMetadata } from "../_shared/aiClient.ts";
+import { MODEL_SEQUENCE } from "../_shared/models.ts";
 
 function buildPrompt(classificationData: { structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }) {
   const { structure, allValues } = classificationData;
@@ -134,12 +137,13 @@ serve(async (req: Request) => {
     const prompt = buildPrompt(taxonomyData);
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     const sessionId = `reclassify-${userId}-${Date.now()}`;
-    const modelName = 'gemini-2.5-flash';
+    const modelName = MODEL_SEQUENCE[0]; // models.ts 기본 모델 사용
 
     // 3. 배치 처리
     let processed = 0;
     let successCount = 0;
     let failCount = 0;
+    const allUsageMetadata: UsageMetadata[] = [];
 
     for (let i = 0; i < labels.length; i += batchSize) {
       const batch = labels.slice(i, i + batchSize);
@@ -169,6 +173,11 @@ serve(async (req: Request) => {
 
           const responseText = await extractTextFromResponse(result.response, modelName);
           const classification: any = parseJsonResponse(responseText, modelName);
+
+          // 토큰 사용량 수집
+          if (result.usageMetadata) {
+            allUsageMetadata.push(result.usageMetadata);
+          }
 
           // Gemini가 반환한 원본 값
           const rawDepth1 = (classification.depth1 || '').trim();
@@ -239,6 +248,23 @@ serve(async (req: Request) => {
     }
 
     console.log(`Reclassification completed: ${successCount} success, ${failCount} failed`);
+
+    // 토큰 사용량 로깅 (합산)
+    if (allUsageMetadata.length > 0) {
+      const totalUsage = sumUsageMetadata(...allUsageMetadata);
+      await logAiUsage({
+        supabase,
+        userId,
+        functionName: 'reclassify-problems',
+        modelUsed: modelName,
+        usageMetadata: totalUsage,
+        metadata: {
+          totalProblems: labels.length,
+          successCount,
+          failCount,
+        },
+      });
+    }
 
     return jsonResponse({
       success: true,

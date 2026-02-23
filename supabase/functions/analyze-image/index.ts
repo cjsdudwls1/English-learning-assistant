@@ -38,6 +38,10 @@ import { buildLabelsPayload } from './_shared/labelProcessor.ts'
 import { generateBatchMetadata, type MetadataInput } from './_shared/metadataGenerator.ts'
 import { buildStemText } from './_shared/problemProcessor.ts'
 
+// 토큰 사용량 로깅 모듈
+import { logAiUsage, sumUsageMetadata } from '../_shared/usageLogger.ts'
+import type { UsageMetadata } from '../_shared/aiClient.ts'
+
 
 
 
@@ -73,7 +77,7 @@ serve(async (req) => {
       return errorResponse(`Failed to parse request body: ${parseError.message}`, 400);
     }
 
-    const { imageBase64, mimeType, userId, fileName, language, images } = requestData || {};
+    const { imageBase64, mimeType, userId, fileName, language, images, preferredModel } = requestData || {};
 
     // 다중 이미지 배열 또는 단일 이미지 지원 (하위 호환성)
     let imageList: Array<{ imageBase64: string; mimeType: string; fileName: string }> = [];
@@ -345,9 +349,10 @@ serve(async (req) => {
           imageCount: imageList.length,
           taxonomyByDepthKey,
           taxonomyByCode,
+          preferredModel: preferredModel as string | undefined, // preferredModel 전달
         });
 
-        const { usedModel, result, validatedItems } = analysisResult;
+        const { usedModel, result, validatedItems, usageMetadata: analysisUsageMetadata } = analysisResult;
 
         console.log(`[Background] Step 3 completed: Model response received`, {
           sessionId: createdSessionId,
@@ -571,6 +576,22 @@ serve(async (req) => {
           // 상태 업데이트 실패해도 분석은 완료되었으므로 계속 진행
         } else {
           console.log(`[Background] Step 7 completed: Session status updated to completed`, { sessionId: createdSessionId });
+        }
+
+        // 8. 토큰 사용량 로깅
+        if (analysisUsageMetadata) {
+          await logAiUsage({
+            supabase,
+            userId,
+            functionName: 'analyze-image',
+            modelUsed: usedModel,
+            usageMetadata: analysisUsageMetadata,
+            sessionId: createdSessionId,
+            metadata: {
+              imageCount: imageList.length,
+              problemCount: validatedItems.length,
+            },
+          });
         }
 
         console.log(`[Background] ✅ Background analysis completed successfully for session: ${createdSessionId}`);

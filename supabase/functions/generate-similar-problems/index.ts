@@ -4,6 +4,8 @@ import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0";
 import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_shared/http.ts";
 import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from "../_shared/aiClient.ts";
 import { summarizeError } from "../_shared/errors.ts";
+import { logAiUsage } from "../_shared/usageLogger.ts";
+import { MODEL_SEQUENCE } from "../_shared/models.ts";
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -55,7 +57,7 @@ serve(async (req: Request) => {
 
     // 각 분류에 대해 유사 문제 생성
     const allProblems: any[] = [];
-    const modelName = 'gemini-2.0-flash-exp'; // 또는 gemini-1.5-pro 등
+    const modelName = MODEL_SEQUENCE[0]; // models.ts 기본 모델 사용
 
     for (const classification of classifications) {
       const { depth1, depth2, depth3, depth4, problemCount } = classification;
@@ -229,6 +231,21 @@ Important:
           }
         }
         console.log(`Generated ${processedProblems.length} problems for ${classificationPath}`);
+
+        // 토큰 사용량 로깅
+        if (result.usageMetadata) {
+          await logAiUsage({
+            supabase,
+            userId,
+            functionName: 'generate-similar-problems',
+            modelUsed: modelName,
+            usageMetadata: result.usageMetadata,
+            metadata: {
+              classificationPath,
+              problemCount: processedProblems.length,
+            },
+          });
+        }
 
       } catch (err: any) {
         console.error(`Error generating problems for ${classificationPath}:`, summarizeError(err));

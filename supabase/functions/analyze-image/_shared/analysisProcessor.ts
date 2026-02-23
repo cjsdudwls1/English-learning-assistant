@@ -1,5 +1,5 @@
 // 이미지 분석 프로세서 - 모델 Failover 로직
-import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from '../../_shared/aiClient.ts';
+import { generateWithRetry, extractTextFromResponse, parseJsonResponse, type UsageMetadata } from '../../_shared/aiClient.ts';
 import { MODEL_SEQUENCE, MODEL_RETRY_POLICY, EXTRACTION_TEMPERATURE } from '../../_shared/models.ts';
 import { StageError, summarizeError } from '../../_shared/errors.ts';
 import { validateAndSplitProblems, validateExtractedItems, type TaxonomyByDepthKey, type TaxonomyByCode } from './validation.ts';
@@ -13,6 +13,7 @@ export interface AnalysisResult {
         shared_passages?: any[];
     };
     validatedItems: any[];
+    usageMetadata?: UsageMetadata;
 }
 
 // 분석 파라미터
@@ -24,6 +25,7 @@ export interface AnalyzeImagesParams {
     imageCount: number;
     taxonomyByDepthKey: TaxonomyByDepthKey;
     taxonomyByCode: TaxonomyByCode;
+    preferredModel?: string; // 추가
 }
 
 /**
@@ -32,17 +34,21 @@ export interface AnalyzeImagesParams {
  * 각 모델에서 응답 파싱 및 검증까지 완료해야 성공으로 처리됩니다.
  */
 export async function analyzeImagesWithFailover(params: AnalyzeImagesParams): Promise<AnalysisResult> {
-    const { ai, supabase, sessionId, parts, imageCount, taxonomyByDepthKey, taxonomyByCode } = params;
+    const { ai, supabase, sessionId, parts, imageCount, taxonomyByDepthKey, taxonomyByCode, preferredModel } = params;
 
-    let usedModel: string = MODEL_SEQUENCE[0];
+    // preferredModel이 있으면 해당 모델만 시도
+    const sequence = preferredModel ? [preferredModel] : MODEL_SEQUENCE;
+
+    let usedModel: string = sequence[0];
     let responseText: string = '';
     let result: any = null;
     let validatedItems: any[] = [];
+    let totalUsageMetadata: UsageMetadata = {};
     const modelAttemptErrors: Array<{ model: string; error: any }> = [];
 
-    for (let i = 0; i < MODEL_SEQUENCE.length; i++) {
-        const model = MODEL_SEQUENCE[i];
-        const policy = MODEL_RETRY_POLICY[model];
+    for (let i = 0; i < sequence.length; i++) {
+        const model = sequence[i];
+        const policy = MODEL_RETRY_POLICY[model as keyof typeof MODEL_RETRY_POLICY]; // 타입 단언 추가
 
         // 세션에 현재 시도 모델 기록 (UI에서 표시)
         try {
@@ -112,7 +118,14 @@ export async function analyzeImagesWithFailover(params: AnalyzeImagesParams): Pr
             console.log(`[Background] Step 3b: Model ${model} succeeded`, {
                 sessionId,
                 itemCount: validatedItems.length,
+                promptTokenCount: attempt.usageMetadata?.promptTokenCount,
+                candidatesTokenCount: attempt.usageMetadata?.candidatesTokenCount,
             });
+
+            // 토큰 사용량 저장
+            if (attempt.usageMetadata) {
+                totalUsageMetadata = attempt.usageMetadata;
+            }
 
             break;
         } catch (err: any) {
@@ -134,7 +147,7 @@ export async function analyzeImagesWithFailover(params: AnalyzeImagesParams): Pr
             }
 
             // 마지막 모델이면 종합 에러 발생
-            if (i === MODEL_SEQUENCE.length - 1) {
+            if (i === sequence.length - 1) {
                 const errorSummary = modelAttemptErrors.map(e => ({
                     model: e.model,
                     stage: e.error instanceof StageError ? e.error.stage : 'unknown',
@@ -145,7 +158,7 @@ export async function analyzeImagesWithFailover(params: AnalyzeImagesParams): Pr
 
                 throw new StageError(
                     'extract_all_failed',
-                    `All ${MODEL_SEQUENCE.length} models failed to extract problems`,
+                    `All ${sequence.length} models failed to extract problems`,
                     { errorSummary }
                 );
             }
@@ -157,6 +170,7 @@ export async function analyzeImagesWithFailover(params: AnalyzeImagesParams): Pr
         responseText,
         result,
         validatedItems,
+        usageMetadata: totalUsageMetadata,
     };
 }
 
