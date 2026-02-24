@@ -38,7 +38,9 @@ export async function fetchExistingProblems(
   let query = supabase
     .from('generated_problems')
     .select('*')
-    .eq('problem_type', problemType);
+    .eq('problem_type', problemType)
+    .neq('stem', '__GENERATION_ERROR__')
+    .neq('stem', '__TIMEOUT_ERROR__');
 
   // 언어 필터링
   // TODO: generated_problems 테이블에 language 컬럼이 있는지 확인 필요
@@ -85,7 +87,7 @@ export async function fetchExistingProblems(
   }
 
   let problems = (data || []) as GeneratedProblem[];
-  
+
   console.log(`[fetchExistingProblems] ${problemType}: DB에서 조회된 문제 수 = ${problems.length}개 (분류 필터: ${classification?.depth1 || '없음'})`);
 
   // 이미 풀이한 문제 제외 (클라이언트 측 필터링)
@@ -94,7 +96,7 @@ export async function fetchExistingProblems(
       .from('problem_solving_sessions')
       .select('problem_id')
       .eq('user_id', userId);
-    
+
     if (solvedProblems && solvedProblems.length > 0) {
       const solvedProblemIds = new Set(solvedProblems.map(p => p.problem_id));
       problems = problems.filter(p => !solvedProblemIds.has(p.id));
@@ -105,13 +107,13 @@ export async function fetchExistingProblems(
   if (excludeRecentDays && userId && problems.length > 0) {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - excludeRecentDays);
-    
+
     const { data: recentProblems } = await supabase
       .from('problem_solving_sessions')
       .select('problem_id')
       .eq('user_id', userId)
       .gte('created_at', cutoffDate.toISOString());
-    
+
     if (recentProblems && recentProblems.length > 0) {
       const recentProblemIds = new Set(recentProblems.map(p => p.problem_id));
       problems = problems.filter(p => !recentProblemIds.has(p.id));
@@ -197,7 +199,7 @@ export async function fetchExistingProblemsByClassificationPriority(
       excludeRecentDays,
       userId,
     });
-    
+
     // 중복 제거
     const existingIds = new Set(problems.map(p => p.id));
     const newProblems = partialMatch.filter(p => !existingIds.has(p.id));
@@ -219,7 +221,7 @@ export async function fetchExistingProblemsByClassificationPriority(
       excludeRecentDays,
       userId,
     });
-    
+
     // 중복 제거
     const existingIds = new Set(problems.map(p => p.id));
     const newProblems = similarMatch.filter(p => !existingIds.has(p.id));

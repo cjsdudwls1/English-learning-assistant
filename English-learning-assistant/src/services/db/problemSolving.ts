@@ -6,19 +6,21 @@ import { getCurrentUserId } from './auth';
  */
 export async function startProblemSolving(problemId: string): Promise<string> {
   const userId = await getCurrentUserId();
-  
+
   const { data, error } = await supabase
     .from('problem_solving_sessions')
-    .insert({
+    .upsert({
       user_id: userId,
       problem_id: problemId,
       started_at: new Date().toISOString(),
+    }, {
+      onConflict: 'user_id,problem_id',
     })
     .select('id')
     .single();
-  
+
   if (error) throw error;
-  
+
   return data.id;
 }
 
@@ -31,7 +33,7 @@ export async function completeProblemSolving(
   timeSpentSeconds: number
 ): Promise<void> {
   const userId = await getCurrentUserId();
-  
+
   const { error } = await supabase
     .from('problem_solving_sessions')
     .update({
@@ -41,7 +43,7 @@ export async function completeProblemSolving(
     })
     .eq('user_id', userId)
     .eq('problem_id', problemId);
-  
+
   if (error) throw error;
 }
 
@@ -50,7 +52,7 @@ export async function completeProblemSolving(
  */
 export async function getProblemSolvingSession(problemId: string): Promise<{ id: string; started_at: string } | null> {
   const userId = await getCurrentUserId();
-  
+
   const { data, error } = await supabase
     .from('problem_solving_sessions')
     .select('id, started_at')
@@ -58,14 +60,14 @@ export async function getProblemSolvingSession(problemId: string): Promise<{ id:
     .eq('problem_id', problemId)
     .is('completed_at', null)
     .single();
-  
+
   if (error) {
     if (error.code === 'PGRST116') {
       return null;
     }
     throw error;
   }
-  
+
   return data;
 }
 

@@ -56,24 +56,20 @@ export async function loadTaxonomyData(
     }
   }
 
-  const formatStructure = (obj: any, indent = 0): string => {
-    let result = '';
-    const spaces = '  '.repeat(indent);
-    for (const [key, value] of Object.entries(obj)) {
-      result += spaces + key + '\n';
-      if (typeof value === 'object' && !Array.isArray(value)) {
-        result += formatStructure(value, indent + 1);
-      } else if (Array.isArray(value)) {
-        value.forEach((item: string) => {
-          result += spaces + '  ' + item + '\n';
-        });
+  // 플랫 목록 형태로 변경 (들여쓰기 트리 대신, ~3,600자로 축소)
+  const lines: string[] = [];
+  for (const [d1, d2Map] of Object.entries(structure)) {
+    for (const [d2, d3Map] of Object.entries(d2Map as any)) {
+      for (const [d3, d4Arr] of Object.entries(d3Map as any)) {
+        for (const d4 of (d4Arr as string[])) {
+          lines.push(`${d1} > ${d2} > ${d3} > ${d4}`);
+        }
       }
     }
-    return result;
-  };
+  }
 
   return {
-    structure: formatStructure(structure),
+    structure: lines.join('\n'),
     allValues: {
       depth1: Array.from(allValues.depth1).sort(),
       depth2: Array.from(allValues.depth2).sort(),

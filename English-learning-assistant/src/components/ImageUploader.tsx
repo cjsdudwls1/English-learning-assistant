@@ -26,21 +26,34 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
   }, [imageFiles, onImagesSelect]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const MAX_IMAGES = 3;
     const files = event.target.files;
     if (!files || files.length === 0) return;
-    
-    Array.from(files).forEach((file) => {
-      if (file.type.startsWith('image/')) {
+
+    const imageFilesArray = Array.from(files).filter(f => f.type.startsWith('image/'));
+
+    setImageFiles(prev => {
+      const remainingSlots = MAX_IMAGES - prev.length;
+      if (remainingSlots <= 0) return prev;
+
+      const filesToAdd = imageFilesArray.slice(0, remainingSlots);
+      const newFiles: ImageFile[] = [];
+
+      filesToAdd.forEach((file) => {
         const id = `${Date.now()}_${Math.random()}`;
         const reader = new FileReader();
         reader.onloadend = () => {
           const previewUrl = reader.result as string;
           const imageFile: ImageFile = { file, previewUrl, id };
-          
-          setImageFiles(prev => [...prev, imageFile]);
+          setImageFiles(p => {
+            if (p.length >= MAX_IMAGES) return p;
+            return [...p, imageFile];
+          });
         };
         reader.readAsDataURL(file);
-      }
+      });
+
+      return prev;
     });
   }, []);
 
@@ -48,17 +61,17 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
     setImageFiles(prev => {
       const imageFile = prev[index];
       if (!imageFile) return prev;
-      
+
       // Blob을 File로 변환
       const rotatedFile = new File([rotatedBlob], imageFile.file.name, {
         type: rotatedBlob.type,
         lastModified: Date.now(),
       });
-      
+
       // 미리보기 URL 생성 (동기적으로 처리)
       // FileReader를 사용하지 않고 Blob URL 사용
       const previewUrl = URL.createObjectURL(rotatedBlob);
-      
+
       // 상태 업데이트 (한 번만)
       const updated = [...prev];
       updated[index] = { ...imageFile, file: rotatedFile, previewUrl };
@@ -112,21 +125,21 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
             {t.upload.multipleImages}
           </p>
         </div>
-        
+
         {imageFiles.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 {t.upload.selectedImages}: {imageFiles.length}{language === 'ko' ? '개' : ''}
               </p>
-              <button 
+              <button
                 onClick={handleClearAll}
                 className="px-3 py-1 text-sm bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors"
               >
                 {t.upload.clearAll}
               </button>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {imageFiles.map((imageFile, index) => (
                 <div key={imageFile.id} className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 relative">
@@ -150,7 +163,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
                 </div>
               ))}
             </div>
-            
+
             <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
               {t.upload.rotateHint}
             </p>

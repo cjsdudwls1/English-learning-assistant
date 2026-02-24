@@ -1,7 +1,7 @@
 import type { GeneratedProblem } from '../types';
-import { 
+import {
   fetchExistingProblemsByClassificationPriority,
-  fetchExistingProblems 
+  fetchExistingProblems
 } from './db/generatedProblems';
 import { supabase } from './supabaseClient';
 
@@ -37,6 +37,8 @@ export interface ProblemLoadResult {
       };
     };
   };
+  /** 부족한 문제 유형별 개수 (AI 생성 필요) */
+  shortage: { [key: string]: number };
 }
 
 /**
@@ -67,6 +69,7 @@ export async function loadProblemsWithExisting(
       newlyGenerated: 0,
       byType: {},
     },
+    shortage: {},
   };
 
   const problemTypes: Array<'multiple_choice' | 'short_answer' | 'essay' | 'ox'> = [
@@ -121,7 +124,7 @@ export async function loadProblemsWithExisting(
           exactMatchOnly: false, // 더 많은 문제를 찾기 위해 완화
         });
       }
-      
+
       // 디버깅: 실제로 찾은 문제 수 확인
       console.log(`[LoadExisting] ${problemType}: 요청=${requestedCount}, 발견=${existingProblems.length}`);
 
@@ -167,14 +170,11 @@ export async function loadProblemsWithExisting(
       result.problems.push(...problems);
     }
   }
-  
+
   console.log(`[LoadExisting] 총 기존 문제 ${result.problems.length}개 준비 완료 (모두 _source='existing' 포함)`);
 
-  // 2단계: 부족한 문제 계산 및 생성
-  onProgress?.(2, '부족한 문제 계산 중...', { stage: 'calculating' });
-
-  const problemsToGenerate: { [key: string]: number } = {};
-
+  // 2단계: 부족한 문제 집계 (AI 생성은 사용자 확인 후)
+  const shortage: { [key: string]: number } = {};
   for (const problemType of problemTypes) {
     const requestedCount = problemCounts[problemType];
     if (requestedCount <= 0) continue;
@@ -183,62 +183,51 @@ export async function loadProblemsWithExisting(
     const neededCount = Math.max(0, requestedCount - existingCount);
 
     if (neededCount > 0) {
-      problemsToGenerate[problemType] = neededCount;
+      shortage[problemType] = neededCount;
+      console.log(`[LoadExisting] ${problemType}: 요청 ${requestedCount}개 중 ${existingCount}개만 DB에 존재 (${neededCount}개 부족)`);
     }
   }
+  result.shortage = shortage;
 
-  // 3단계: 부족한 문제 생성
-  if (Object.keys(problemsToGenerate).length > 0) {
-    onProgress?.(3, '새 문제 생성 중...', {
-      stage: 'generating',
-      problemsToGenerate,
-    });
+  console.log(`[LoadExisting] 최종 결과: 총 ${result.problems.length}개 문제 (기존: ${result.stats.existing}개, 부족: ${JSON.stringify(shortage)})`);
 
-    // Edge Function을 통해 문제 생성
-    // 기존 generate-problems-by-type Edge Function 사용
-    const generationPromises: Promise<void>[] = [];
-
-    for (const [problemType, count] of Object.entries(problemsToGenerate)) {
-      const promise = generateMissingProblems(
-        problemType as 'multiple_choice' | 'short_answer' | 'essay' | 'ox',
-        count,
-        classification,
-        userId || '',
-        language || 'ko',
-        onProgress
-      ).then((newProblems) => {
-        // 새로 생성된 문제에 출처 정보 추가
-        const newProblemsWithSource = newProblems.map(p => ({
-          ...p,
-          _source: 'new' as const, // 출처 표시용 메타데이터
-        }));
-        console.log(`[LoadExisting] 새로 생성된 문제 ${newProblems.length}개에 출처 정보 추가:`, newProblemsWithSource.map(p => ({ id: p.id, _source: p._source })));
-        result.problems.push(...newProblemsWithSource);
-        result.stats.byType[problemType].newlyGenerated = newProblems.length;
-        result.stats.newlyGenerated += newProblems.length;
-      });
-
-      generationPromises.push(promise);
-    }
-
-    await Promise.all(generationPromises);
-  }
-
-  console.log(`[LoadExisting] 최종 결과: 총 ${result.problems.length}개 문제 (기존: ${result.stats.existing}개, 새로 생성: ${result.stats.newlyGenerated}개)`);
-  console.log(`[LoadExisting] 문제 출처 정보:`, result.problems.map(p => ({ id: p.id, _source: (p as any)._source })));
-  
   onProgress?.(3, '시험지 구성 완료!', {
     stage: 'complete',
     total: result.problems.length,
     existing: result.stats.existing,
-    newlyGenerated: result.stats.newlyGenerated,
+    newlyGenerated: 0,
   });
 
   return result;
 }
 
 /**
- * 부족한 문제 생성 (Edge Function 호출)
+ * 부족분 AI 생성 (사용자 확인 후 호출)
+ */
+export async function generateShortageProblems(
+  shortage: { [key: string]: number },
+  classification: ProblemLoadOptions['classification'],
+  userId: string,
+  language: 'ko' | 'en',
+  onProgress?: (stage: number, message: string, details?: any) => void
+): Promise<GeneratedProblem[]> {
+  const allNew: GeneratedProblem[] = [];
+  for (const [problemType, count] of Object.entries(shortage)) {
+    const problems = await generateMissingProblems(
+      problemType as any,
+      count,
+      classification,
+      userId,
+      language,
+      onProgress
+    );
+    allNew.push(...problems);
+  }
+  return allNew;
+}
+
+/**
+ * 부족한 문제 생성 (Edge Function 호출) - 내부 함수
  */
 async function generateMissingProblems(
   problemType: 'multiple_choice' | 'short_answer' | 'essay' | 'ox',
@@ -250,7 +239,7 @@ async function generateMissingProblems(
 ): Promise<GeneratedProblem[]> {
   try {
     const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-problems-by-type`;
-    
+
     const { data: session } = await supabase.auth.getSession();
     if (!session?.session) {
       throw new Error('Not authenticated');

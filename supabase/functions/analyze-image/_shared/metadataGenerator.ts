@@ -63,22 +63,33 @@ export async function generateBatchMetadata(params: GenerateMetadataParams): Pro
     let metadataSuccess = false;
     let lastMetadataError: unknown = null;
 
-    for (let mIdx = 0; mIdx < MODEL_SEQUENCE.length; mIdx++) {
-        const model = MODEL_SEQUENCE[mIdx];
+    // 메타데이터 생성용 모델: thinking 모델과 gemini-2.5-pro 제외 (느림 + 시간 초과 위험)
+    const metaModels = (MODEL_SEQUENCE as readonly string[]).filter(
+        m => m !== 'gemini-3-flash-preview' && m !== 'gemini-2.5-pro'
+    ) as string[];
+    if (metaModels.length === 0) metaModels.push(...(MODEL_SEQUENCE as readonly string[]));
+
+    for (let mIdx = 0; mIdx < metaModels.length; mIdx++) {
+        const model = metaModels[mIdx];
 
         if (metadataSuccess) break;
 
         try {
-            console.log(`[Background] Step 6: Calling Gemini for batch metadata (${batchInputs.length} problems) using ${model} (${mIdx + 1}/${MODEL_SEQUENCE.length})...`, { sessionId });
+            console.log(`[Background] Step 6: Calling Gemini for batch metadata (${batchInputs.length} problems) using ${model} (${mIdx + 1}/${metaModels.length})...`, { sessionId });
 
-            const response = await ai.models.generateContent({
-                model,
-                contents: { parts: [{ text: metadataPrompt }] },
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    temperature: 0.0,
-                },
-            });
+            const response = await Promise.race([
+                ai.models.generateContent({
+                    model,
+                    contents: { parts: [{ text: metadataPrompt }] },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        temperature: 0.0,
+                    },
+                }),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Metadata API call timeout after 60s')), 60000)
+                ),
+            ]);
 
             // 텍스트 추출
             let metadataText: string = '';

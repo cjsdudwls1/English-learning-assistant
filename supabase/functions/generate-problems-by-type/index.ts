@@ -171,12 +171,14 @@ const promptTemplates: Record<ProblemType, Record<Language, PromptTemplate>> = {
   {
     "stem": "O/X 판단 문장 (영어로)",
     "correct_answer": true,
-    "explanation": "정답 해설 (한국어로) - 왜 맞는지 또는 틀린지 설명"
+    "explanation": "정답 해설 (한국어로, 2~3문장 이내)"
   }
 ]`,
             requirements: [
                 'correct_answer는 true 또는 false로 작성하세요',
-                '해설에는 왜 맞거나 틀린지 명확히 설명하세요',
+                '해설은 반드시 2~3문장 이내로 간결하게 작성하세요. 장황한 설명은 금지합니다',
+                '해설에서 "하지만", "다시 생각하면" 등으로 자기 모순적인 내용을 쓰지 마세요. 결론만 명확하게 서술하세요',
+                'explanation 값에는 왜 정답이 true/false인지 핵심 근거만 포함하세요',
                 'JSON 형식만 반환하고 다른 설명은 추가하지 마세요'
             ]
         },
@@ -187,12 +189,13 @@ const promptTemplates: Record<ProblemType, Record<Language, PromptTemplate>> = {
   {
     "stem": "Statement to judge (True/False)",
     "correct_answer": true,
-    "explanation": "Explanation of why it's true or false"
+    "explanation": "Brief explanation (2-3 sentences max)"
   }
 ]`,
             requirements: [
                 'correct_answer should be true or false',
-                'Explain clearly why the statement is true or false',
+                'Keep explanation to 2-3 sentences maximum. Be concise and direct',
+                'Do not contradict yourself in the explanation. State the conclusion clearly',
                 'Return only JSON format'
             ]
         }
@@ -243,102 +246,113 @@ async function generateProblemsInBackground(
 
         let responseText = '';
         let lastError: any = null;
-        const modelName = MODEL_SEQUENCE[0]; // models.ts 기본 모델 사용
+        const modelErrors: Array<{ model: string; error: string }> = [];
 
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                console.log(`[Background] Attempt ${attempt}/${maxRetries}: Starting Gemini API call with 50s timeout...`);
+        // gemini-3-flash-preview는 503이 잦아 failover 시간이 길어짐 → 제외
+        // 문제 생성은 텍스트 기반이라 gemini-2.5-flash로 충분
+        const genModels = (MODEL_SEQUENCE as readonly string[]).filter(m => m !== 'gemini-3-flash-preview');
+        if (genModels.length === 0) genModels.push(...(MODEL_SEQUENCE as readonly string[]));
 
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('API call timeout after 50s')), 50000);
-                });
+        // genModels를 순회하며 failover 시도
+        for (let modelIdx = 0; modelIdx < genModels.length; modelIdx++) {
+            const modelName = genModels[modelIdx];
+            let modelSucceeded = false;
 
-                const apiPromise = ai.models.generateContent({
-                    model: modelName,
-                    contents: { parts: [{ text: prompt }] },
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        temperature: 0.7,
-                    },
-                });
+            console.log(`[Background] Trying model ${modelIdx + 1}/${genModels.length}: ${modelName}`);
 
-                const response = await Promise.race([apiPromise, timeoutPromise]) as any;
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    console.log(`[Background] Model=${modelName}, Attempt ${attempt}/${maxRetries}: Starting Gemini API call with 50s timeout...`);
 
-                if (response?.text) {
-                    responseText = typeof response.text === 'function'
-                        ? await response.text()
-                        : response.text;
-                } else if (response?.response?.text) {
-                    responseText = typeof response.response.text === 'function'
-                        ? await response.response.text()
-                        : response.response.text;
-                } else if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    responseText = response.candidates[0].content.parts[0].text;
-                }
-
-                if (responseText && responseText.trim().length > 0) {
-                    console.log(`[Background] Successfully received response on attempt ${attempt}`);
-                    break;
-                } else {
-                    throw new Error('Empty response from Gemini API');
-                }
-
-            } catch (apiError: any) {
-                lastError = apiError;
-                console.log(`[Background] Error type:`, typeof apiError);
-                console.log(`[Background] Error keys:`, apiError ? Object.keys(apiError) : 'null');
-
-                let errorCode = 0;
-                let errorMessage = '';
-                let errorStatus = '';
-
-                if (apiError?.status) {
-                    errorCode = apiError.status;
-                }
-                if (apiError?.message) {
-                    errorMessage = apiError.message;
-                }
-                if (apiError?.error?.status) {
-                    errorStatus = apiError.error.status;
-                }
-
-                console.log(`[Background] Parsed error - code: ${errorCode}, message: ${errorMessage.substring(0, 100)}`);
-
-                const isRateLimit = errorCode === 429 ||
-                    errorMessage.toLowerCase().includes('rate limit') ||
-                    errorMessage.toLowerCase().includes('quota');
-                const isServerOverload = errorCode === 503 ||
-                    errorMessage.toLowerCase().includes('overloaded') ||
-                    errorStatus === 'UNAVAILABLE';
-                const isTimeout = errorMessage.toLowerCase().includes('timeout');
-
-                console.log(`[Background] Error classification - RateLimit: ${isRateLimit}, ServerOverload: ${isServerOverload}, Timeout: ${isTimeout}`);
-
-                console.log(`[Background] Gemini API error (attempt ${attempt}/${maxRetries}):`, apiError);
-
-                if (attempt === maxRetries) {
-                    console.log(`[Background] Gemini API failed after ${maxRetries} attempts:`, {
-                        message: errorMessage,
-                        code: errorCode,
-                        status: errorStatus
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('API call timeout after 50s')), 50000);
                     });
-                    throw new Error(`Gemini API error: ${errorMessage}`);
-                }
 
-                if (isRateLimit || isServerOverload || isTimeout) {
-                    const delay = baseDelay * Math.pow(2, attempt - 1);
-                    console.log(`[Background] Hit rate limit/overload/timeout (code: ${errorCode}, status: ${errorStatus}). Retrying in ${delay / 1000}s... (Attempt ${attempt}/${maxRetries})`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                } else {
-                    const delay = baseDelay * attempt;
-                    console.log(`[Background] API error occurred. Retrying in ${delay / 1000}s... (Attempt ${attempt}/${maxRetries})`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
+                    const apiPromise = ai.models.generateContent({
+                        model: modelName,
+                        contents: { parts: [{ text: prompt }] },
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            temperature: 0.7,
+                        },
+                    });
+
+                    const response = await Promise.race([apiPromise, timeoutPromise]) as any;
+
+                    if (response?.text) {
+                        responseText = typeof response.text === 'function'
+                            ? await response.text()
+                            : response.text;
+                    } else if (response?.response?.text) {
+                        responseText = typeof response.response.text === 'function'
+                            ? await response.response.text()
+                            : response.response.text;
+                    } else if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        responseText = response.candidates[0].content.parts[0].text;
+                    }
+
+                    if (responseText && responseText.trim().length > 0) {
+                        console.log(`[Background] Model=${modelName} succeeded on attempt ${attempt}`);
+                        modelSucceeded = true;
+                        break;
+                    } else {
+                        throw new Error('Empty response from Gemini API');
+                    }
+
+                } catch (apiError: any) {
+                    lastError = apiError;
+
+                    let errorCode = 0;
+                    let errorMessage = '';
+                    let errorStatus = '';
+
+                    if (apiError?.status) errorCode = apiError.status;
+                    if (apiError?.message) errorMessage = apiError.message;
+                    if (apiError?.error?.status) errorStatus = apiError.error.status;
+
+                    console.log(`[Background] Model=${modelName}, Attempt ${attempt}/${maxRetries} failed - code: ${errorCode}, message: ${errorMessage.substring(0, 200)}`);
+
+                    const isRateLimit = errorCode === 429 ||
+                        errorMessage.toLowerCase().includes('rate limit') ||
+                        errorMessage.toLowerCase().includes('quota');
+                    const isServerOverload = errorCode === 503 ||
+                        errorMessage.toLowerCase().includes('overloaded') ||
+                        errorStatus === 'UNAVAILABLE';
+                    const isTimeout = errorMessage.toLowerCase().includes('timeout');
+
+                    if (attempt === maxRetries) {
+                        // 이 모델의 모든 재시도 소진 → 다음 모델로 failover
+                        console.warn(`[Background] Model=${modelName} failed after ${maxRetries} attempts. Failing over to next model...`);
+                        modelErrors.push({ model: modelName, error: errorMessage });
+                        break;
+                    }
+
+                    if (isRateLimit || isServerOverload || isTimeout) {
+                        const delay = baseDelay * Math.pow(2, attempt - 1);
+                        console.log(`[Background] Hit rate limit/overload/timeout. Retrying in ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        const delay = baseDelay * attempt;
+                        console.log(`[Background] API error occurred. Retrying in ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
                 }
+            }
+
+            if (modelSucceeded) {
+                console.log(`[Background] Successfully generated problems using model: ${modelName}`);
+                break;
+            }
+
+            // 마지막 모델도 실패하면 최종 에러
+            if (modelIdx === genModels.length - 1 && !modelSucceeded) {
+                console.error(`[Background] All ${genModels.length} models failed:`, modelErrors);
+                throw new Error(`All ${genModels.length} models failed to generate problems. Errors: ${JSON.stringify(modelErrors)}`);
             }
         }
 
         if (!responseText || responseText.trim().length === 0) {
-            throw new Error('Failed to get response from Gemini API after all retries');
+            throw new Error('Failed to get response from Gemini API after all models');
         }
 
         // JSON 파싱
@@ -410,6 +424,8 @@ async function generateProblemsInBackground(
         }
 
         console.log(`[Background] Successfully saved ${insertedProblems?.length || 0} problems to database`);
+
+        return { count: insertedProblems?.length || 0, problems: insertedProblems || [] };
 
         // 성공 알림을 위한 DB 업데이트
         await supabase
@@ -496,21 +512,29 @@ Deno.serve(async (req) => {
             });
         }
 
-        // 즉시 응답 반환
-        const response = new Response(JSON.stringify({
-            message: 'Processing started',
-            success: true
-        }), {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        // 동기식으로 문제 생성 (백그라운드 대신 직접 실행하여 에러 추적 가능)
+        try {
+            const result = await generateProblemsInBackground(request, supabaseUrl, supabaseServiceKey, geminiApiKey);
 
-        // 백그라운드 작업 시작
-        EdgeRuntime.waitUntil(
-            generateProblemsInBackground(request, supabaseUrl, supabaseServiceKey, geminiApiKey)
-        );
-
-        return response;
+            return new Response(JSON.stringify({
+                success: true,
+                message: 'Problems generated successfully',
+                count: result?.count || 0,
+                problems: result?.problems || [],
+            }), {
+                status: 200,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        } catch (genError: any) {
+            console.error('[Sync] Problem generation failed:', genError);
+            return new Response(JSON.stringify({
+                success: false,
+                error: genError.message || 'Problem generation failed',
+            }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
 
     } catch (e) {
         console.error('Error in generate-problems-by-type:', e);

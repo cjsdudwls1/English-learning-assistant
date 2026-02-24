@@ -9,14 +9,16 @@ interface QuickLabelingCardProps {
   sessionId: string;
   imageUrl: string;
   analysisModel?: string | null;
+  modelsUsed?: { ocr?: string; analysis?: string } | null;
   onSave?: () => void;
   onDelete?: (sessionId: string) => void;
 }
 
-export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({ 
-  sessionId, 
-  imageUrl, 
+export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
+  sessionId,
+  imageUrl,
   analysisModel,
+  modelsUsed,
   onSave,
   onDelete,
 }) => {
@@ -37,7 +39,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       setLoading(true);
       const data = await fetchSessionProblems(sessionId);
       setProblems(data);
-      
+
       // AI 분석 결과를 초기값으로 설정 (user_mark가 null이면 AI 분석 결과 사용)
       const initialLabels: Record<string, 'O' | 'X'> = {};
       data.forEach(p => {
@@ -117,26 +119,35 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       )}
       <div className="flex items-start gap-6 mb-6">
         {/* 이미지 썸네일 */}
-        <img 
-          src={imageUrl} 
-          alt={language === 'ko' ? '문제 이미지' : 'Problem Image'} 
+        <img
+          src={imageUrl}
+          alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
           className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 flex-shrink-0"
         />
-        
+
         {/* 헤더 */}
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
               {language === 'ko' ? 'AI 분석 완료' : 'AI Analysis Complete'}
             </h3>
-            {analysisModel ? (
+            {modelsUsed ? (
+              <div className="flex flex-wrap gap-1">
+                <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
+                  OCR: {modelsUsed.ocr || '?'}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                  분석: {modelsUsed.analysis || '?'}
+                </span>
+              </div>
+            ) : analysisModel ? (
               <span className="text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">
                 Model: {analysisModel}
               </span>
             ) : null}
           </div>
           <p className="text-slate-600 dark:text-slate-400">
-            {language === 'ko' 
+            {language === 'ko'
               ? `AI가 분석한 문제 ${problems.length}개를 확인하고 검수해주세요.`
               : `Please review and verify ${problems.length} problem(s) analyzed by AI.`}
           </p>
@@ -148,7 +159,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
         {problems.map((problem) => {
           const currentMark = labels[`${problem.index}`] || 'O';
           const aiMark = problem.AI가_판단한_정오답;
-          
+
           return (
             <div key={problem.index} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
               <div className="flex items-start justify-between gap-4">
@@ -161,7 +172,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                       </span>
                     )}
                   </div>
-                  
+
                   {/* 문제 내용 */}
                   <div className="mb-3">
                     <p className="text-slate-700 dark:text-slate-300 font-medium mb-2">{problem.문제내용.text}</p>
@@ -199,21 +210,19 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                 <div className="flex gap-2 flex-shrink-0">
                   <button
                     onClick={() => handleMarkChange(problem.index, 'O')}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      currentMark === 'O'
-                        ? 'bg-blue-600 dark:bg-blue-500 text-white'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                    }`}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${currentMark === 'O'
+                      ? 'bg-blue-600 dark:bg-blue-500 text-white'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      }`}
                   >
                     {t.labeling.correct}
                   </button>
                   <button
                     onClick={() => handleMarkChange(problem.index, 'X')}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      currentMark === 'X'
-                        ? 'bg-red-600 dark:bg-red-500 text-white'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                    }`}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${currentMark === 'X'
+                      ? 'bg-red-600 dark:bg-red-500 text-white'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      }`}
                   >
                     {t.labeling.incorrect}
                   </button>

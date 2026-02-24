@@ -151,6 +151,7 @@ export async function fetchSessionsByStatus(status: string): Promise<SessionWith
 }
 
 // 분석 중인 세션 조회 (problem_count === 0 또는 status === 'processing')
+// 5분 이상 processing 상태인 세션은 자동으로 failed 처리
 export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();
 
@@ -163,6 +164,7 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
       image_urls,
       status,
       analysis_model,
+      models_used,
       problems (
         id
       )
@@ -171,6 +173,10 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
+
+  const now = new Date();
+  const TIMEOUT_MS = 5 * 60 * 1000; // 5분
+  const timedOutSessionIds: string[] = [];
 
   // problem_count === 0이거나 status === 'processing'인 세션만 필터링
   const analyzingSessions: SessionWithProblems[] = (data || [])
@@ -187,14 +193,47 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
         incorrect_count: 0,
         status: session.status,
         analysis_model: session.analysis_model,
+        models_used: session.models_used || null,
       };
     })
     .filter((session) => {
       const status = session.status ?? 'pending';
       const isActiveStatus = status === 'processing' || status === 'pending';
-      // 분석 중으로 간주: 상태가 진행 중일 때
-      return isActiveStatus;
+      if (!isActiveStatus) return false;
+
+      // 5분 이상 경과한 세션은 타임아웃 → 실패 처리 대상
+      const createdAt = new Date(session.created_at);
+      const elapsed = now.getTime() - createdAt.getTime();
+      if (elapsed > TIMEOUT_MS) {
+        timedOutSessionIds.push(session.id);
+        return false; // 분석 중 목록에서 제외
+      }
+
+      return true;
     });
+
+  // 타임아웃된 세션을 백그라운드에서 failed로 업데이트
+  if (timedOutSessionIds.length > 0) {
+    console.log(`[Auto-timeout] ${timedOutSessionIds.length} session(s) timed out, marking as failed:`, timedOutSessionIds);
+    for (const sessionId of timedOutSessionIds) {
+      supabase
+        .from('sessions')
+        .update({
+          status: 'failed',
+          failure_stage: 'timeout',
+          failure_message: JSON.stringify({
+            stage: 'timeout',
+            message: '분석 시간이 초과되었습니다. Edge Function이 비정상 종료되었을 수 있습니다.',
+          }),
+        })
+        .eq('id', sessionId)
+        .eq('user_id', userId)
+        .then(({ error }) => {
+          if (error) console.error(`[Auto-timeout] Failed to update session ${sessionId}:`, error);
+          else console.log(`[Auto-timeout] Session ${sessionId} marked as failed`);
+        });
+    }
+  }
 
   return analyzingSessions;
 }
@@ -244,6 +283,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       created_at,
       image_urls,
       analysis_model,
+      models_used,
       status,
       problems (
         id,
@@ -287,6 +327,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         created_at: session.created_at,
         image_url: session.image_urls?.[0] || '',
         analysis_model: session.analysis_model ?? null,
+        models_used: session.models_used || null,
         problem_count,
         correct_count,
         incorrect_count,

@@ -95,25 +95,20 @@ export function useProblemGenerationState({
   const handleLoadExistingProblems = useCallback(async () => {
     const totalCount = Object.values(problemCounts).reduce((sum, count) => sum + count, 0);
     if (totalCount < 1) {
-      onError(language === 'ko' 
-        ? '최소 하나의 문제 유형에서 1개 이상의 문제를 선택해야 합니다.' 
+      onError(language === 'ko'
+        ? '최소 하나의 문제 유형에서 1개 이상의 문제를 선택해야 합니다.'
         : 'At least one problem type must have 1 or more problems.');
       return;
     }
 
     setIsLoadingExistingProblems(true);
     try {
-      const classificationToUse = classifications.length > 0 ? {
-        depth1: classifications[0].depth1,
-        depth2: classifications[0].depth2,
-        depth3: classifications[0].depth3,
-        depth4: classifications[0].depth4,
-      } : undefined;
-
+      // "기존 문제 불러오기"는 분류 필터 없이 유형별로 DB 전체에서 조회
+      // (분류 필터를 걸면 자동 선택된 구체적 분류에 매칭되는 문제만 나와 대부분 부족 처리됨)
       const result = await loadProblemsWithExisting(
         {
           problemCounts,
-          classification: classificationToUse,
+          // classification을 전달하지 않아 유형별 전체 조회
           language,
           userId,
           exactMatchOnly: false,
@@ -123,9 +118,49 @@ export function useProblemGenerationState({
         }
       );
 
+      // 부족분 확인
+      const shortageEntries = Object.entries(result.shortage);
+      if (shortageEntries.length > 0) {
+        const typeLabels: Record<string, string> = {
+          multiple_choice: language === 'ko' ? '객관식' : 'Multiple Choice',
+          short_answer: language === 'ko' ? '단답형' : 'Short Answer',
+          essay: language === 'ko' ? '서술형' : 'Essay',
+          ox: 'O/X',
+        };
+        const shortageTotal = shortageEntries.reduce((sum, [, count]) => sum + count, 0);
+        const shortageDetails = shortageEntries
+          .map(([type, count]) => `${typeLabels[type] || type} ${count}개`)
+          .join(', ');
+
+        const confirmMsg = language === 'ko'
+          ? `DB에 ${shortageTotal}개 문제가 부족합니다.\n(${shortageDetails})\n\nAI로 부족분을 생성하시겠습니까?\n(취소하면 있는 문제만으로 시험지를 구성합니다)`
+          : `${shortageTotal} problems are missing.\n(${shortageDetails})\n\nGenerate missing problems with AI?\n(Cancel to use only existing problems)`;
+
+        if (window.confirm(confirmMsg)) {
+          // AI로 부족분 생성
+          const { generateShortageProblems } = await import('../services/problemLoader');
+          const newProblems = await generateShortageProblems(
+            result.shortage,
+            undefined, // 분류 필터 없이 생성
+            userId,
+            language,
+            (stage, message, details) => {
+              console.log(`[Generate Shortage] Stage ${stage}: ${message}`, details);
+            }
+          );
+          result.problems.push(...newProblems);
+        }
+      }
+
       setGeneratedProblems(result.problems);
-      setShowTestSheet(true);
-      setShowProblemGenerator(false);
+      if (result.problems.length > 0) {
+        setShowTestSheet(true);
+        setShowProblemGenerator(false);
+      } else {
+        onError(language === 'ko'
+          ? 'DB에 해당 조건의 문제가 없습니다. AI로 시험지 생성을 이용해주세요.'
+          : 'No matching problems found. Please use AI generation.');
+      }
     } catch (error) {
       console.error('Error loading existing problems:', error);
       onError(error instanceof Error ? error.message : (language === 'ko' ? '문제 불러오기 중 오류가 발생했습니다.' : 'An error occurred while loading problems.'));

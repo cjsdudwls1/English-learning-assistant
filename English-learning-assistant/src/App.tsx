@@ -536,7 +536,54 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
 
+  // 이미지 압축: Canvas API를 사용하여 긴 변 1600px, JPEG 80% 품질로 리사이징
+  const compressImage = (file: File, maxDimension: number = 1200, quality: number = 0.8): Promise<{ base64: string; mimeType: string }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          // 긴 변이 maxDimension보다 크면 비율 유지하며 축소
+          if (width > maxDimension || height > maxDimension) {
+            const ratio = Math.min(maxDimension / width, maxDimension / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas 2D context not available'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          // JPEG로 압축 (품질 0.8 = 80%)
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          const base64 = dataUrl.split(',')[1];
+          console.log(`[Compress] ${file.name}: ${img.naturalWidth}x${img.naturalHeight} → ${width}x${height}, base64 len: ${base64.length} (원본 ${file.size} bytes)`);
+          URL.revokeObjectURL(url);
+          resolve({ base64, mimeType: 'image/jpeg' });
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error(`Failed to load image: ${file.name}`));
+      };
+      img.src = url;
+    });
+  };
+
   const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
+    // 이미지 파일이면 압축 적용
+    if (file.type.startsWith('image/')) {
+      return compressImage(file);
+    }
+    // 이미지가 아닌 파일은 원본 그대로
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -688,7 +735,7 @@ const App: React.FC = () => {
   }, [imageFiles, language]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const MAX_IMAGES = 3; // RECITATION 에러 방지를 위한 최대 이미지 수 제한
+    const MAX_IMAGES = 3; // wall time 제한 내에서 안정적으로 처리 가능한 수
     const files = event.target.files;
     if (!files || files.length === 0) return;
 

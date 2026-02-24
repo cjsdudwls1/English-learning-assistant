@@ -86,6 +86,7 @@ export interface SessionWithProblems {
   incorrect_count: number;
   status?: string;
   analysis_model?: string | null;
+  models_used?: { ocr?: string; analysis?: string } | null;
   // 실패 관찰 가능성(Observability)
   failure_stage?: string | null;
   failure_message?: string | null;

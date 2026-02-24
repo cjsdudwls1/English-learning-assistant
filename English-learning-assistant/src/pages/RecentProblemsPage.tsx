@@ -203,6 +203,7 @@ export const RecentProblemsPage: React.FC = () => {
           sessionId={session.id}
           imageUrl={session.image_url}
           analysisModel={session.analysis_model}
+          modelsUsed={session.models_used}
           onSave={handleLabelingComplete}
           onDelete={handleDelete}
         />
@@ -279,8 +280,8 @@ export const RecentProblemsPage: React.FC = () => {
                     onClick={() => navigate(`/session/${session.id}`)}
                     disabled={session.problem_count === 0}
                     className={`px-4 py-2 text-white text-sm rounded-lg ${session.problem_count === 0
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-indigo-600 hover:bg-indigo-700'
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
                       }`}
                   >
                     {t.recent.viewDetails}

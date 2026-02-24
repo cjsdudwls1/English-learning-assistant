@@ -78,21 +78,28 @@ export async function generateWithRetry(params: GenerateWithRetryParams): Promis
         try {
             console.log(`[Background] Model call attempt ${attempt + 1}/${maxRetries} (model=${model})...`, { sessionId });
 
-            const response = await ai.models.generateContent({
-                model,
-                contents,
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    temperature,
-                },
-                // RECITATION 및 기타 안전 필터로 인한 차단 방지
-                safetySettings: [
-                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-                ],
-            });
+            const response = await Promise.race([
+                ai.models.generateContent({
+                    model,
+                    contents,
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        temperature,
+                    },
+                    // RECITATION 및 기타 안전 필터로 인한 차단 방지
+                    safetySettings: [
+                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                    ],
+                }),
+                new Promise<never>((_, reject) => {
+                    // thinking 모델은 추론 시간이 더 걸리므로 90초, 일반 모델은 60초
+                    const timeoutMs = model.includes('gemini-3') ? 90000 : 60000;
+                    setTimeout(() => reject(new Error(`API call timeout after ${timeoutMs / 1000}s`)), timeoutMs);
+                }),
+            ]) as ModelResponse;
 
             // 토큰 사용량 추출 및 로깅
             const usageMetadata = response.usageMetadata;
@@ -195,17 +202,58 @@ export async function extractTextFromResponse(response: ModelResponse, model: st
     return candidateText;
 }
 
-// JSON 파싱 (마크다운 코드블록 제거 포함)
+// JSON 파싱 (마크다운 코드블록 제거 포함 + 복구 로직)
 export function parseJsonResponse(text: string, model: string): unknown {
     const jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    // 1차: 그대로 파싱 시도
     try {
         return JSON.parse(jsonString);
-    } catch (parseError: unknown) {
-        const error = parseError as Error;
-        throw new StageError(
-            'extract_parse',
-            `JSON parse failed (model=${model}): ${error.message}`,
-            { model, jsonStringPreview: jsonString.substring(0, 800) }
-        );
+    } catch (_firstError) {
+        // 2차: 제어문자 제거 후 재시도
+        try {
+            const cleaned = jsonString
+                .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '') // 제어문자 제거
+                .replace(/\t/g, '    '); // 탭을 공백으로
+            return JSON.parse(cleaned);
+        } catch (_secondError) {
+            // 3차: OCR 응답 구조에서 text 필드를 정규식으로 추출
+            try {
+                // "text": "..." 패턴 추출 (OCR 결과의 pages 배열에서)
+                const textMatches = jsonString.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g);
+                if (textMatches && textMatches.length > 0) {
+                    const pages = textMatches.map((match, idx) => {
+                        // "text": "내용" 에서 내용만 추출
+                        const content = match.replace(/^"text"\s*:\s*"/, '').replace(/"$/, '');
+                        // 이스케이프된 문자 복원
+                        const decoded = content
+                            .replace(/\\n/g, '\n')
+                            .replace(/\\t/g, '\t')
+                            .replace(/\\"/g, '"')
+                            .replace(/\\\\/g, '\\');
+                        return { page: idx + 1, text: decoded };
+                    });
+                    console.warn(`[parseJsonResponse] JSON parse failed, recovered ${pages.length} text block(s) via regex (model=${model})`);
+                    return { pages };
+                }
+            } catch (_regexError) {
+                // regex도 실패
+            }
+
+            // 4차: 전체 텍스트를 단일 페이지로 반환 (최후의 수단)
+            // JSON이 아닌 순수 텍스트일 수 있음
+            if (jsonString.length > 50) {
+                console.warn(`[parseJsonResponse] All JSON parse attempts failed, using raw text as fallback (model=${model})`);
+                return { pages: [{ page: 1, text: jsonString }] };
+            }
+
+            // 진짜 파싱 불가능
+            const error = _secondError as Error;
+            throw new StageError(
+                'extract_parse',
+                `JSON parse failed (model=${model}): ${error.message}`,
+                { model, jsonStringPreview: jsonString.substring(0, 800) }
+            );
+        }
     }
 }

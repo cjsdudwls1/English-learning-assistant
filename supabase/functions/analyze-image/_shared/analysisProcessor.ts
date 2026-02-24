@@ -37,7 +37,13 @@ export async function analyzeImagesWithFailover(params: AnalyzeImagesParams): Pr
     const { ai, supabase, sessionId, parts, imageCount, taxonomyByDepthKey, taxonomyByCode, preferredModel } = params;
 
     // preferredModel이 있으면 해당 모델만 시도
-    const sequence = preferredModel ? [preferredModel] : MODEL_SEQUENCE;
+    // 분석 단계에서는 gemini-2.5-pro(타임아웃 빈발)만 제외
+    // gemini-3-flash-preview는 품질이 우수하여 첫 번째로 시도, 실패 시 gemini-2.5-flash fallback
+    const analysisModels = (MODEL_SEQUENCE as readonly string[]).filter(
+        m => m !== 'gemini-2.5-pro'
+    ) as string[];
+    if (analysisModels.length === 0) analysisModels.push(...(MODEL_SEQUENCE as readonly string[]));
+    const sequence = preferredModel ? [preferredModel] : analysisModels;
 
     let usedModel: string = sequence[0];
     let responseText: string = '';
@@ -82,7 +88,21 @@ export async function analyzeImagesWithFailover(params: AnalyzeImagesParams): Pr
             const candidateText = await extractTextFromResponse(attempt.response, model);
 
             // JSON 파싱 (공통 함수 사용)
-            const parsed = parseJsonResponse(candidateText, model) as { items?: any[]; shared_passages?: any[] };
+            let parsed = parseJsonResponse(candidateText, model) as { items?: any[]; shared_passages?: any[] };
+
+            // items 키가 없는 경우 자동 변환 시도
+            if (parsed && !Array.isArray(parsed.items)) {
+                // pages 키가 있으면 (JSON 복구 결과) → 텍스트 기반이라 분석에 사용 불가
+                // 다른 키 이름(problems, questions, results 등)으로 반환된 경우 변환
+                const altKeys = ['problems', 'questions', 'results', 'data', 'extracted_items'];
+                for (const key of altKeys) {
+                    if (Array.isArray((parsed as any)[key])) {
+                        console.warn(`[Background] Step 3b: items key missing, using '${key}' instead (model=${model})`);
+                        parsed = { ...parsed, items: (parsed as any)[key] };
+                        break;
+                    }
+                }
+            }
 
             if (!parsed || !Array.isArray(parsed.items)) {
                 throw new StageError(

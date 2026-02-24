@@ -192,6 +192,7 @@ export function validateExtractedItems(params: ValidateExtractedItemsParams): bo
         );
     };
 
+    const skippedItems: string[] = []; // 건너뛴 문제 추적
     const seenNumbers = new Set<string>();
 
     for (const item of items) {
@@ -201,10 +202,9 @@ export function validateExtractedItems(params: ValidateExtractedItemsParams): bo
 
         // 선택지 검증: 다지선다형은 5개, 주관식/서술형은 0개도 허용
         if (choices.length > 0 && choices.length !== 5) {
-            throw new StageError('extract_validate', `Invalid choices count: expected 5 or 0, got ${choices.length}`, {
-                problem_number: numRaw,
-                choices_length: choices.length,
-            });
+            console.warn(`[Validation] Skipping problem ${numRaw}: Invalid choices count (expected 5 or 0, got ${choices.length})`);
+            skippedItems.push(numRaw);
+            continue;
         }
 
         // 선택지가 있으면 유효한 내용이 최소 1개 이상이어야 함
@@ -214,10 +214,9 @@ export function validateExtractedItems(params: ValidateExtractedItemsParams): bo
                 return !isPlaceholderChoice(String(text));
             });
             if (!hasRealChoice) {
-                throw new StageError('extract_validate', 'Invalid choices content: all placeholders/empty', {
-                    problem_number: numRaw,
-                    choices_length: choices.length,
-                });
+                console.warn(`[Validation] Skipping problem ${numRaw}: All choices are placeholders/empty`);
+                skippedItems.push(numRaw);
+                continue;
             }
         }
 
@@ -226,9 +225,9 @@ export function validateExtractedItems(params: ValidateExtractedItemsParams): bo
         if (!Number.isNaN(numVal)) {
             const numKey = String(numVal);
             if (seenNumbers.has(numKey)) {
-                throw new StageError('extract_validate', `Duplicate problem number detected: ${numKey}`, {
-                    problem_number: numKey,
-                });
+                console.warn(`[Validation] Skipping duplicate problem number: ${numKey}`);
+                skippedItems.push(numRaw);
+                continue;
             }
             seenNumbers.add(numKey);
         }
@@ -260,6 +259,10 @@ export function validateExtractedItems(params: ValidateExtractedItemsParams): bo
             });
             // 오류를 throw하지 않고 계속 진행 - 서버 측 enrichClassification에서 null 처리됨
         }
+    }
+
+    if (skippedItems.length > 0) {
+        console.warn(`[Validation] ${skippedItems.length} problem(s) skipped during validation: [${skippedItems.join(', ')}]`);
     }
 
     return true;

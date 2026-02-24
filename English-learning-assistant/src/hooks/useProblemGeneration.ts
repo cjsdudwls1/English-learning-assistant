@@ -49,13 +49,13 @@ export function useProblemGeneration({
   const [realtimeSubscription, setRealtimeSubscription] = useState<RealtimeSubscription | null>(null);
   const [expectedProblemCounts, setExpectedProblemCounts] = useState<{ [key: string]: number }>({});
   const [receivedProblems, setReceivedProblems] = useState<GeneratedProblem[]>([]);
-  
+
   const generationStartTimeRef = useRef<number | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollingActiveRef = useRef<boolean>(false);
   const receivedProblemsCountRef = useRef<number>(0);
   const expectedProblemCountsRef = useRef<{ [key: string]: number }>({});
-  
+
   // expectedProblemCounts가 변경될 때마다 ref 업데이트
   useEffect(() => {
     expectedProblemCountsRef.current = expectedProblemCounts;
@@ -89,20 +89,20 @@ export function useProblemGeneration({
     setReceivedProblems([]);
     receivedProblemsCountRef.current = 0;
     generationStartTimeRef.current = null;
-    
+
     // 폴링 중단
     pollingActiveRef.current = false;
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
     }
-    
+
     // Realtime 구독 정리
     if (realtimeSubscription) {
       supabase.removeChannel(realtimeSubscription);
       setRealtimeSubscription(null);
     }
-    
+
     onComplete(sortedProblems);
   }, [sortProblems, realtimeSubscription, onComplete]);
 
@@ -140,11 +140,11 @@ export function useProblemGeneration({
       // Realtime으로 일부 문제를 받았어도, 예상된 수에 못 미치면 폴링 시작
       if (receivedProblems.length < totalExpected && realtimeSubscription) {
         console.warn(`[Polling] Only received ${receivedProblems.length}/${totalExpected} problems via Realtime after 10 seconds - switching to polling mode`);
-        
+
         const startPolling = async () => {
           const startTime = generationStartTimeRef.current || Date.now();
           pollingActiveRef.current = true;
-          
+
           pollIntervalRef.current = setInterval(async () => {
             if (!pollingActiveRef.current || !isGenerating) {
               if (pollIntervalRef.current) {
@@ -175,12 +175,12 @@ export function useProblemGeneration({
                 .eq('user_id', userId)
                 .gte('created_at', queryStartTime)
                 .order('created_at', { ascending: true });
-              
+
               if (pollError) {
                 console.error('[Polling] Error:', pollError);
                 return;
               }
-              
+
               if (problems && problems.length > 0) {
                 const errorMarker = problems.find(p => p.stem === '__GENERATION_ERROR__' || p.stem === '__TIMEOUT_ERROR__');
                 if (errorMarker) {
@@ -199,9 +199,9 @@ export function useProblemGeneration({
                   generationStartTimeRef.current = null;
                   return;
                 }
-                
+
                 const validProblems = problems.filter(p => p.stem !== '__GENERATION_ERROR__' && p.stem !== '__TIMEOUT_ERROR__') as GeneratedProblem[];
-                
+
                 if (validProblems.length > 0) {
                   setReceivedProblems((prev) => {
                     // ref를 사용하여 최신 expectedProblemCounts 값 가져오기
@@ -220,21 +220,21 @@ export function useProblemGeneration({
                     // 중복 제거 (Set 사용으로 Realtime과 폴링 동시 작동 시 경쟁 조건 방지)
                     const existingIds = new Set(prev.map(p => p.id));
                     const newProblems = validProblems.filter(p => !existingIds.has(p.id));
-                    
+
                     if (newProblems.length === 0) {
                       return prev;
                     }
-                    
+
                     console.log(`[Polling] Adding ${newProblems.length} new problems (${validProblems.length - newProblems.length} duplicates filtered)`);
-                    
+
                     const allProblems = [...prev, ...newProblems];
                     receivedProblemsCountRef.current = allProblems.length;
-                    
+
                     if (allProblems.length >= currentTotalExpected) {
                       handleGenerationComplete(allProblems);
                       return allProblems;
                     }
-                    
+
                     return allProblems;
                   });
                 }
@@ -243,7 +243,7 @@ export function useProblemGeneration({
               console.error('[Polling] Error:', pollError);
             }
           }, 2000);
-          
+
           setTimeout(() => {
             if (pollIntervalRef.current) {
               pollingActiveRef.current = false;
@@ -256,7 +256,7 @@ export function useProblemGeneration({
                 setRealtimeSubscription(null);
               }
               setIsGenerating(false);
-              const timeoutMessage = language === 'ko' 
+              const timeoutMessage = language === 'ko'
                 ? '문제 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
                 : 'Problem generation timed out. Please try again later.';
               setErrorAndNotify(timeoutMessage);
@@ -264,7 +264,7 @@ export function useProblemGeneration({
             }
           }, 10 * 60 * 1000); // 10분으로 증가 (여러 문제 유형 순차 생성 + Edge Function 실행 시간 고려)
         };
-        
+
         startPolling();
       }
     }, 10 * 1000);
@@ -282,7 +282,7 @@ export function useProblemGeneration({
           setRealtimeSubscription(null);
         }
         setIsGenerating(false);
-        const timeoutMessage = language === 'ko' 
+        const timeoutMessage = language === 'ko'
           ? '문제 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
           : 'Problem generation timed out. Please try again later.';
         setErrorAndNotify(timeoutMessage);
@@ -305,8 +305,8 @@ export function useProblemGeneration({
   const handleGenerateProblems = useCallback(async () => {
     const totalCount = Object.values(problemCounts).reduce((sum, count) => sum + count, 0);
     if (totalCount < 1) {
-      const errorMessage = language === 'ko' 
-        ? '최소 하나의 문제 유형에서 1개 이상의 문제를 생성해야 합니다.' 
+      const errorMessage = language === 'ko'
+        ? '최소 하나의 문제 유형에서 1개 이상의 문제를 생성해야 합니다.'
         : 'At least one problem type must have 1 or more problems.';
       setErrorAndNotify(errorMessage);
       return;
@@ -395,7 +395,7 @@ export function useProblemGeneration({
 
               if (newProblems.length >= currentTotal) {
                 console.log(`[Realtime] All ${currentTotal} problems received via Realtime`);
-                
+
                 pollingActiveRef.current = false;
                 if (pollIntervalRef.current) {
                   clearInterval(pollIntervalRef.current);
@@ -403,7 +403,7 @@ export function useProblemGeneration({
                 }
 
                 handleGenerationComplete(newProblems);
-                
+
                 supabase.removeChannel(channel);
                 setRealtimeSubscription(null);
                 setExpectedProblemCounts({});
@@ -444,8 +444,10 @@ export function useProblemGeneration({
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Edge Function은 백그라운드에서 실행되므로 연속 호출 가능
-      // 각 문제 유형을 순차적으로 호출 (대기 시간 없음)
+      // Edge Function은 동기식으로 실행 - 응답에서 직접 문제 ID를 수집
+      const collectedProblemIds: string[] = [];
+      let hasError = false;
+
       for (const problemType of problemTypes) {
         const count = problemCounts[problemType];
         if (count <= 0) continue;
@@ -522,8 +524,8 @@ export function useProblemGeneration({
 
             const lowerErrorMessage = errorMessage.toLowerCase();
             if (lowerErrorMessage.includes('overloaded') || lowerErrorMessage.includes('unavailable') || response.status === 503) {
-              throw new Error(language === 'ko' 
-                ? 'AI 서버가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.' 
+              throw new Error(language === 'ko'
+                ? 'AI 서버가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.'
                 : 'AI server is temporarily overloaded. Please try again later.');
             } else if (lowerErrorMessage.includes('quota') || lowerErrorMessage.includes('quota_exceeded')) {
               throw new Error(language === 'ko'
@@ -547,20 +549,28 @@ export function useProblemGeneration({
             throw new Error(errorMsg);
           }
 
-          console.log(`[${problemType}] Problem generation started in background`);
+          // 동기식 응답에서 생성된 문제 ID 수집
+          if (result.problems && Array.isArray(result.problems)) {
+            const ids = result.problems.map((p: any) => p.id).filter(Boolean);
+            collectedProblemIds.push(...ids);
+            console.log(`[${problemType}] ${ids.length}개 문제 생성 완료 (총 수집: ${collectedProblemIds.length}개)`);
+          } else {
+            console.log(`[${problemType}] 문제 생성 완료 (응답에 ID 없음, 수: ${result.count || 0})`);
+          }
         } catch (innerError) {
           console.error(`Error generating ${problemType} problems:`, innerError);
+          hasError = true;
 
-          const problemTypeName = language === 'ko' 
-            ? (problemType === 'multiple_choice' ? '객관식' : 
-               problemType === 'short_answer' ? '단답형' : 
-               problemType === 'essay' ? '서술형' : 'O/X')
-            : (problemType === 'multiple_choice' ? 'Multiple Choice' : 
-               problemType === 'short_answer' ? 'Short Answer' : 
-               problemType === 'essay' ? 'Essay' : 'True/False');
+          const problemTypeName = language === 'ko'
+            ? (problemType === 'multiple_choice' ? '객관식' :
+              problemType === 'short_answer' ? '단답형' :
+                problemType === 'essay' ? '서술형' : 'O/X')
+            : (problemType === 'multiple_choice' ? 'Multiple Choice' :
+              problemType === 'short_answer' ? 'Short Answer' :
+                problemType === 'essay' ? 'Essay' : 'True/False');
 
           const errorMsg = innerError instanceof Error ? innerError.message : String(innerError);
-          setErrorAndNotify(language === 'ko' 
+          setErrorAndNotify(language === 'ko'
             ? `${problemTypeName} 문제 생성 중 오류가 발생했습니다: ${errorMsg}`
             : `Error generating ${problemTypeName} problems: ${errorMsg}`);
 
@@ -570,6 +580,64 @@ export function useProblemGeneration({
           }
           setIsGenerating(false);
           generationStartTimeRef.current = null;
+          return; // 에러 발생 시 즉시 중단
+        }
+      }
+
+      // 모든 Edge Function 호출 완료 - 동기식 응답 기반으로 문제 조회
+      if (!hasError) {
+        console.log(`[Direct] 모든 Edge Function 호출 완료. 수집된 ID: ${collectedProblemIds.length}개`);
+
+        try {
+          // DB에서 생성된 문제 전체 데이터 조회
+          let allProblems: GeneratedProblem[] = [];
+
+          if (collectedProblemIds.length > 0) {
+            // 수집된 ID로 직접 조회
+            const { data: problems, error: fetchError } = await supabase
+              .from('generated_problems')
+              .select('*')
+              .in('id', collectedProblemIds);
+
+            if (fetchError) {
+              console.error('[Direct] ID 기반 조회 실패:', fetchError);
+            } else {
+              allProblems = (problems || []) as GeneratedProblem[];
+            }
+          }
+
+          // ID 기반 조회 실패 시 시간 기반 fallback
+          if (allProblems.length === 0) {
+            const startTime = generationStartTimeRef.current || Date.now();
+            const queryStartTime = new Date(startTime - 2000).toISOString();
+            console.log('[Direct] ID 기반 조회 결과 없음. 시간 기반 fallback 조회...');
+
+            const { data: problems, error: fetchError } = await supabase
+              .from('generated_problems')
+              .select('*')
+              .eq('user_id', userId)
+              .gte('created_at', queryStartTime)
+              .neq('stem', '__GENERATION_ERROR__')
+              .neq('stem', '__TIMEOUT_ERROR__')
+              .order('created_at', { ascending: true });
+
+            if (fetchError) {
+              console.error('[Direct] 시간 기반 조회 실패:', fetchError);
+            } else {
+              allProblems = (problems || []) as GeneratedProblem[];
+            }
+          }
+
+          if (allProblems.length > 0) {
+            console.log(`[Direct] ${allProblems.length}개 문제 조회 완료 - 즉시 완료 처리`);
+            handleGenerationComplete(allProblems);
+          } else {
+            // 조회되지 않는 극히 드문 경우 - 기존 Realtime/폴링에 위임
+            console.warn('[Direct] 문제 조회 실패. Realtime/폴링 fallback 대기...');
+          }
+        } catch (fetchErr) {
+          console.error('[Direct] 문제 조회 중 오류:', fetchErr);
+          // Realtime/폴링 fallback에 위임
         }
       }
     } catch (e) {

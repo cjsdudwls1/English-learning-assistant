@@ -110,7 +110,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     const results: QuizResult[] = problemsList.map((problem) => {
       const userAnswer = userAnswers[problem.id]?.answer;
       const currentProblemType = problem.problem_type || problemType;
-      
+
       let correctAnswer: string | number | boolean | null = null;
       let isCorrect = false;
 
@@ -121,8 +121,11 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
         correctAnswer = problem.correct_answer || '';
         isCorrect = String(userAnswer || '').trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
       } else if (currentProblemType === 'ox') {
-        correctAnswer = problem.is_correct;
-        isCorrect = userAnswer === correctAnswer;
+        // DB에서 correct_answer 필드에 true/false 저장 (Edge Function 기준)
+        correctAnswer = problem.correct_answer;
+        // correct_answer가 문자열 "true"/"false"일 수 있으므로 변환
+        const correctBool = correctAnswer === true || correctAnswer === 'true';
+        isCorrect = userAnswer === correctBool;
       } else if (currentProblemType === 'essay') {
         // 서술형은 자동 채점 불가, 사용자 답안만 저장
         correctAnswer = null;
@@ -156,7 +159,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
   };
 
   const handleProblemUpdate = (updatedProblem: any) => {
-    setProblemsList(prev => 
+    setProblemsList(prev =>
       prev.map(p => p.id === updatedProblem.id ? { ...p, ...updatedProblem } : p)
     );
     setEditingProblemId(null);
@@ -167,7 +170,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     const userAnswer = userAnswers[problem.id]?.answer;
     const result = quizResults.find(r => r.problemId === problem.id);
     const isAnswered = userAnswer !== null && userAnswer !== undefined && userAnswer !== '';
-    
+
     // 출처 정보 확인 (디버깅용)
     if (editingProblemId === problem.id && isTeacher) {
       return (
@@ -184,38 +187,36 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     return (
       <div
         key={problem.id || index}
-        className={`mb-6 p-4 border-2 rounded-lg ${
-          isSubmitted 
-            ? result?.isCorrect 
-              ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
-              : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-            : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
-        } ${isPrintMode ? 'break-inside-avoid' : ''}`}
+        className={`mb-6 p-4 border-2 rounded-lg ${isSubmitted
+          ? result?.isCorrect
+            ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+            : 'border-red-500 bg-red-50 dark:bg-red-900/20'
+          : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+          } ${isPrintMode ? 'break-inside-avoid' : ''}`}
       >
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
-          <span className="text-lg font-semibold text-slate-700 dark:text-slate-300">
-            {index + 1}. {problem.stem}
-          </span>
+            <span className="text-lg font-semibold text-slate-700 dark:text-slate-300">
+              {index + 1}. {problem.stem}
+            </span>
           </div>
           <div className="flex items-center gap-2">
-          {isTeacher && problem.is_editable && !isSubmitted && (
-            <button
-              onClick={() => setEditingProblemId(problem.id)}
+            {isTeacher && problem.is_editable && !isSubmitted && (
+              <button
+                onClick={() => setEditingProblemId(problem.id)}
                 className="px-3 py-1 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors"
-            >
-              {language === 'ko' ? '편집' : 'Edit'}
-            </button>
-          )}
-          {isSubmitted && (
-              <span className={`px-3 py-1 text-xs font-semibold rounded ${
-              result?.isCorrect 
-                ? 'bg-green-500 text-white' 
+              >
+                {language === 'ko' ? '편집' : 'Edit'}
+              </button>
+            )}
+            {isSubmitted && (
+              <span className={`px-3 py-1 text-xs font-semibold rounded ${result?.isCorrect
+                ? 'bg-green-500 text-white'
                 : 'bg-red-500 text-white'
-            }`}>
-              {result?.isCorrect ? (language === 'ko' ? '정답' : 'Correct') : (language === 'ko' ? '오답' : 'Wrong')}
-            </span>
-          )}
+                }`}>
+                {result?.isCorrect ? (language === 'ko' ? '정답' : 'Correct') : (language === 'ko' ? '오답' : 'Wrong')}
+              </span>
+            )}
           </div>
         </div>
 
@@ -225,21 +226,20 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               const isSelected = userAnswer === cIdx;
               const isCorrect = problem.correct_answer_index === cIdx;
               const showAnswer = isSubmitted && isCorrect;
-              
+
               return (
                 <label
                   key={cIdx}
-                  className={`flex items-center p-3 border-2 rounded cursor-pointer transition-colors ${
-                    isSubmitted
-                      ? showAnswer
-                        ? 'border-green-500 bg-green-100 dark:bg-green-900/30'
-                        : isSelected && !isCorrect
+                  className={`flex items-center p-3 border-2 rounded cursor-pointer transition-colors ${isSubmitted
+                    ? showAnswer
+                      ? 'border-green-500 bg-green-100 dark:bg-green-900/30'
+                      : isSelected && !isCorrect
                         ? 'border-red-500 bg-red-100 dark:bg-red-900/30'
                         : 'border-slate-200 dark:border-slate-700'
-                      : isSelected
+                    : isSelected
                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
                       : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                  } ${isSubmitted ? 'cursor-default' : ''}`}
+                    } ${isSubmitted ? 'cursor-default' : ''}`}
                 >
                   <input
                     type="radio"
@@ -273,13 +273,12 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               onChange={(e) => handleAnswerChange(problem.id, e.target.value)}
               disabled={isSubmitted}
               placeholder={language === 'ko' ? '답을 입력하세요' : 'Enter your answer'}
-              className={`w-full px-4 py-2 border-2 rounded-lg ${
-                isSubmitted
-                  ? result?.isCorrect
-                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                    : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
-              } ${isSubmitted ? 'cursor-default' : ''}`}
+              className={`w-full px-4 py-2 border-2 rounded-lg ${isSubmitted
+                ? result?.isCorrect
+                  ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                  : 'border-red-500 bg-red-50 dark:bg-red-900/20'
+                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
+                } ${isSubmitted ? 'cursor-default' : ''}`}
             />
             {isSubmitted && problem.correct_answer && (
               <div className="mt-2 text-sm">
@@ -305,71 +304,63 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               disabled={isSubmitted}
               placeholder={language === 'ko' ? '답을 작성하세요' : 'Write your answer'}
               rows={6}
-              className={`w-full px-4 py-2 border-2 rounded-lg resize-none ${
-                isSubmitted
-                  ? 'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50'
-                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
-              } ${isSubmitted ? 'cursor-default' : ''}`}
+              className={`w-full px-4 py-2 border-2 rounded-lg resize-none ${isSubmitted
+                ? 'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50'
+                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
+                } ${isSubmitted ? 'cursor-default' : ''}`}
             />
           </div>
         )}
 
-        {currentProblemType === 'ox' && (
-          <div className="mt-3 flex gap-4">
-            <label
-              className={`flex items-center gap-2 px-4 py-2 border-2 rounded cursor-pointer transition-colors ${
-                isSubmitted
-                  ? problem.is_correct === true
-                    ? 'border-green-500 bg-green-100 dark:bg-green-900/30'
-                    : userAnswer === true && problem.is_correct !== true
-                    ? 'border-red-500 bg-red-100 dark:bg-red-900/30'
-                    : 'border-slate-200 dark:border-slate-700'
-                  : userAnswer === true
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
-                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-              } ${isSubmitted ? 'cursor-default' : ''}`}
-            >
-              <input
-                type="radio"
-                name={`problem-${problem.id}`}
-                checked={userAnswer === true}
-                onChange={() => handleAnswerChange(problem.id, true)}
-                disabled={isSubmitted}
-                className="w-5 h-5 text-blue-600"
-              />
-              <span>O (True)</span>
-              {isSubmitted && problem.is_correct === true && (
-                <span className="ml-2 text-green-600 dark:text-green-400 font-semibold">✓</span>
-              )}
-            </label>
-            <label
-              className={`flex items-center gap-2 px-4 py-2 border-2 rounded cursor-pointer transition-colors ${
-                isSubmitted
-                  ? problem.is_correct === false
-                    ? 'border-green-500 bg-green-100 dark:bg-green-900/30'
-                    : userAnswer === false && problem.is_correct !== false
-                    ? 'border-red-500 bg-red-100 dark:bg-red-900/30'
-                    : 'border-slate-200 dark:border-slate-700'
-                  : userAnswer === false
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
-                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-              } ${isSubmitted ? 'cursor-default' : ''}`}
-            >
-              <input
-                type="radio"
-                name={`problem-${problem.id}`}
-                checked={userAnswer === false}
-                onChange={() => handleAnswerChange(problem.id, false)}
-                disabled={isSubmitted}
-                className="w-5 h-5 text-blue-600"
-              />
-              <span>X (False)</span>
-              {isSubmitted && problem.is_correct === false && (
-                <span className="ml-2 text-green-600 dark:text-green-400 font-semibold">✓</span>
-              )}
-            </label>
-          </div>
-        )}
+        {currentProblemType === 'ox' && (() => {
+          // correct_answer가 문자열 "true"/"false"일 수 있으므로 boolean 변환
+          const oxCorrectAnswer: boolean = problem.correct_answer === true || problem.correct_answer === 'true';
+          const getOxLabelStyle = (optionValue: boolean) => {
+            if (isSubmitted) {
+              if (oxCorrectAnswer === optionValue) return 'border-green-500 bg-green-100 dark:bg-green-900/30';
+              if (userAnswer === optionValue && oxCorrectAnswer !== optionValue) return 'border-red-500 bg-red-100 dark:bg-red-900/30';
+              return 'border-slate-200 dark:border-slate-700';
+            }
+            if (userAnswer === optionValue) return 'border-blue-500 bg-blue-50 dark:bg-blue-900/30';
+            return 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600';
+          };
+          return (
+            <div className="mt-3 flex gap-4">
+              <label
+                className={`flex items-center gap-2 px-4 py-2 border-2 rounded cursor-pointer transition-colors ${getOxLabelStyle(true)} ${isSubmitted ? 'cursor-default' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name={`problem-${problem.id}`}
+                  checked={userAnswer === true}
+                  onChange={() => handleAnswerChange(problem.id, true)}
+                  disabled={isSubmitted}
+                  className="w-5 h-5 text-blue-600"
+                />
+                <span>O (True)</span>
+                {isSubmitted && oxCorrectAnswer && (
+                  <span className="ml-2 text-green-600 dark:text-green-400 font-semibold">✓</span>
+                )}
+              </label>
+              <label
+                className={`flex items-center gap-2 px-4 py-2 border-2 rounded cursor-pointer transition-colors ${getOxLabelStyle(false)} ${isSubmitted ? 'cursor-default' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name={`problem-${problem.id}`}
+                  checked={userAnswer === false}
+                  onChange={() => handleAnswerChange(problem.id, false)}
+                  disabled={isSubmitted}
+                  className="w-5 h-5 text-blue-600"
+                />
+                <span>X (False)</span>
+                {isSubmitted && !oxCorrectAnswer && (
+                  <span className="ml-2 text-green-600 dark:text-green-400 font-semibold">✓</span>
+                )}
+              </label>
+            </div>
+          );
+        })()}
 
         {isSubmitted && problem.explanation && (
           <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded text-sm">
@@ -563,8 +554,8 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="text-sm text-slate-600 dark:text-slate-400">
-              {language === 'ko' 
-                ? `총 ${problemsList.length}문제` 
+              {language === 'ko'
+                ? `총 ${problemsList.length}문제`
                 : `Total ${problemsList.length} problems`}
             </div>
             {!isSubmitted && (
@@ -579,11 +570,10 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               <button
                 onClick={handleSubmit}
                 disabled={!allAnswered}
-                className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
-                  allAnswered
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
-                }`}
+                className={`px-6 py-2 rounded-lg font-semibold transition-colors ${allAnswered
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                  }`}
               >
                 {language === 'ko' ? '제출' : 'Submit'}
               </button>
@@ -601,8 +591,8 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
       {!allAnswered && !isSubmitted && (
         <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
           <p className="text-sm text-yellow-800 dark:text-yellow-200">
-            {language === 'ko' 
-              ? '모든 문제에 답을 입력해주세요.' 
+            {language === 'ko'
+              ? '모든 문제에 답을 입력해주세요.'
               : 'Please answer all problems.'}
           </p>
         </div>
@@ -615,7 +605,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
             {language === 'ko' ? '영어 문제 시험지' : 'English Test Sheet'}
           </h1>
           <div className="text-sm text-slate-600 dark:text-slate-400">
-            {language === 'ko' 
+            {language === 'ko'
               ? `문제 유형: ${problemType === 'multiple_choice' ? '객관식' : problemType === 'short_answer' ? '단답형' : problemType === 'essay' ? '서술형' : 'O/X'} | 총 ${problemsList.length}문제`
               : `Type: ${problemType === 'multiple_choice' ? 'Multiple Choice' : problemType === 'short_answer' ? 'Short Answer' : problemType === 'essay' ? 'Essay' : 'True/False'} | Total ${problemsList.length} problems`}
           </div>

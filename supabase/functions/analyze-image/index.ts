@@ -29,7 +29,7 @@ import { MODEL_SEQUENCE } from '../_shared/models.ts'
 import { processOcr, type ImageItem } from './_shared/ocrProcessor.ts'
 
 // 분석 처리 모듈
-import { analyzeImagesWithFailover, buildImageParts, validateParts } from './_shared/analysisProcessor.ts'
+import { analyzeImagesWithFailover } from './_shared/analysisProcessor.ts'
 
 // Labels 생성 모듈
 import { buildLabelsPayload } from './_shared/labelProcessor.ts'
@@ -119,12 +119,24 @@ serve(async (req) => {
       });
     }
 
+    // 원본 요청 데이터의 이미지를 즉시 해제 (메모리 절약 - 이미 imageList에 복사됨)
+    if (requestData) {
+      if (requestData.images) requestData.images = null;
+      if (requestData.imageBase64) requestData.imageBase64 = null;
+    }
+
     if (imageList.length === 0 || !userId) {
       console.error('Missing required fields:', {
         imageCount: imageList.length,
         hasUserId: !!userId,
       });
       return errorResponse('Missing required fields: images (or imageBase64), userId', 400);
+    }
+
+    const MAX_IMAGES = 3;
+    if (imageList.length > MAX_IMAGES) {
+      console.warn(`Too many images: ${imageList.length}, max: ${MAX_IMAGES}. Truncating.`);
+      imageList = imageList.slice(0, MAX_IMAGES);
     }
 
     const geminiApiKey = requireEnv('GEMINI_API_KEY');
@@ -264,8 +276,8 @@ serve(async (req) => {
     const backgroundTask = (async () => {
       try {
         console.log(`[Background] Starting analysis for session ${createdSessionId}...`);
-        // 3. Taxonomy 데이터 로드
-        console.log(`[Background] Step 3a: Loading taxonomy data from database...`, { language: userLanguage, sessionId: createdSessionId, imageCount: imageList.length });
+        // 3. Taxonomy 데이터 로드 (프롬프트에 플랫 목록으로 포함 + 서버 측 enrichClassification용)
+        console.log(`[Background] Step 3a: Loading taxonomy data...`, { language: userLanguage, sessionId: createdSessionId, imageCount: imageList.length });
         const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
 
         // ✅ 서버 정규화/보강용 taxonomy lookup (프롬프트에는 포함하지 않음)
@@ -320,44 +332,102 @@ serve(async (req) => {
           sessionId: createdSessionId!,
         });
         const ocrPages = ocrResult.ocrPages;
+        const ocrUsedModel = ocrResult.usedModel || 'unknown';
 
-        const prompt = buildPrompt(taxonomyData, userLanguage, imageList.length, ocrPages);
-        console.log(`[Background] Step 3a completed: Taxonomy data loaded, prompt length: ${prompt.length}, ocrPages=${ocrPages.length}`);
+        console.log(`[Background] Step 3a completed: OCR done, ${ocrPages.length} pages, model: ${ocrUsedModel}`, { sessionId: createdSessionId });
 
-        // 3. Gemini API로 분석 (여러 이미지를 한 번에 전송) - analysisProcessor 모듈 사용
-        console.log(`[Background] Step 3b: Analyzing ${imageList.length} image(s) with Gemini...`, { sessionId: createdSessionId });
+        // OCR 완료 후 이미지 Base64 데이터를 메모리에서 해제 (메모리 절약)
+        for (let i = 0; i < imageList.length; i++) {
+          (imageList[i] as any).imageBase64 = '';
+        }
+        console.log(`[Background] Step 3a cleanup: Released ${imageList.length} image(s) base64 data from memory`);
 
-        // 이미지 parts 배열 생성
-        const parts = buildImageParts(prompt, imageList as ImageItem[], createdSessionId!);
+        // 3b. 페이지별 병렬 분석 (3페이지씩 배치)
+        const ANALYSIS_BATCH_SIZE = 3;
+        console.log(`[Background] Step 3b: Analyzing OCR text in parallel batches (batch size: ${ANALYSIS_BATCH_SIZE})...`, { sessionId: createdSessionId, pageCount: ocrPages.length });
 
-        // parts 배열 검증
-        validateParts(parts, imageList.length, createdSessionId!);
+        let allValidatedItems: any[] = [];
+        let allSharedPassages: any[] = [];
+        let finalUsedModel: string = '';
+        let totalAnalysisUsageMetadata: any = {};
 
-        console.log(`[Background] Step 3b: Calling Gemini API with ${imageList.length} image(s)...`, {
-          sessionId: createdSessionId,
-          partsLength: parts.length,
-          expectedImages: imageList.length,
-          actualImages: parts.filter((p: any) => !!p.inlineData).length,
-        });
+        // 단일 페이지 분석 함수
+        async function analyzeOnePage(pageIdx: number) {
+          const page = ocrPages[pageIdx];
+          const pageNum = pageIdx + 1;
 
-        // 모델 Failover 분석 실행
-        const analysisResult = await analyzeImagesWithFailover({
-          ai,
-          supabase,
-          sessionId: createdSessionId!,
-          parts,
-          imageCount: imageList.length,
-          taxonomyByDepthKey,
-          taxonomyByCode,
-          preferredModel: preferredModel as string | undefined, // preferredModel 전달
-        });
+          if (!page.text || page.text.trim().length === 0) {
+            console.warn(`[Background] Step 3b: Page ${pageNum} has no OCR text, skipping analysis`, { sessionId: createdSessionId });
+            return null;
+          }
 
-        const { usedModel, result, validatedItems, usageMetadata: analysisUsageMetadata } = analysisResult;
+          const singlePageOcr = [{ page: pageNum, text: page.text }];
+          const pagePrompt = buildPrompt(taxonomyData, userLanguage, 1, singlePageOcr);
+          const pageParts: any[] = [{ text: pagePrompt }];
 
-        console.log(`[Background] Step 3 completed: Model response received`, {
+          console.log(`[Background] Step 3b: Page ${pageNum}/${ocrPages.length} - prompt length: ${pagePrompt.length}`, { sessionId: createdSessionId });
+
+          try {
+            const pageAnalysisResult = await analyzeImagesWithFailover({
+              ai,
+              supabase,
+              sessionId: createdSessionId!,
+              parts: pageParts,
+              imageCount: 1,
+              taxonomyByDepthKey,
+              taxonomyByCode,
+              preferredModel: preferredModel as string | undefined,
+            });
+
+            const { usedModel: pageModel, result: pageResult, validatedItems: pageItems, usageMetadata: pageUsage } = pageAnalysisResult;
+
+            console.log(`[Background] Step 3b: Page ${pageNum} analysis done with ${pageModel}, items: ${pageItems.length}`, { sessionId: createdSessionId });
+
+            return { pageItems, pageResult, pageModel, pageUsage };
+          } catch (pageErr: any) {
+            console.error(`[Background] Step 3b: Page ${pageNum} analysis failed, continuing with remaining pages`, {
+              sessionId: createdSessionId,
+              error: pageErr?.message || String(pageErr),
+            });
+            return null;
+          }
+        }
+
+        // 배치별 병렬 처리
+        for (let batchStart = 0; batchStart < ocrPages.length; batchStart += ANALYSIS_BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + ANALYSIS_BATCH_SIZE, ocrPages.length);
+          const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, i) => batchStart + i);
+
+          console.log(`[Background] Step 3b: Processing analysis batch (pages ${batchStart + 1}-${batchEnd})...`, { sessionId: createdSessionId });
+
+          const batchResults = await Promise.all(batchIndices.map(idx => analyzeOnePage(idx)));
+
+          for (const result of batchResults) {
+            if (!result) continue;
+            allValidatedItems.push(...result.pageItems);
+            if (result.pageResult?.shared_passages) {
+              allSharedPassages.push(...result.pageResult.shared_passages);
+            }
+            finalUsedModel = result.pageModel;
+            if (result.pageUsage) {
+              totalAnalysisUsageMetadata.promptTokenCount = (totalAnalysisUsageMetadata.promptTokenCount || 0) + (result.pageUsage.promptTokenCount || 0);
+              totalAnalysisUsageMetadata.candidatesTokenCount = (totalAnalysisUsageMetadata.candidatesTokenCount || 0) + (result.pageUsage.candidatesTokenCount || 0);
+              totalAnalysisUsageMetadata.totalTokenCount = (totalAnalysisUsageMetadata.totalTokenCount || 0) + (result.pageUsage.totalTokenCount || 0);
+            }
+          }
+        }
+
+        // 분석 결과 합산
+        const usedModel = finalUsedModel;
+        const validatedItems = allValidatedItems;
+        const result = { items: allValidatedItems, shared_passages: allSharedPassages };
+        const analysisUsageMetadata = totalAnalysisUsageMetadata;
+
+        console.log(`[Background] Step 3 completed: All pages analyzed`, {
           sessionId: createdSessionId,
           usedModel,
-          validatedItems: validatedItems.length,
+          totalItems: validatedItems.length,
+          pagesProcessed: ocrPages.length,
         });
 
         // 0문항인 경우: 환각 방지 지침 준수로 간주하고 세션을 실패 처리
@@ -551,22 +621,38 @@ serve(async (req) => {
             });
           }
 
-          // generateBatchMetadata 모듈 함수 호출
-          await generateBatchMetadata({
-            ai: new GoogleGenAI({ apiKey: geminiApiKey }),
-            supabase,
-            batchInputs,
-            problemTypeById,
-            userLanguage,
-            sessionId: createdSessionId!,
-          });
+          // generateBatchMetadata 모듈 함수 호출 (실패해도 세션은 완료 처리)
+          try {
+            await generateBatchMetadata({
+              ai: new GoogleGenAI({ apiKey: geminiApiKey }),
+              supabase,
+              batchInputs,
+              problemTypeById,
+              userLanguage,
+              sessionId: createdSessionId!,
+            });
+          } catch (metaErr: any) {
+            console.warn(`[Background] Step 6: Metadata generation failed (non-critical, continuing):`, {
+              sessionId: createdSessionId,
+              error: metaErr?.message || String(metaErr),
+            });
+            // 메타데이터 실패는 치명적이지 않으므로 계속 진행
+          }
         }
 
-        // 7. 세션 상태를 completed로 업데이트
-        console.log(`[Background] Step 7: Update session status to completed...`, { sessionId: createdSessionId });
+        // 7. 세션 상태를 completed로 업데이트 + 모델 정보 저장
+        const modelsUsed = {
+          ocr: ocrUsedModel,
+          analysis: usedModel,
+        };
+        console.log(`[Background] Step 7: Update session status to completed...`, { sessionId: createdSessionId, modelsUsed });
         const { error: statusUpdateError } = await supabase
           .from('sessions')
-          .update({ status: 'completed' })
+          .update({
+            status: 'completed',
+            analysis_model: usedModel,
+            models_used: modelsUsed,
+          })
           .eq('id', createdSessionId)
           // 사용자 라벨링이 이미 끝나 labeled로 바뀐 경우 되돌리지 않도록 가드
           .eq('status', 'processing');

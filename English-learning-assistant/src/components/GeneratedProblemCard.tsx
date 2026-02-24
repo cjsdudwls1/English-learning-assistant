@@ -40,8 +40,8 @@ interface GeneratedProblemCardProps {
   result?: GeneratedProblemResult;
 }
 
-export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({ 
-  problem, 
+export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
+  problem,
   index,
   problemId,
   onNext,
@@ -59,7 +59,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
   const intervalRef = useRef<number | null>(null);
   const [hasRecorded, setHasRecorded] = useState(false);
   const [hasAutoAdvanced, setHasAutoAdvanced] = useState(false);
-  
+
   // 문제 시작 시 타이머 시작
   useEffect(() => {
     if (mode !== 'practice') {
@@ -75,10 +75,10 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
           setTimeSpent(elapsed);
         }
       }, 1000);
-      
+
       // DB에 시작 시간 저장
       startProblemSolving(problemId).catch(console.error);
-      
+
       return () => {
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
@@ -132,16 +132,16 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
   const handleChoiceClick = async (choiceIndex: number) => {
     if (mode !== 'practice') return;
     if (selectedIndex !== null || isCompleted) return; // 이미 선택한 경우 무시
-    
+
     setSelectedIndex(choiceIndex);
     setIsCompleted(true);
-    
+
     // 타이머 중지
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    
+
     const now = Date.now();
     const elapsedSeconds = startTimeRef.current
       ? Math.max(0, Math.floor((now - startTimeRef.current) / 1000))
@@ -192,15 +192,14 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
       return (
         <div
           key={cIdx}
-          className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
-            isSelected
+          className={`w-full text-left p-3 rounded-lg border-2 transition-all ${isSelected
               ? reviewIsCorrect
                 ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-200'
                 : 'border-red-500 dark:border-red-400 bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200'
               : showCorrect
-              ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-200'
-              : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
-          }`}
+                ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-200'
+                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+            }`}
         >
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-600 dark:text-slate-400">
@@ -232,13 +231,12 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
         key={cIdx}
         onClick={() => handleChoiceClick(cIdx)}
         disabled={selectedIndex !== null}
-        className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
-          selectedIndex === null
+        className={`w-full text-left p-3 rounded-lg border-2 transition-all ${selectedIndex === null
             ? 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer'
             : isSelected
-            ? 'border-indigo-500 dark:border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-200'
-            : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 opacity-60 cursor-not-allowed'
-        }`}
+              ? 'border-indigo-500 dark:border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-200'
+              : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 opacity-60 cursor-not-allowed'
+          }`}
       >
         <div className="flex items-center gap-2">
           <span className={`font-semibold ${selectedIndex === null ? 'text-slate-600 dark:text-slate-400' : ''}`}>
@@ -274,34 +272,31 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
         )}
 
         {problem.wrong_explanations && reviewSelectedIndex !== null && (
-          <div className={`p-4 border rounded-lg ${
-            reviewIsCorrect 
+          <div className={`p-4 border rounded-lg ${reviewIsCorrect
               ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800'
               : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800'
-          }`}>
-            <p className={`text-sm font-semibold mb-2 ${
-              reviewIsCorrect 
+            }`}>
+            <p className={`text-sm font-semibold mb-2 ${reviewIsCorrect
                 ? 'text-green-800 dark:text-green-200'
                 : 'text-red-800 dark:text-red-200'
-            }`}>
+              }`}>
               {reviewIsCorrect ? `✓ ${t.practice.selectedAnswer}:` : `✗ ${t.practice.wrongExplanation}:`}
             </p>
-            <p className={`text-sm ${
-              reviewIsCorrect 
+            <p className={`text-sm ${reviewIsCorrect
                 ? 'text-green-700 dark:text-green-300'
                 : 'text-red-700 dark:text-red-300'
-            }`}>
+              }`}>
               {explanationMap[reviewSelectedIndex.toString()] ||
-               (reviewIsCorrect 
-                 ? problem.explanation
-                 : t.practice.noExplanation)}
+                (reviewIsCorrect
+                  ? problem.explanation
+                  : t.practice.noExplanation)}
             </p>
           </div>
         )}
       </div>
     );
   }, [mode, problem.explanation, problem.wrong_explanations, reviewIsCorrect, reviewSelectedIndex, t.practice.explanation, t.practice.noExplanation, t.practice.selectedAnswer, t.practice.wrongExplanation]);
-  
+
   return (
     <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-900/30">
       <div className="mb-2 flex items-center justify-between">
@@ -315,21 +310,23 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
         )}
         {problem.classification && (
           <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
-            ({problem.classification.depth1} 
+            ({problem.classification.depth1}
             {problem.classification.depth2 && ` > ${problem.classification.depth2}`}
             {problem.classification.depth3 && ` > ${problem.classification.depth3}`}
             {problem.classification.depth4 && ` > ${problem.classification.depth4}`})
           </span>
         )}
       </div>
-      
+
       <div className="text-slate-700 dark:text-slate-300 mb-4">
         <p className="font-medium mb-3 text-lg">{problem.stem}</p>
-        
+
         {/* 선택지 */}
-        <div className="space-y-2">
-          {problem.choices.map((choice, cIdx) => renderChoice(choice, cIdx))}
-        </div>
+        {problem.choices && problem.choices.length > 0 && (
+          <div className="space-y-2">
+            {problem.choices.map((choice, cIdx) => renderChoice(choice, cIdx))}
+          </div>
+        )}
       </div>
 
       {mode === 'practice' && isCompleted && (
