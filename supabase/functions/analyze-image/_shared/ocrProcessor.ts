@@ -1,7 +1,7 @@
 // OCR 처리 로직
 import { generateWithRetry, extractTextFromResponse, parseJsonResponse, type UsageMetadata } from '../../_shared/aiClient.ts';
 import { MODEL_SEQUENCE, MODEL_RETRY_POLICY } from '../../_shared/models.ts';
-import { summarizeError } from '../../_shared/errors.ts';
+import { StageError, summarizeError, type FailureStage } from '../../_shared/errors.ts';
 import { buildOcrPrompt } from './prompts.ts';
 
 // OCR 페이지 타입
@@ -110,9 +110,8 @@ export async function processOcr(params: ProcessOcrParams): Promise<ProcessOcrRe
             }
         }
 
-        // Base64 해제
-        (imageList[pageIdx] as any).imageBase64 = '';
-        console.log(`[Background] Step 3a-1: Page ${pageNumber} - Released base64 data from memory`, { sessionId });
+        // Base64는 여기서 해제하지 않음 - 분석 단계에서 멀티모달 입력으로 사용
+        console.log(`[Background] Step 3a-1: Page ${pageNumber} - OCR text extracted (base64 retained for analysis)`, { sessionId });
 
         if (!pageOcrText) {
             console.warn(`[Background] Step 3a-1: Page ${pageNumber} - All models failed for OCR`, { sessionId });
@@ -136,7 +135,18 @@ export async function processOcr(params: ProcessOcrParams): Promise<ProcessOcrRe
     // 페이지 번호 순으로 정렬
     ocrPages.sort((a, b) => a.page - b.page);
 
-    console.log(`[Background] Step 3a-1: Parallel OCR completed. ${ocrPages.filter(p => p.text.length > 0).length}/${imageList.length} pages succeeded`, { sessionId });
+    const successCount = ocrPages.filter(p => p.text.length > 0).length;
+    console.log(`[Background] Step 3a-1: Parallel OCR completed. ${successCount}/${imageList.length} pages succeeded`, { sessionId });
+
+    // 전체 OCR 실패 시 에러 전파 (extract_empty가 아닌 ocr_failed로 구분)
+    // 1개라도 성공하면 기존 동작 유지
+    if (successCount === 0) {
+        throw new StageError(
+            'ocr_failed' as FailureStage,
+            `All ${imageList.length} page(s) OCR failed - no text extracted from any page`,
+            { pageCount: imageList.length, sessionId }
+        );
+    }
 
     return { ocrPages, usedModel, usageMetadata: totalUsageMetadata };
 }

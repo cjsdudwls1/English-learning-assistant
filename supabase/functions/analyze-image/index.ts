@@ -25,8 +25,7 @@ import {
 // 모델 시퀀스 (UI 표시용)
 import { MODEL_SEQUENCE } from '../_shared/models.ts'
 
-// OCR 처리 모듈
-import { processOcr, type ImageItem } from './_shared/ocrProcessor.ts'
+// ocrProcessor.ts는 더 이상 사용하지 않음 (1단계 멀티모달 분석으로 전환)
 
 // 분석 처리 모듈
 import { analyzeImagesWithFailover } from './_shared/analysisProcessor.ts'
@@ -43,10 +42,19 @@ import { logAiUsage, sumUsageMetadata } from '../_shared/usageLogger.ts'
 import type { UsageMetadata } from '../_shared/aiClient.ts'
 
 
+// ─── Edge Function 라이프사이클 이벤트 핸들러 ──────────────────
+// Supabase 공식 문서 권장: beforeunload로 shutdown 사유 감지
+// https://supabase.com/docs/guides/functions/background-tasks
+addEventListener('beforeunload', (ev: any) => {
+  console.warn('[Lifecycle] Edge Function shutting down', {
+    reason: ev.detail?.reason || 'unknown',
+  });
+});
 
-
-
-
+addEventListener('unhandledrejection', (ev: any) => {
+  console.error('[Lifecycle] Unhandled promise rejection:', ev.reason);
+  ev.preventDefault();
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -273,10 +281,35 @@ serve(async (req) => {
       message: 'Session created, analysis in progress',
     });
 
-    // 백그라운드 작업을 변수에 담습니다.
+    // 백그라운드 작업 정의 (IIFE)
+    // EarlyDrop 방지: IIFE 직후 즉시 waitUntil 등록 필수
     const backgroundTask = (async () => {
       try {
         console.log(`[Background] Starting analysis for session ${createdSessionId}...`);
+
+        // Vertex AI 인증 사전 검증 (인증 실패 시 OCR 5모델 x 3페이지 = 15회 무의미한 API 호출 방지)
+        if (aiProvider === 'vertex') {
+          try {
+            console.log('[Background] Pre-validating Vertex AI authentication...');
+            const { getAccessToken, parseServiceAccountJSON } = await import('../_shared/vertexAuth.ts');
+            const creds = parseServiceAccountJSON(Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON') || '');
+            await getAccessToken(creds);
+            console.log('[Background] Vertex AI authentication validated');
+          } catch (authError: any) {
+            console.error('[Background] Vertex AI auth pre-validation FAILED', {
+              sessionId: createdSessionId,
+              error: authError?.message,
+            });
+            await markSessionFailed({
+              supabase,
+              sessionId: createdSessionId!,
+              stage: 'auth_failed' as FailureStage,
+              error: authError,
+            });
+            return; // 백그라운드 작업 즉시 종료
+          }
+        }
+
         // 3. Taxonomy 데이터 로드 (프롬프트에 플랫 목록으로 포함 + 서버 측 enrichClassification용)
         console.log(`[Background] Step 3a: Loading taxonomy data...`, { language: userLanguage, sessionId: createdSessionId, imageCount: imageList.length });
         const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
@@ -323,49 +356,33 @@ serve(async (req) => {
           }
         }
 
-        // AI 클라이언트 (OCR 및 추출 공용) - 팩토리에서 생성된 ai 사용
-
-        // 3a-1. 페이지별 OCR 수행 (텍스트만 추출) - ocrProcessor 모듈 사용
-        const ocrResult = await processOcr({
-          ai,
-          imageList: imageList as ImageItem[],
-          sessionId: createdSessionId!,
-        });
-        const ocrPages = ocrResult.ocrPages;
-        const ocrUsedModel = ocrResult.usedModel || 'unknown';
-
-        console.log(`[Background] Step 3a completed: OCR done, ${ocrPages.length} pages, model: ${ocrUsedModel}`, { sessionId: createdSessionId });
-
-        // OCR 완료 후 이미지 Base64 데이터를 메모리에서 해제 (메모리 절약)
-        for (let i = 0; i < imageList.length; i++) {
-          (imageList[i] as any).imageBase64 = '';
-        }
-        console.log(`[Background] Step 3a cleanup: Released ${imageList.length} image(s) base64 data from memory`);
-
-        // 3b. 페이지별 병렬 분석 (3페이지씩 배치)
+        // 3. 페이지별 멀티모달 분석 (OCR 단계 없이 이미지를 직접 Gemini에 전달)
         const ANALYSIS_BATCH_SIZE = 3;
-        console.log(`[Background] Step 3b: Analyzing OCR text in parallel batches (batch size: ${ANALYSIS_BATCH_SIZE})...`, { sessionId: createdSessionId, pageCount: ocrPages.length });
+        console.log(`[Background] Step 3: Starting direct multimodal analysis for ${imageList.length} page(s) (batch size: ${ANALYSIS_BATCH_SIZE})...`, { sessionId: createdSessionId, pageCount: imageList.length });
 
         let allValidatedItems: any[] = [];
         let allSharedPassages: any[] = [];
         let finalUsedModel: string = '';
         let totalAnalysisUsageMetadata: any = {};
 
-        // 단일 페이지 분석 함수
+        // 단일 페이지 멀티모달 분석 함수
         async function analyzeOnePage(pageIdx: number) {
-          const page = ocrPages[pageIdx];
           const pageNum = pageIdx + 1;
+          const imgData = imageList[pageIdx];
 
-          if (!page.text || page.text.trim().length === 0) {
-            console.warn(`[Background] Step 3b: Page ${pageNum} has no OCR text, skipping analysis`, { sessionId: createdSessionId });
+          if (!imgData?.imageBase64 || imgData.imageBase64.length === 0) {
+            console.warn(`[Background] Step 3: Page ${pageNum} has no image data, skipping`, { sessionId: createdSessionId });
             return null;
           }
 
-          const singlePageOcr = [{ page: pageNum, text: page.text }];
-          const pagePrompt = buildPrompt(taxonomyData, userLanguage, 1, singlePageOcr);
-          const pageParts: any[] = [{ text: pagePrompt }];
+          const pagePrompt = buildPrompt(taxonomyData, userLanguage, 1);
+          const pageParts: any[] = [
+            { text: pagePrompt },
+            { text: `Page ${pageNum} of ${imageList.length}. Read all text and detect handwritten answers and O/X marks from this exam page image.` },
+            { inlineData: { data: imgData.imageBase64, mimeType: imgData.mimeType } },
+          ];
 
-          console.log(`[Background] Step 3b: Page ${pageNum}/${ocrPages.length} - prompt length: ${pagePrompt.length}`, { sessionId: createdSessionId });
+          console.log(`[Background] Step 3: Page ${pageNum}/${imageList.length} - multimodal analysis, prompt length: ${pagePrompt.length}, image size: ${imgData.imageBase64.length}`, { sessionId: createdSessionId });
 
           try {
             const pageAnalysisResult = await analyzeImagesWithFailover({
@@ -381,24 +398,32 @@ serve(async (req) => {
 
             const { usedModel: pageModel, result: pageResult, validatedItems: pageItems, usageMetadata: pageUsage } = pageAnalysisResult;
 
-            console.log(`[Background] Step 3b: Page ${pageNum} analysis done with ${pageModel}, items: ${pageItems.length}`, { sessionId: createdSessionId });
+            console.log(`[Background] Step 3: Page ${pageNum} done with ${pageModel}, items: ${pageItems.length}`, { sessionId: createdSessionId });
+
+            // 분석 완료 후 해당 페이지 이미지 메모리 해제
+            (imageList[pageIdx] as any).imageBase64 = '';
 
             return { pageItems, pageResult, pageModel, pageUsage };
           } catch (pageErr: any) {
-            console.error(`[Background] Step 3b: Page ${pageNum} analysis failed, continuing with remaining pages`, {
+            // 실패한 페이지도 메모리 해제
+            if (imageList[pageIdx]) (imageList[pageIdx] as any).imageBase64 = '';
+            console.error(`[Background] Step 3: Page ${pageNum} analysis FAILED`, {
               sessionId: createdSessionId,
               error: pageErr?.message || String(pageErr),
+              // StageError의 stage/details 필드를 보존하여 Supabase 대시보드에서 실패 원인 진단 가능
+              stage: pageErr instanceof StageError ? pageErr.stage : 'unknown',
+              details: pageErr instanceof StageError ? pageErr.details : undefined,
             });
             return null;
           }
         }
 
         // 배치별 병렬 처리
-        for (let batchStart = 0; batchStart < ocrPages.length; batchStart += ANALYSIS_BATCH_SIZE) {
-          const batchEnd = Math.min(batchStart + ANALYSIS_BATCH_SIZE, ocrPages.length);
+        for (let batchStart = 0; batchStart < imageList.length; batchStart += ANALYSIS_BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + ANALYSIS_BATCH_SIZE, imageList.length);
           const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, i) => batchStart + i);
 
-          console.log(`[Background] Step 3b: Processing analysis batch (pages ${batchStart + 1}-${batchEnd})...`, { sessionId: createdSessionId });
+          console.log(`[Background] Step 3: Processing batch (pages ${batchStart + 1}-${batchEnd})...`, { sessionId: createdSessionId });
 
           const batchResults = await Promise.all(batchIndices.map(idx => analyzeOnePage(idx)));
 
@@ -427,8 +452,16 @@ serve(async (req) => {
           sessionId: createdSessionId,
           usedModel,
           totalItems: validatedItems.length,
-          pagesProcessed: ocrPages.length,
+          pagesProcessed: imageList.length,
         });
+
+        // 진단 로그: 이미지가 있는데 분석 결과 0문항인 경우
+        if (imageList.length > 0 && (!validatedItems || validatedItems.length === 0)) {
+          console.error(`[Background] Step 3: ${imageList.length} page(s) provided but analysis produced 0 items`, {
+            sessionId: createdSessionId,
+            usedModel,
+          });
+        }
 
         // 0문항인 경우: 환각 방지 지침 준수로 간주하고 세션을 실패 처리
         if (!validatedItems || validatedItems.length === 0) {
@@ -642,7 +675,7 @@ serve(async (req) => {
 
         // 7. 세션 상태를 completed로 업데이트 + 모델 정보 저장
         const modelsUsed = {
-          ocr: ocrUsedModel,
+          ocr: 'none (direct multimodal)',
           analysis: usedModel,
         };
         console.log(`[Background] Step 7: Update session status to completed...`, { sessionId: createdSessionId, modelsUsed });
@@ -702,9 +735,11 @@ serve(async (req) => {
     })();
 
     // EdgeRuntime.waitUntil로 백그라운드 작업이 끝날 때까지 기다리게 합니다.
+    // EarlyDrop 방지: waitUntil을 먼저 등록한 후 응답을 반환해야 합니다.
     // Deno 환경(Supabase)에서는 이 함수가 있어야 응답을 보낸 후에도 로직이 실행됩니다.
     if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
       EdgeRuntime.waitUntil(backgroundTask);
+      console.log('[Lifecycle] Background task registered with waitUntil');
     } else {
       // 로컬 테스트 환경 등을 위한 폴백 (필요 시)
       // 주의: await를 하면 클라이언트가 기다려야 하므로, 배포 환경에서는 waitUntil이 필수입니다.
@@ -712,7 +747,7 @@ serve(async (req) => {
       await backgroundTask;
     }
 
-    // 세션 생성 후 즉시 응답 반환
+    // waitUntil 등록 후 응답 반환 (순서 중요: 등록 → 반환)
     return response;
   } catch (error: any) {
     console.error('Error in analyze-image function:', error);

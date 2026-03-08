@@ -2,6 +2,8 @@
 
 export type FailureStage =
     | 'request'
+    | 'auth_failed'       // Vertex AI 인증 실패
+    | 'ocr_failed'        // OCR 전체 실패 (모든 페이지, 모든 모델)
     | 'extract_call'
     | 'extract_parse'
     | 'extract_empty'
