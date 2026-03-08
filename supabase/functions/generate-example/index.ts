@@ -1,13 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0";
 import { createServiceSupabaseClient } from "../_shared/supabaseClient.ts";
-import { requireEnv } from "../_shared/env.ts";
 import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_shared/http.ts";
 import { fetchTaxonomyByCode } from "../_shared/taxonomy.ts";
 import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from "../_shared/aiClient.ts";
 import { summarizeError } from "../_shared/errors.ts";
 import { logAiUsage } from "../_shared/usageLogger.ts";
 import { MODEL_SEQUENCE } from "../_shared/models.ts";
+import { createAIClient } from "../_shared/aiClientFactory.ts";
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -26,7 +26,7 @@ serve(async (req: Request) => {
     }
 
     const supabase = createServiceSupabaseClient();
-    const geminiApiKey = requireEnv('GEMINI_API_KEY');
+    const { ai, provider } = createAIClient(GoogleGenAI);
 
     // 1. Taxonomy 정보 조회
     console.log('Step 1: Fetching taxonomy for code:', code);
@@ -53,8 +53,7 @@ serve(async (req: Request) => {
     const userGrade = profile?.grade || '중학생';
 
     // 3. Gemini로 예시 문장 생성
-    console.log('Step 3: Generating example with Gemini', { language });
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    console.log('Step 3: Generating example with AI', { language, provider });
     const sessionId = `gen-ex-${userId}-${Date.now()}`;
 
     // 언어에 따라 프롬프트 생성

@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0";
 import { createServiceSupabaseClient } from "../_shared/supabaseClient.ts";
-import { requireEnv } from "../_shared/env.ts";
 import { CORS_HEADERS, handleOptions, jsonResponse, errorResponse } from "../_shared/http.ts";
 import { loadTaxonomyData, findTaxonomyByDepth } from "../_shared/taxonomy.ts";
 import { generateWithRetry, parseJsonResponse, extractTextFromResponse } from "../_shared/aiClient.ts";
@@ -9,6 +8,7 @@ import { summarizeError } from "../_shared/errors.ts";
 import { logAiUsage, sumUsageMetadata } from "../_shared/usageLogger.ts";
 import type { UsageMetadata } from "../_shared/aiClient.ts";
 import { MODEL_SEQUENCE } from "../_shared/models.ts";
+import { createAIClient } from "../_shared/aiClientFactory.ts";
 
 function buildPrompt(classificationData: { structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }) {
   const { structure, allValues } = classificationData;
@@ -89,7 +89,6 @@ serve(async (req: Request) => {
     }
 
     const supabase = createServiceSupabaseClient();
-    const geminiApiKey = requireEnv('GEMINI_API_KEY');
 
     // 1. 사용자의 모든 문제 조회
     console.log('Step 1: Fetching user problems');
@@ -135,7 +134,7 @@ serve(async (req: Request) => {
 
     const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
     const prompt = buildPrompt(taxonomyData);
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    const { ai, provider } = createAIClient(GoogleGenAI);
     const sessionId = `reclassify-${userId}-${Date.now()}`;
     const modelName = MODEL_SEQUENCE[0]; // models.ts 기본 모델 사용
 

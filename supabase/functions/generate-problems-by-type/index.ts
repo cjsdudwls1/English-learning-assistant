@@ -3,6 +3,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 import { MODEL_SEQUENCE } from '../_shared/models.ts'
+import { createAIClient } from '../_shared/aiClientFactory.ts'
 
 // EdgeRuntime 타입 정의 (Supabase Edge Functions에서 제공)
 declare const EdgeRuntime: {
@@ -233,7 +234,6 @@ async function generateProblemsInBackground(
     request: ProblemRequest,
     supabaseUrl: string,
     supabaseServiceKey: string,
-    geminiApiKey: string
 ) {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const maxRetries = 5;
@@ -241,7 +241,8 @@ async function generateProblemsInBackground(
 
     try {
         console.log('[Background] Starting problem generation...');
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+        const { ai, provider } = createAIClient(GoogleGenAI);
+        console.log('[Background] AI provider:', provider);
         const prompt = buildPrompt(request);
 
         let responseText = '';
@@ -496,7 +497,6 @@ Deno.serve(async (req) => {
         // 환경 변수 확인
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-        const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
 
         if (!supabaseUrl || !supabaseServiceKey) {
             return new Response(JSON.stringify({ error: 'Missing Supabase environment variables' }), {
@@ -505,16 +505,9 @@ Deno.serve(async (req) => {
             });
         }
 
-        if (!geminiApiKey) {
-            return new Response(JSON.stringify({ error: 'GEMINI_API_KEY environment variable is not set' }), {
-                status: 500,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
-        }
-
         // 동기식으로 문제 생성 (백그라운드 대신 직접 실행하여 에러 추적 가능)
         try {
-            const result = await generateProblemsInBackground(request, supabaseUrl, supabaseServiceKey, geminiApiKey);
+            const result = await generateProblemsInBackground(request, supabaseUrl, supabaseServiceKey);
 
             return new Response(JSON.stringify({
                 success: true,

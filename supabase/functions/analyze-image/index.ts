@@ -1,10 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
-import { requireEnv } from '../_shared/env.ts'
 import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
 import { loadTaxonomyData } from '../_shared/taxonomy.ts'
 import { buildPrompt } from './_shared/prompts.ts'
+import { createAIClient } from '../_shared/aiClientFactory.ts'
 
 // 에러 처리 모듈
 import {
@@ -139,7 +139,8 @@ serve(async (req) => {
       imageList = imageList.slice(0, MAX_IMAGES);
     }
 
-    const geminiApiKey = requireEnv('GEMINI_API_KEY');
+    const { ai, provider: aiProvider } = createAIClient(GoogleGenAI);
+    console.log('[analyze-image] AI provider:', aiProvider);
 
     let userLanguage: 'ko' | 'en' = language === 'en' ? 'en' : 'ko';
 
@@ -322,8 +323,7 @@ serve(async (req) => {
           }
         }
 
-        // Gemini 클라이언트 (OCR 및 추출 공용)
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+        // AI 클라이언트 (OCR 및 추출 공용) - 팩토리에서 생성된 ai 사용
 
         // 3a-1. 페이지별 OCR 수행 (텍스트만 추출) - ocrProcessor 모듈 사용
         const ocrResult = await processOcr({
@@ -624,7 +624,7 @@ serve(async (req) => {
           // generateBatchMetadata 모듈 함수 호출 (실패해도 세션은 완료 처리)
           try {
             await generateBatchMetadata({
-              ai: new GoogleGenAI({ apiKey: geminiApiKey }),
+              ai,
               supabase,
               batchInputs,
               problemTypeById,

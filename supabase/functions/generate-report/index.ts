@@ -6,6 +6,7 @@ import { generateWithRetry, extractTextFromResponse } from "../_shared/aiClient.
 import { summarizeError } from "../_shared/errors.ts";
 import { logAiUsage } from "../_shared/usageLogger.ts";
 import { MODEL_SEQUENCE } from "../_shared/models.ts";
+import { createAIClient } from "../_shared/aiClientFactory.ts";
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -28,14 +29,9 @@ serve(async (req: Request) => {
     // 환경 변수 확인
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing Supabase environment variables');
-    }
-
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
     }
 
     // Supabase 클라이언트 생성
@@ -48,8 +44,8 @@ serve(async (req: Request) => {
       throw new Error('Invalid user ID');
     }
 
-    // Gemini API 클라이언트 생성
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    // AI 클라이언트 생성 (Vertex AI 우선, GEMINI_API_KEY fallback)
+    const { ai, provider } = createAIClient(GoogleGenAI);
     const sessionId = `gen-report-${userId}-${Date.now()}`;
 
     // 문제 데이터 준비
