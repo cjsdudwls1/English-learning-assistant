@@ -3,7 +3,7 @@ import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
 import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
 import { loadTaxonomyData } from '../_shared/taxonomy.ts'
-import { buildPrompt } from './_shared/prompts.ts'
+import { buildPrompt, buildHandwritingDetectionPrompt, buildClassificationPrompt } from './_shared/prompts.ts'
 import { createAIClient } from '../_shared/aiClientFactory.ts'
 
 // 에러 처리 모듈
@@ -28,7 +28,7 @@ import { MODEL_SEQUENCE } from '../_shared/models.ts'
 // ocrProcessor.ts는 더 이상 사용하지 않음 (1단계 멀티모달 분석으로 전환)
 
 // 분석 처리 모듈
-import { analyzeImagesWithFailover } from './_shared/analysisProcessor.ts'
+import { analyzeImagesWithFailover, detectHandwritingMarks, classifyItems } from './_shared/analysisProcessor.ts'
 
 // Labels 생성 모듈
 import { buildLabelsPayload } from './_shared/labelProcessor.ts'
@@ -365,7 +365,7 @@ serve(async (req) => {
         let finalUsedModel: string = '';
         let totalAnalysisUsageMetadata: any = {};
 
-        // 단일 페이지 멀티모달 분석 함수
+        // 단일 페이지 3-Pass 분석 함수
         async function analyzeOnePage(pageIdx: number) {
           const pageNum = pageIdx + 1;
           const imgData = imageList[pageIdx];
@@ -375,14 +375,15 @@ serve(async (req) => {
             return null;
           }
 
+          // ─── Pass A: 구조 추출 전용 (classification/metadata/user_answer 없음) ───
           const pagePrompt = buildPrompt(taxonomyData, userLanguage, 1);
           const pageParts: any[] = [
             { text: pagePrompt },
-            { text: `Page ${pageNum} of ${imageList.length}. Read all text and detect handwritten answers and O/X marks from this exam page image.` },
+            { text: `Page ${pageNum} of ${imageList.length}. Extract all printed text and structure from this exam page image.` },
             { inlineData: { data: imgData.imageBase64, mimeType: imgData.mimeType } },
           ];
 
-          console.log(`[Background] Step 3: Page ${pageNum}/${imageList.length} - multimodal analysis, prompt length: ${pagePrompt.length}, image size: ${imgData.imageBase64.length}`, { sessionId: createdSessionId });
+          console.log(`[Background] Step 3 Pass A: Page ${pageNum}/${imageList.length} - structure extraction, prompt length: ${pagePrompt.length}`, { sessionId: createdSessionId });
 
           try {
             const pageAnalysisResult = await analyzeImagesWithFailover({
@@ -398,19 +399,112 @@ serve(async (req) => {
 
             const { usedModel: pageModel, result: pageResult, validatedItems: pageItems, usageMetadata: pageUsage } = pageAnalysisResult;
 
-            console.log(`[Background] Step 3: Page ${pageNum} done with ${pageModel}, items: ${pageItems.length}`, { sessionId: createdSessionId });
+            console.log(`[Background] Step 3 Pass A: Page ${pageNum} done with ${pageModel}, items: ${pageItems.length}`, { sessionId: createdSessionId });
+
+            // ─── Pass B: 필기 감지 전용 (같은 이미지, 별도 호출) ───
+            const handwritingPrompt = buildHandwritingDetectionPrompt();
+            const imagePart = { inlineData: { data: imgData.imageBase64, mimeType: imgData.mimeType } };
+
+            const handwritingResult = await detectHandwritingMarks({
+              ai,
+              sessionId: createdSessionId!,
+              prompt: handwritingPrompt,
+              imageParts: [imagePart],
+            });
+
+            // ─── Pass C: 분류/메타데이터 전용 (텍스트 기반, 이미지 불필요) ───
+            // Pass A에서 추출한 텍스트로 분류 요약 생성
+            const itemsSummary = pageItems.map((it: any) => {
+              const instruction = it.instruction || it.question_text || it.stem || '';
+              const passage = (it._resolved_passage || it.passage || '').substring(0, 200);
+              const choicesText = (it.choices || []).map((c: any) => {
+                const text = typeof c === 'string' ? c : (c?.text || '');
+                return text.substring(0, 80);
+              }).join(' / ');
+              return `### Problem ${it.problem_number}\nInstruction: ${instruction}\nPassage (first 200 chars): ${passage}\nChoices: ${choicesText}`;
+            }).join('\n\n');
+
+            const classificationPrompt = buildClassificationPrompt(taxonomyData, itemsSummary);
+            const classificationResult = await classifyItems({
+              ai,
+              sessionId: createdSessionId!,
+              prompt: classificationPrompt,
+            });
+
+            // ─── 결과 병합 ───
+            // Pass A의 user 필드를 null로 초기화 (Pass A는 user_answer를 출력하지 않지만 안전 장치)
+            for (const item of pageItems) {
+              item.user_answer = null;
+              item.user_marked_correctness = null;
+            }
+
+            // Pass B 결과 병합: problem_number 기준 매칭
+            if (handwritingResult.marks.length > 0) {
+              const markMap = new Map<string, { user_answer: string | null; user_marked_correctness: string | null }>();
+              for (const mark of handwritingResult.marks) {
+                markMap.set(String(mark.problem_number), {
+                  user_answer: mark.user_answer,
+                  user_marked_correctness: mark.user_marked_correctness,
+                });
+              }
+
+              for (const item of pageItems) {
+                const pNum = String(item.problem_number || '');
+                const match = markMap.get(pNum);
+                if (match) {
+                  item.user_answer = match.user_answer;
+                  item.user_marked_correctness = match.user_marked_correctness;
+                }
+              }
+
+              console.log(`[Background] Step 3 Merge B: ${handwritingResult.marks.length} mark(s) merged`, {
+                sessionId: createdSessionId,
+                mergeDetails: handwritingResult.marks.map(m => `Q${m.problem_number}=${m.user_answer} (conf=${m.confidence}, evidence=${m.evidence})`),
+              });
+            }
+
+            // Pass C 결과 병합: classification + metadata
+            if (classificationResult.classifications.length > 0) {
+              const classMap = new Map<string, { classification: any; metadata: any }>();
+              for (const cls of classificationResult.classifications) {
+                classMap.set(String(cls.problem_number), {
+                  classification: cls.classification,
+                  metadata: cls.metadata,
+                });
+              }
+
+              for (const item of pageItems) {
+                const pNum = String(item.problem_number || '');
+                const match = classMap.get(pNum);
+                if (match) {
+                  item.classification = match.classification;
+                  item.metadata = match.metadata;
+                }
+              }
+
+              console.log(`[Background] Step 3 Merge C: ${classificationResult.classifications.length} classification(s) merged`, { sessionId: createdSessionId });
+            }
 
             // 분석 완료 후 해당 페이지 이미지 메모리 해제
             (imageList[pageIdx] as any).imageBase64 = '';
 
-            return { pageItems, pageResult, pageModel, pageUsage };
+            // 토큰 사용량 합산 (Pass A + B + C)
+            const combinedUsage = pageUsage ? { ...pageUsage } : {};
+            for (const extraUsage of [handwritingResult.usageMetadata, classificationResult.usageMetadata]) {
+              if (extraUsage) {
+                (combinedUsage as any).promptTokenCount = ((combinedUsage as any).promptTokenCount || 0) + (extraUsage.promptTokenCount || 0);
+                (combinedUsage as any).candidatesTokenCount = ((combinedUsage as any).candidatesTokenCount || 0) + (extraUsage.candidatesTokenCount || 0);
+                (combinedUsage as any).totalTokenCount = ((combinedUsage as any).totalTokenCount || 0) + (extraUsage.totalTokenCount || 0);
+              }
+            }
+
+            return { pageItems, pageResult, pageModel, pageUsage: combinedUsage };
           } catch (pageErr: any) {
             // 실패한 페이지도 메모리 해제
             if (imageList[pageIdx]) (imageList[pageIdx] as any).imageBase64 = '';
             console.error(`[Background] Step 3: Page ${pageNum} analysis FAILED`, {
               sessionId: createdSessionId,
               error: pageErr?.message || String(pageErr),
-              // StageError의 stage/details 필드를 보존하여 Supabase 대시보드에서 실패 원인 진단 가능
               stage: pageErr instanceof StageError ? pageErr.stage : 'unknown',
               details: pageErr instanceof StageError ? pageErr.details : undefined,
             });

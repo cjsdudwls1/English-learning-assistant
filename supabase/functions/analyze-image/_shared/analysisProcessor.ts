@@ -236,3 +236,151 @@ export function validateParts(parts: any[], expectedImageCount: number, sessionI
         throw new Error(`Parts array inlineData count mismatch: expected ${expectedImageCount}, got ${inlineDataCount}`);
     }
 }
+
+// ─── Pass B: 필기 마크 감지 ───
+
+export interface HandwritingMark {
+    problem_number: string;
+    user_answer: string | null;
+    user_marked_correctness: string | null;
+    mark_type?: string | null;
+    confidence?: number;
+    ambiguous?: boolean;
+    evidence?: string;
+}
+
+export interface DetectHandwritingParams {
+    ai: any;
+    sessionId: string;
+    prompt: string;
+    imageParts: any[];
+}
+
+/**
+ * Pass B: 이미지에서 필기 마크(사용자 답변, O/X 표시)만 감지합니다.
+ * 경량 모델(flash)을 사용하여 비용을 최소화하고,
+ * 실패해도 빈 배열을 반환하여 전체 파이프라인에 영향을 주지 않습니다.
+ */
+export async function detectHandwritingMarks(params: DetectHandwritingParams): Promise<{
+    marks: HandwritingMark[];
+    usageMetadata?: UsageMetadata;
+}> {
+    const { ai, sessionId, prompt, imageParts } = params;
+
+    const HANDWRITING_MODEL = 'gemini-2.5-flash';
+
+    try {
+        console.log(`[Background] Pass B: Detecting handwriting marks with ${HANDWRITING_MODEL}...`, { sessionId });
+
+        const parts = [{ text: prompt }, ...imageParts];
+
+        const attempt = await generateWithRetry({
+            ai,
+            model: HANDWRITING_MODEL,
+            contents: { parts },
+            sessionId,
+            maxRetries: 1,
+            baseDelayMs: 2000,
+            temperature: 0.0,
+        });
+
+        const responseText = await extractTextFromResponse(attempt.response, HANDWRITING_MODEL);
+        const parsed = parseJsonResponse(responseText, HANDWRITING_MODEL) as { marks?: HandwritingMark[] };
+
+        if (!parsed || !Array.isArray(parsed.marks)) {
+            console.warn(`[Background] Pass B: Invalid response format, returning empty marks`, {
+                sessionId,
+                parsedKeys: parsed ? Object.keys(parsed) : null,
+            });
+            return { marks: [], usageMetadata: attempt.usageMetadata };
+        }
+
+        console.log(`[Background] Pass B: Detected ${parsed.marks.length} mark(s)`, {
+            sessionId,
+            marks: parsed.marks.map(m => `Q${m.problem_number}: answer=${m.user_answer}, confidence=${m.confidence}, evidence=${m.evidence}`),
+        });
+
+        return { marks: parsed.marks, usageMetadata: attempt.usageMetadata };
+    } catch (err: any) {
+        console.warn(`[Background] Pass B: Handwriting detection FAILED (non-critical):`, {
+            sessionId,
+            error: err?.message || String(err),
+        });
+        return { marks: [] };
+    }
+}
+
+// ─── Pass C: 분류/메타데이터 생성 (텍스트 기반, 이미지 불필요) ───
+
+export interface ClassificationResult {
+    problem_number: string;
+    classification: {
+        depth1?: string;
+        depth2?: string;
+        depth3?: string;
+        depth4?: string;
+    };
+    metadata: {
+        difficulty?: string;
+        word_difficulty?: number;
+        problem_type?: string;
+    };
+}
+
+export interface ClassifyItemsParams {
+    ai: any;
+    sessionId: string;
+    prompt: string;
+}
+
+/**
+ * Pass C: 텍스트만으로 문제를 분류하고 메타데이터를 생성합니다.
+ * 이미지를 사용하지 않으므로 정답 추론에 의한 user_answer 오염이 원천 차단됩니다.
+ * 실패해도 빈 배열을 반환하여 전체 파이프라인에 영향을 주지 않습니다.
+ */
+export async function classifyItems(params: ClassifyItemsParams): Promise<{
+    classifications: ClassificationResult[];
+    usageMetadata?: UsageMetadata;
+}> {
+    const { ai, sessionId, prompt } = params;
+
+    const CLASSIFICATION_MODEL = 'gemini-2.5-flash';
+
+    try {
+        console.log(`[Background] Pass C: Classifying items with ${CLASSIFICATION_MODEL}...`, { sessionId });
+
+        const parts = [{ text: prompt }];
+
+        const attempt = await generateWithRetry({
+            ai,
+            model: CLASSIFICATION_MODEL,
+            contents: { parts },
+            sessionId,
+            maxRetries: 1,
+            baseDelayMs: 2000,
+            temperature: 0.0,
+        });
+
+        const responseText = await extractTextFromResponse(attempt.response, CLASSIFICATION_MODEL);
+        const parsed = parseJsonResponse(responseText, CLASSIFICATION_MODEL) as { classifications?: ClassificationResult[] };
+
+        if (!parsed || !Array.isArray(parsed.classifications)) {
+            console.warn(`[Background] Pass C: Invalid response format, returning empty classifications`, {
+                sessionId,
+                parsedKeys: parsed ? Object.keys(parsed) : null,
+            });
+            return { classifications: [], usageMetadata: attempt.usageMetadata };
+        }
+
+        console.log(`[Background] Pass C: Classified ${parsed.classifications.length} item(s)`, { sessionId });
+
+        return { classifications: parsed.classifications, usageMetadata: attempt.usageMetadata };
+    } catch (err: any) {
+        console.warn(`[Background] Pass C: Classification FAILED (non-critical):`, {
+            sessionId,
+            error: err?.message || String(err),
+        });
+        return { classifications: [] };
+    }
+}
+
