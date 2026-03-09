@@ -220,6 +220,18 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
           </div>
         </div>
 
+        {/* 지문(passage) 렌더링 */}
+        {problem.passage && (
+          <div className="mb-4 p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
+            <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+              {language === 'ko' ? '지문' : 'Passage'}
+            </div>
+            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+              {problem.passage}
+            </p>
+          </div>
+        )}
+
         {currentProblemType === 'multiple_choice' && problem.choices && (
           <div className="space-y-2 mt-3">
             {problem.choices.map((choice: any, cIdx: number) => {

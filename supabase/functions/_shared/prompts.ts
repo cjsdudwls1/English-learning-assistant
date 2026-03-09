@@ -42,7 +42,7 @@ If text is unreadable / blank, return an empty array instead of guessing. Do NOT
    - \`choices\`: The answer options
 3. **Missing Content**: NEVER return placeholders like "[Missing paragraph]". If text is in the image, extract it.
 4. **Structure Markers**: Preserve (A), (B), (C) markers, underlines, brackets exactly as shown.
-5. **Handwriting vs. Printed Text**: Handwritten marks go to \`user_answer\` and \`user_marked_correctness\`. Keep printed text pure.
+5. **Handwriting vs. Printed Text**: Handwritten marks go to \`user_answer\` and \`user_marked_correctness\`. Keep printed text pure. user_answer must be ONLY what is physically marked on the paper — do NOT solve the question. The student may have chosen the WRONG answer.
 6. **No fake choices**: If no multiple-choice options exist, set \`choices: []\`.
 
 ## Classification Criteria (CRITICAL - READ CAREFULLY)

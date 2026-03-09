@@ -5,6 +5,14 @@ import {
 } from './db/generatedProblems';
 import { supabase } from './supabaseClient';
 
+export interface AIGenerationOptions {
+  includePassage?: boolean;
+  passageLength?: number;
+  passageTopic?: { category: string; subfield: string };
+  difficultyLevel?: number;
+  vocabLevel?: number;
+}
+
 export interface ProblemLoadOptions {
   problemCounts: {
     multiple_choice: number;
@@ -209,7 +217,8 @@ export async function generateShortageProblems(
   classification: ProblemLoadOptions['classification'],
   userId: string,
   language: 'ko' | 'en',
-  onProgress?: (stage: number, message: string, details?: any) => void
+  onProgress?: (stage: number, message: string, details?: any) => void,
+  aiOptions?: AIGenerationOptions,
 ): Promise<GeneratedProblem[]> {
   const allNew: GeneratedProblem[] = [];
   for (const [problemType, count] of Object.entries(shortage)) {
@@ -219,7 +228,8 @@ export async function generateShortageProblems(
       classification,
       userId,
       language,
-      onProgress
+      onProgress,
+      aiOptions,
     );
     allNew.push(...problems);
   }
@@ -235,7 +245,8 @@ async function generateMissingProblems(
   classification: ProblemLoadOptions['classification'],
   userId: string,
   language: 'ko' | 'en',
-  onProgress?: (stage: number, message: string, details?: any) => void
+  onProgress?: (stage: number, message: string, details?: any) => void,
+  aiOptions?: AIGenerationOptions,
 ): Promise<GeneratedProblem[]> {
   try {
     const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-problems-by-type`;
@@ -263,6 +274,7 @@ async function generateMissingProblems(
         userId,
         language,
         classification,
+        ...(aiOptions || {}),
       }),
     });
 

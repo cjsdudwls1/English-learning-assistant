@@ -51,11 +51,21 @@ export const GenerateProblemsPage: React.FC = () => {
     existing: number;
     newlyGenerated: number;
   } | null>(null);
-  
+
   // 기존 문제 불러오기 옵션
   const [useExistingProblems, setUseExistingProblems] = useState(true);
   const [excludeSolved, setExcludeSolved] = useState(false);
   const [excludeRecentDays, setExcludeRecentDays] = useState<number | null>(null);
+
+  // AI 생성 옵션 - 지문 포함
+  const [includePassage, setIncludePassage] = useState(false);
+  const [passageLength, setPassageLength] = useState(1000);
+  const [passageTopic, setPassageTopic] = useState<{ category: string; subfield: string } | null>(null);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+
+  // AI 생성 옵션 - 난이도
+  const [difficultyLevel, setDifficultyLevel] = useState(3);
+  const [vocabLevel, setVocabLevel] = useState(3);
 
   // 문제 수 조절 함수 (상하 화살표)
   const adjustCount = (type: ProblemType, delta: number) => {
@@ -92,7 +102,7 @@ export const GenerateProblemsPage: React.FC = () => {
 
     try {
       const userId = await getCurrentUserId();
-      
+
       setProgressStage(1);
       setProgressMessage(language === 'ko' ? '1/3 단계: 기존 문제 검색 중...' : 'Step 1/3: Searching for existing problems...');
 
@@ -124,7 +134,7 @@ export const GenerateProblemsPage: React.FC = () => {
         newlyGenerated: result.stats.newlyGenerated,
         problems: result.problems.map(p => ({ id: p.id, _source: (p as any)._source })),
       });
-      
+
       setLoadStats(result.stats);
       setGeneratedProblems(result.problems);
       setShowTestSheet(true);
@@ -156,7 +166,7 @@ export const GenerateProblemsPage: React.FC = () => {
       }
 
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-problems-by-type`;
-      
+
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
@@ -168,6 +178,11 @@ export const GenerateProblemsPage: React.FC = () => {
           problemCount: count,
           userId: userData.user.id,
           language: language,
+          includePassage: includePassage,
+          ...(includePassage && { passageLength }),
+          ...(includePassage && passageTopic && { passageTopic }),
+          difficultyLevel,
+          vocabLevel,
           // classification은 선택사항이므로 나중에 추가 가능
         })
       });
@@ -178,7 +193,7 @@ export const GenerateProblemsPage: React.FC = () => {
       }
 
       const result = await response.json();
-      
+
       if (result.success) {
         setGeneratedProblems(result.problems || []);
         setShowTestSheet(true);
@@ -209,12 +224,12 @@ export const GenerateProblemsPage: React.FC = () => {
             {language === 'ko' ? '새로 생성' : 'Generate New'}
           </button>
         </div>
-        <TestSheetView 
+        <TestSheetView
           problems={generatedProblems.map(p => ({
             ...p,
             _source: (p as any)._source, // 출처 정보 유지
-          }))} 
-          problemType={selectedType} 
+          }))}
+          problemType={selectedType}
         />
       </div>
     );
@@ -227,32 +242,30 @@ export const GenerateProblemsPage: React.FC = () => {
           {language === 'ko' ? '문제 생성' : 'Generate Problems'}
         </h2>
         <p className="text-slate-600 dark:text-slate-400 mb-4">
-          {language === 'ko' 
+          {language === 'ko'
             ? '문제 유형을 선택하고 문제 수를 입력한 후 생성 버튼을 클릭하세요.'
             : 'Select problem type and enter the number of problems, then click generate.'}
         </p>
-        
+
         {/* 모드 선택 */}
         <div className="flex gap-2 mb-4">
           <button
             type="button"
             onClick={() => setUseExistingProblems(true)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              useExistingProblems
-                ? 'bg-green-600 dark:bg-green-500 text-white'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-            }`}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${useExistingProblems
+              ? 'bg-green-600 dark:bg-green-500 text-white'
+              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
           >
             {language === 'ko' ? '기존 문제 불러오기' : 'Load Existing'}
           </button>
           <button
             type="button"
             onClick={() => setUseExistingProblems(false)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              !useExistingProblems
-                ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-            }`}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${!useExistingProblems
+              ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
           >
             {language === 'ko' ? 'AI로 시험지 생성' : 'Generate New with AI'}
           </button>
@@ -268,44 +281,40 @@ export const GenerateProblemsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setSelectedType('multiple_choice')}
-            className={`px-4 py-3 rounded-lg font-medium transition-colors ${
-              selectedType === 'multiple_choice'
-                ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-            }`}
+            className={`px-4 py-3 rounded-lg font-medium transition-colors ${selectedType === 'multiple_choice'
+              ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
           >
             {language === 'ko' ? '객관식' : 'Multiple Choice'}
           </button>
           <button
             type="button"
             onClick={() => setSelectedType('short_answer')}
-            className={`px-4 py-3 rounded-lg font-medium transition-colors ${
-              selectedType === 'short_answer'
-                ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-            }`}
+            className={`px-4 py-3 rounded-lg font-medium transition-colors ${selectedType === 'short_answer'
+              ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
           >
             {language === 'ko' ? '단답형' : 'Short Answer'}
           </button>
           <button
             type="button"
             onClick={() => setSelectedType('essay')}
-            className={`px-4 py-3 rounded-lg font-medium transition-colors ${
-              selectedType === 'essay'
-                ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-            }`}
+            className={`px-4 py-3 rounded-lg font-medium transition-colors ${selectedType === 'essay'
+              ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
           >
             {language === 'ko' ? '서술형' : 'Essay'}
           </button>
           <button
             type="button"
             onClick={() => setSelectedType('ox')}
-            className={`px-4 py-3 rounded-lg font-medium transition-colors ${
-              selectedType === 'ox'
-                ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-            }`}
+            className={`px-4 py-3 rounded-lg font-medium transition-colors ${selectedType === 'ox'
+              ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
           >
             {language === 'ko' ? 'O/X' : 'True/False'}
           </button>
@@ -319,14 +328,14 @@ export const GenerateProblemsPage: React.FC = () => {
         </label>
         <div className="flex items-center gap-3">
           <div className="flex items-center border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700">
-              <button
-                type="button"
-                onClick={() => adjustCount(selectedType, -1)}
-                className="px-3 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-l-lg"
-                disabled={problemCounts[selectedType] <= 0}
-              >
-                ↓
-              </button>
+            <button
+              type="button"
+              onClick={() => adjustCount(selectedType, -1)}
+              className="px-3 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-l-lg"
+              disabled={problemCounts[selectedType] <= 0}
+            >
+              ↓
+            </button>
             <input
               type="number"
               min="0"
@@ -383,6 +392,216 @@ export const GenerateProblemsPage: React.FC = () => {
         </div>
       )}
 
+      {/* AI 생성 옵션 (AI 모드에서만 표시) */}
+      {!useExistingProblems && (
+        <div className="mb-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700">
+          <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-200 mb-3">
+            {language === 'ko' ? 'AI 생성 옵션' : 'AI Generation Options'}
+          </h3>
+          <div className="space-y-3">
+            {/* 지문 포함 토글 */}
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-sm text-slate-700 dark:text-slate-300">
+                {language === 'ko' ? '지문 포함' : 'Include Passage'}
+              </span>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={includePassage}
+                  onChange={(e) => setIncludePassage(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-300 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 dark:peer-checked:bg-indigo-500"></div>
+              </div>
+            </label>
+            {includePassage && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 ml-1">
+                {language === 'ko'
+                  ? '각 문제에 700~2000자 영어 지문이 포함됩니다.'
+                  : 'Each problem will include a 700-2000 character English passage.'}
+              </p>
+            )}
+
+            {/* 지문 길이 슬라이더 */}
+            {includePassage && (
+              <div className="pt-3 border-t border-indigo-200 dark:border-indigo-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-700 dark:text-slate-300">
+                    {language === 'ko' ? '지문 길이' : 'Passage Length'}
+                  </span>
+                  <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                    {passageLength}{language === 'ko' ? '자' : ' chars'}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={700}
+                  max={2000}
+                  step={100}
+                  value={passageLength}
+                  onChange={(e) => setPassageLength(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-500"
+                />
+                <div className="flex justify-between text-xs text-slate-400 dark:text-slate-500 mt-1">
+                  <span>700</span>
+                  <span>1000</span>
+                  <span>1500</span>
+                  <span>2000</span>
+                </div>
+              </div>
+            )}
+
+            {/* 지문 분야 선택 (2단 계층 구조) */}
+            {includePassage && (
+              <div className="pt-3 border-t border-indigo-200 dark:border-indigo-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-700 dark:text-slate-300">
+                    {language === 'ko' ? '지문 분야' : 'Passage Topic'}
+                  </span>
+                  {passageTopic && (
+                    <button
+                      type="button"
+                      onClick={() => { setPassageTopic(null); setExpandedCategory(null); }}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      {language === 'ko' ? '선택 해제' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+                {/* 대분류 버튼 */}
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {[
+                    {
+                      id: 'social', ko: '사회과학', en: 'Social Sciences', subs: [
+                        { ko: '심리학', en: 'Psychology' }, { ko: '행동경제학', en: 'Behavioral Economics' },
+                        { ko: '사회학', en: 'Sociology' }, { ko: '교육학', en: 'Pedagogy' }, { ko: '미디어', en: 'Media' }
+                      ]
+                    },
+                    {
+                      id: 'humanities', ko: '인문학', en: 'Humanities', subs: [
+                        { ko: '철학', en: 'Philosophy' }, { ko: '윤리학', en: 'Ethics' },
+                        { ko: '언어학', en: 'Linguistics' }, { ko: '역사학', en: 'History' }
+                      ]
+                    },
+                    {
+                      id: 'science', ko: '자연과학 및 기술', en: 'Science & Tech', subs: [
+                        { ko: '생물학', en: 'Biology' }, { ko: '뇌과학', en: 'Neuroscience' },
+                        { ko: '기후/환경', en: 'Climate/Environment' }, { ko: 'IT', en: 'IT' }, { ko: '물리학', en: 'Physics' }
+                      ]
+                    },
+                    {
+                      id: 'arts', ko: '예체능 및 문화', en: 'Arts & Culture', subs: [
+                        { ko: '건축', en: 'Architecture' }, { ko: '음악사', en: 'Music History' },
+                        { ko: '미술', en: 'Fine Arts' }, { ko: '스포츠 심리학', en: 'Sports Psychology' }
+                      ]
+                    },
+                  ].map((cat) => (
+                    <div key={cat.id}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedCategory(expandedCategory === cat.id ? null : cat.id)}
+                        className={`w-full px-3 py-2 text-xs font-medium rounded-lg transition-colors ${expandedCategory === cat.id || passageTopic?.category === (language === 'ko' ? cat.ko : cat.en)
+                          ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
+                          }`}
+                      >
+                        {language === 'ko' ? cat.ko : cat.en}
+                      </button>
+                      {/* 세부 분야 칩 */}
+                      {expandedCategory === cat.id && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {cat.subs.map((sub) => (
+                            <button
+                              key={sub.ko}
+                              type="button"
+                              onClick={() => {
+                                setPassageTopic({
+                                  category: language === 'ko' ? cat.ko : cat.en,
+                                  subfield: language === 'ko' ? sub.ko : sub.en,
+                                });
+                                setExpandedCategory(null);
+                              }}
+                              className={`px-2 py-1 text-xs rounded-full transition-colors ${passageTopic?.subfield === (language === 'ko' ? sub.ko : sub.en)
+                                ? 'bg-indigo-500 text-white'
+                                : 'bg-slate-100 dark:bg-slate-600 text-slate-600 dark:text-slate-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/30'
+                                }`}
+                            >
+                              {language === 'ko' ? sub.ko : sub.en}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {passageTopic && (
+                  <div className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
+                    {language === 'ko'
+                      ? `선택: ${passageTopic.category} > ${passageTopic.subfield}`
+                      : `Selected: ${passageTopic.category} > ${passageTopic.subfield}`}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 난이도 및 어휘 난이도 슬라이더 */}
+          <div className="space-y-4 pt-3 border-t border-indigo-200 dark:border-indigo-700">
+            {/* 문제 난이도 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-slate-700 dark:text-slate-300">
+                  {language === 'ko' ? '문제 난이도' : 'Difficulty'}
+                </span>
+                <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                  {difficultyLevel}/5
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={5}
+                step={1}
+                value={difficultyLevel}
+                onChange={(e) => setDifficultyLevel(Number(e.target.value))}
+                className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-500"
+              />
+              <div className="flex justify-between text-xs text-slate-400 dark:text-slate-500 mt-1">
+                <span>{language === 'ko' ? '쉬움' : 'Easy'}</span>
+                <span>{language === 'ko' ? '수능' : 'CSAT'}</span>
+                <span>{language === 'ko' ? '최고' : 'Max'}</span>
+              </div>
+            </div>
+
+            {/* 어휘 난이도 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-slate-700 dark:text-slate-300">
+                  {language === 'ko' ? '어휘 수준' : 'Vocabulary Level'}
+                </span>
+                <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                  {vocabLevel}/5
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={5}
+                step={1}
+                value={vocabLevel}
+                onChange={(e) => setVocabLevel(Number(e.target.value))}
+                className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-500"
+              />
+              <div className="flex justify-between text-xs text-slate-400 dark:text-slate-500 mt-1">
+                <span>{language === 'ko' ? '중학' : 'Basic'}</span>
+                <span>{language === 'ko' ? '수능' : 'CSAT'}</span>
+                <span>{language === 'ko' ? 'GRE' : 'GRE'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 진행 상태 표시 */}
       {(progressMessage || progressStage > 0) && isLoadingExisting && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -393,7 +612,7 @@ export const GenerateProblemsPage: React.FC = () => {
               </div>
               {progressDetails && progressDetails.stage === 'searching' && progressDetails.found !== undefined && (
                 <div className="text-xs text-blue-700 dark:text-blue-300">
-                  {language === 'ko' 
+                  {language === 'ko'
                     ? `→ ${getProblemTypeLabel(progressDetails.problemType, language)}: ${progressDetails.found}개 발견`
                     : `→ ${getProblemTypeLabel(progressDetails.problemType, language)}: ${progressDetails.found} found`}
                 </div>
@@ -431,19 +650,19 @@ export const GenerateProblemsPage: React.FC = () => {
             disabled={isLoadingExisting || isGenerating || problemCounts[selectedType] < 1}
             className="w-full px-6 py-3 bg-green-600 dark:bg-green-500 text-white rounded-lg font-semibold hover:bg-green-700 dark:hover:bg-green-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
           >
-            {isLoadingExisting 
+            {isLoadingExisting
               ? (language === 'ko' ? '불러오는 중...' : 'Loading...')
               : (language === 'ko' ? '기존 문제 불러오기 (빠르고 무료)' : 'Load Existing Problems (Fast & Free)')}
           </button>
         )}
-        
+
         {/* AI로 시험지 생성 버튼 */}
         <button
           onClick={handleGenerate}
           disabled={isGenerating || isLoadingExisting || problemCounts[selectedType] < 1}
           className="w-full px-6 py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
-          {isGenerating 
+          {isGenerating
             ? (language === 'ko' ? '생성 중...' : 'Generating...')
             : (language === 'ko' ? 'AI로 시험지 생성 (새로운 문제 생성)' : 'Generate New Problems with AI')}
         </button>

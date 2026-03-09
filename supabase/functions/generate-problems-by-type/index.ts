@@ -2,7 +2,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
-import { MODEL_SEQUENCE } from '../_shared/models.ts'
+import { MODEL_SEQUENCE, MODEL_RETRY_POLICY } from '../_shared/models.ts'
 import { createAIClient } from '../_shared/aiClientFactory.ts'
 
 // EdgeRuntime 타입 정의 (Supabase Edge Functions에서 제공)
@@ -34,6 +34,11 @@ interface ProblemRequest {
     userId: string;
     language: Language;
     difficulty?: string;
+    includePassage?: boolean;
+    passageLength?: number;
+    passageTopic?: { category: string; subfield: string };
+    difficultyLevel?: number;
+    vocabLevel?: number;
 }
 
 interface PromptTemplate {
@@ -221,11 +226,52 @@ function buildPrompt(request: ProblemRequest): string {
             : `\n\nDifficulty: ${difficulty}`;
     }
 
+    // 문제 난이도 레벨 (5단계)
+    if (request.difficultyLevel) {
+        prompt += language === 'ko'
+            ? `\n\n[문제 난이도]\n문제 난이도는 5단계 중 ${request.difficultyLevel}단계로 설정하라. (1=기초, 3=수능 평균, 5=최고난도)`
+            : `\n\n[Difficulty Level]\nSet the problem difficulty to level ${request.difficultyLevel} out of 5. (1=Basic, 3=Average, 5=Most Difficult)`;
+    }
+
+    // 어휘 난이도 레벨 (5단계)
+    if (request.vocabLevel) {
+        prompt += language === 'ko'
+            ? `\n\n[어휘 수준]\n사용 어휘 수준은 5단계 중 ${request.vocabLevel}단계로 설정하라. (1=중학 기초, 2=고1, 3=수능, 4=TEPS/편입, 5=GRE/학술)`
+            : `\n\n[Vocabulary Level]\nSet the vocabulary level to ${request.vocabLevel} out of 5. (1=Basic/Middle School, 2=High School Year 1, 3=CSAT, 4=TEPS/Transfer, 5=GRE/Academic)`;
+    }
+
+    if (request.includePassage) {
+        prompt += language === 'ko'
+            ? `\n\n[지문 포함 지시]\n각 문제에 700~2000자 분량의 영어 지문(passage)을 포함하여 출제하라. 지문은 학술적이거나 교양적인 내용의 영어 원문이어야 하며, 문제는 해당 지문을 읽고 풀 수 있도록 설계하라.`
+            : `\n\n[Passage Inclusion]\nInclude an English passage of 700~2000 characters with each problem. The passage should be academic or informational English text, and the problem should be designed to be answered after reading the passage.`;
+
+        // 지문 길이 지정
+        if (request.passageLength) {
+            prompt += language === 'ko'
+                ? `\n지문 길이는 약 ${request.passageLength}자(±100자)로 작성하라.`
+                : `\nThe passage length should be approximately ${request.passageLength} characters (±100 characters).`;
+        }
+
+        // 지문 분야 지정
+        if (request.passageTopic?.category && request.passageTopic?.subfield) {
+            prompt += language === 'ko'
+                ? `\n지문의 주제는 ${request.passageTopic.category} 분야의 ${request.passageTopic.subfield}에 관한 학술적/교양적 내용으로 작성하라.`
+                : `\nThe passage topic should be about ${request.passageTopic.subfield} in the field of ${request.passageTopic.category}, written as academic or informational content.`;
+        }
+    }
+
     prompt += '\n\n' + template.format;
     prompt += '\n\n' + (language === 'ko' ? '중요 사항:' : 'Important:');
     template.requirements.forEach((req, idx) => {
         prompt += `\n${idx + 1}. ${req}`;
     });
+
+    if (request.includePassage) {
+        const passageReqIdx = template.requirements.length + 1;
+        prompt += language === 'ko'
+            ? `\n${passageReqIdx}. 각 문제 JSON 객체에 "passage" 필드를 추가하여 지문 전문을 포함하세요.`
+            : `\n${passageReqIdx}. Add a "passage" field to each problem JSON object containing the full passage text.`;
+    }
 
     return prompt;
 }
@@ -236,8 +282,6 @@ async function generateProblemsInBackground(
     supabaseServiceKey: string,
 ) {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const maxRetries = 5;
-    const baseDelay = 5000;
 
     try {
         console.log('[Background] Starting problem generation...');
@@ -249,21 +293,17 @@ async function generateProblemsInBackground(
         let lastError: any = null;
         const modelErrors: Array<{ model: string; error: string }> = [];
 
-        // gemini-3-flash-preview는 503이 잦아 failover 시간이 길어짐 → 제외
-        // 문제 생성은 텍스트 기반이라 gemini-2.5-flash로 충분
-        const genModels = (MODEL_SEQUENCE as readonly string[]).filter(m => m !== 'gemini-3-flash-preview');
-        if (genModels.length === 0) genModels.push(...(MODEL_SEQUENCE as readonly string[]));
-
-        // genModels를 순회하며 failover 시도
-        for (let modelIdx = 0; modelIdx < genModels.length; modelIdx++) {
-            const modelName = genModels[modelIdx];
+        // MODEL_SEQUENCE를 순회하며 failover 시도
+        for (let modelIdx = 0; modelIdx < MODEL_SEQUENCE.length; modelIdx++) {
+            const modelName = MODEL_SEQUENCE[modelIdx];
+            const retryPolicy = MODEL_RETRY_POLICY[modelName] || { maxRetries: 2, baseDelayMs: 3000 };
             let modelSucceeded = false;
 
-            console.log(`[Background] Trying model ${modelIdx + 1}/${genModels.length}: ${modelName}`);
+            console.log(`[Background] Trying model ${modelIdx + 1}/${MODEL_SEQUENCE.length}: ${modelName} (maxRetries=${retryPolicy.maxRetries})`);
 
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            for (let attempt = 1; attempt <= retryPolicy.maxRetries; attempt++) {
                 try {
-                    console.log(`[Background] Model=${modelName}, Attempt ${attempt}/${maxRetries}: Starting Gemini API call with 50s timeout...`);
+                    console.log(`[Background] Model=${modelName}, Attempt ${attempt}/${retryPolicy.maxRetries}: Starting Gemini API call with 50s timeout...`);
 
                     const timeoutPromise = new Promise((_, reject) => {
                         setTimeout(() => reject(new Error('API call timeout after 50s')), 50000);
@@ -311,7 +351,7 @@ async function generateProblemsInBackground(
                     if (apiError?.message) errorMessage = apiError.message;
                     if (apiError?.error?.status) errorStatus = apiError.error.status;
 
-                    console.log(`[Background] Model=${modelName}, Attempt ${attempt}/${maxRetries} failed - code: ${errorCode}, message: ${errorMessage.substring(0, 200)}`);
+                    console.log(`[Background] Model=${modelName}, Attempt ${attempt}/${retryPolicy.maxRetries} failed - code: ${errorCode}, message: ${errorMessage.substring(0, 200)}`);
 
                     const isRateLimit = errorCode === 429 ||
                         errorMessage.toLowerCase().includes('rate limit') ||
@@ -321,19 +361,19 @@ async function generateProblemsInBackground(
                         errorStatus === 'UNAVAILABLE';
                     const isTimeout = errorMessage.toLowerCase().includes('timeout');
 
-                    if (attempt === maxRetries) {
+                    if (attempt === retryPolicy.maxRetries) {
                         // 이 모델의 모든 재시도 소진 → 다음 모델로 failover
-                        console.warn(`[Background] Model=${modelName} failed after ${maxRetries} attempts. Failing over to next model...`);
+                        console.warn(`[Background] Model=${modelName} failed after ${retryPolicy.maxRetries} attempts. Failing over to next model...`);
                         modelErrors.push({ model: modelName, error: errorMessage });
                         break;
                     }
 
                     if (isRateLimit || isServerOverload || isTimeout) {
-                        const delay = baseDelay * Math.pow(2, attempt - 1);
+                        const delay = retryPolicy.baseDelayMs * Math.pow(2, attempt - 1);
                         console.log(`[Background] Hit rate limit/overload/timeout. Retrying in ${delay / 1000}s...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     } else {
-                        const delay = baseDelay * attempt;
+                        const delay = retryPolicy.baseDelayMs * attempt;
                         console.log(`[Background] API error occurred. Retrying in ${delay / 1000}s...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     }
@@ -346,9 +386,9 @@ async function generateProblemsInBackground(
             }
 
             // 마지막 모델도 실패하면 최종 에러
-            if (modelIdx === genModels.length - 1 && !modelSucceeded) {
-                console.error(`[Background] All ${genModels.length} models failed:`, modelErrors);
-                throw new Error(`All ${genModels.length} models failed to generate problems. Errors: ${JSON.stringify(modelErrors)}`);
+            if (modelIdx === MODEL_SEQUENCE.length - 1 && !modelSucceeded) {
+                console.error(`[Background] All ${MODEL_SEQUENCE.length} models failed:`, modelErrors);
+                throw new Error(`All ${MODEL_SEQUENCE.length} models failed to generate problems. Errors: ${JSON.stringify(modelErrors)}`);
             }
         }
 
@@ -385,6 +425,7 @@ async function generateProblemsInBackground(
                 stem: problem.stem || '',
                 source_classification: request.classification || null,
                 classification: request.classification || null,
+                passage: problem.passage || null,
             };
 
             // 문제 유형별 추가 필드 처리
@@ -427,16 +468,6 @@ async function generateProblemsInBackground(
         console.log(`[Background] Successfully saved ${insertedProblems?.length || 0} problems to database`);
 
         return { count: insertedProblems?.length || 0, problems: insertedProblems || [] };
-
-        // 성공 알림을 위한 DB 업데이트
-        await supabase
-            .from('problem_generation_status')
-            .upsert({
-                user_id: request.userId,
-                status: 'completed',
-                problem_count: insertedProblems?.length || 0,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id' });
 
     } catch (error: any) {
         console.error('[Background] Error in background task:', error);

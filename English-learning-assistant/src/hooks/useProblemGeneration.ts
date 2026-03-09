@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
 import type { GeneratedProblem, RealtimeSubscription } from '../types';
+import type { AIGenerationOptions } from '../services/problemLoader';
 
 type ProblemType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox';
 
@@ -25,6 +26,7 @@ interface UseProblemGenerationParams {
   classifications: Classification[];
   onComplete: (problems: GeneratedProblem[]) => void;
   onError: (error: string) => void;
+  aiOptions?: AIGenerationOptions;
 }
 
 interface UseProblemGenerationReturn {
@@ -42,6 +44,7 @@ export function useProblemGeneration({
   classifications,
   onComplete,
   onError,
+  aiOptions,
 }: UseProblemGenerationParams): UseProblemGenerationReturn {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedProblems, setGeneratedProblems] = useState<GeneratedProblem[]>([]);
@@ -466,6 +469,7 @@ export function useProblemGeneration({
               userId: userId,
               language: language,
               classification: classificationToUse,
+              ...(aiOptions || {}),
             }),
           });
 
@@ -651,7 +655,7 @@ export function useProblemGeneration({
       }
       generationStartTimeRef.current = null;
     }
-  }, [userId, language, problemCounts, classifications, realtimeSubscription, expectedProblemCounts, handleGenerationComplete, setErrorAndNotify]);
+  }, [userId, language, problemCounts, classifications, realtimeSubscription, expectedProblemCounts, handleGenerationComplete, setErrorAndNotify, aiOptions]);
 
   // 리셋 함수
   const reset = useCallback(() => {
