@@ -378,7 +378,7 @@ serve(async (req) => {
           const pagePrompt = buildPrompt(taxonomyData, userLanguage, 1);
           const pageParts: any[] = [
             { text: pagePrompt },
-            { text: `Page ${pageNum} of ${imageList.length}. Read all text and detect handwritten answers and O/X marks from this exam page image.` },
+            { text: `Page ${pageNum} of ${imageList.length}. Extract all printed text and structure from this exam page image.` },
             { inlineData: { data: imgData.imageBase64, mimeType: imgData.mimeType } },
           ];
 
@@ -412,7 +412,13 @@ serve(async (req) => {
               imageParts: [imagePart],
             });
 
-            // ─── 결과 병합: Pass 2의 marks를 Pass 1의 items에 매칭 ───
+            // ─── 결과 병합: Pass 1의 user 필드를 초기화 후 Pass 2 결과로 덮어쓰기 ───
+            // Pass 1이 Rule 7을 무시하고 user_answer를 채웠을 수 있으므로 먼저 전부 null로 강제
+            for (const item of pageItems) {
+              item.user_answer = null;
+              item.user_marked_correctness = null;
+            }
+
             if (handwritingResult.marks.length > 0) {
               const markMap = new Map<string, { user_answer: string | null; user_marked_correctness: string | null }>();
               for (const mark of handwritingResult.marks) {
