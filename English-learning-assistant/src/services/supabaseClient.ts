@@ -16,6 +16,8 @@ function getSupabaseClient(): SupabaseClient {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
+        storageKey: 'edu-english-learning-auth',
+        detectSessionInUrl: true,
       }
     });
   }

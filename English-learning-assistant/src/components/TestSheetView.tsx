@@ -80,7 +80,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
           .from('profiles')
           .select('role')
           .eq('user_id', userId)
-          .single();
+          .maybeSingle();
         setUserRole(profile?.role || null);
       } catch (error) {
         console.error('Error checking user role:', error);

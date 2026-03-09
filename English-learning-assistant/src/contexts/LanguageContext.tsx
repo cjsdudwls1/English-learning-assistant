@@ -32,7 +32,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // 브라우저 언어 감지
     return detectBrowserLanguage();
   });
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [hasCheckedProfile, setHasCheckedProfile] = useState(false);
 
@@ -41,24 +41,24 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const checkUserLanguage = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        
+
         if (user && !hasCheckedProfile) {
           // 로그인된 경우 프로필에서 언어 가져오기
           const userId = await getCurrentUserId().catch(() => null);
-          
+
           if (userId) {
             const { data: profile, error } = await supabase
               .from('profiles')
               .select('language')
               .eq('user_id', userId)
-              .single();
-            
+              .maybeSingle();
+
             if (!error && profile?.language && (profile.language === 'ko' || profile.language === 'en')) {
               setLanguageState(profile.language as Language);
               localStorage.setItem('preferredLanguage', profile.language);
             }
           }
-          
+
           setHasCheckedProfile(true);
         } else if (!user) {
           // 로그아웃된 경우 localStorage 또는 브라우저 언어 사용
@@ -79,7 +79,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     checkUserLanguage();
-    
+
     // 인증 상태 변경 감지
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       setHasCheckedProfile(false);
@@ -94,7 +94,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const setLanguage = async (lang: Language) => {
     setLanguageState(lang);
     localStorage.setItem('preferredLanguage', lang);
-    
+
     // 로그인된 경우 프로필에도 저장
     try {
       const { data: { user } } = await supabase.auth.getUser();
