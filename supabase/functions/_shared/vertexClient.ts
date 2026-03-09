@@ -39,7 +39,12 @@ export function createVertexAIClient(config: VertexAIConfig): AIClient {
                 const accessToken = await getAccessToken(credentials);
 
                 // Vertex AI REST API 엔드포인트
-                const url = `https://${config.location}-aiplatform.googleapis.com/v1/projects/${config.projectId}/locations/${config.location}/publishers/google/models/${params.model}:generateContent`;
+                // global 엔드포인트는 도메인에 리전 접두사 없음: aiplatform.googleapis.com
+                // 리전 엔드포인트는 리전 접두사 포함: {location}-aiplatform.googleapis.com
+                const host = config.location === 'global'
+                    ? 'aiplatform.googleapis.com'
+                    : `${config.location}-aiplatform.googleapis.com`;
+                const url = `https://${host}/v1/projects/${config.projectId}/locations/${config.location}/publishers/google/models/${params.model}:generateContent`;
 
                 const body: Record<string, unknown> = {
                     contents: normalizeContents(params.contents),
