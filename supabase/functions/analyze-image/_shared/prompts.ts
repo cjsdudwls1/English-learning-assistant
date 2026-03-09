@@ -24,6 +24,8 @@ If the image is unreadable/blank, return empty array. Do NOT hallucinate.
    - user_marked_correctness: "O" if the problem is marked correct (circle, checkmark ✓), "X" if marked wrong (X mark, slash), null if no correctness mark exists
    - Common mark patterns: red/blue pen circles around answer numbers, O/X written next to the problem number, checkmarks (✓) or crosses (✗)
 5. No choices → choices: []. No fake choices.
+6. Choices may appear as ①②③④⑤ statements embedded in a paragraph — extract each as a separate choice in the choices array.
+7. For charts/notices/ads: use visual_context {type, title, content} to capture the visual element; put accompanying text in passage.
 
 ## Classification (MUST use EXACT values from list below)
 Each line is: depth1 > depth2 > depth3 > depth4
