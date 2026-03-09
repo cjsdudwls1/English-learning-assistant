@@ -59,26 +59,51 @@ If no questions found, return { "shared_passages": [], "items": [] }. JSON only.
 export function buildHandwritingDetectionPrompt() {
   return `
 ## Task
-You are a handwriting detection specialist. Examine this exam page image and detect ONLY handwritten marks made by a student.
-Ignore all printed text. Focus ONLY on pen/pencil marks.
+You are detecting student handwriting on an exam page image.
 
-## What to detect
-- **user_answer**: The answer physically marked on the paper (circled number, written number, underlined choice). Do NOT solve the question — report ONLY what is visually marked. If no mark is visible, set null.
-- **user_marked_correctness**: "O" if a correctness mark exists (circle, checkmark ✓), "X" if marked wrong (X mark, slash), null if no correctness mark exists.
+Important:
+- Do NOT solve the questions.
+- Do NOT transcribe the printed passages or choices.
+- You MAY use printed problem numbers and printed choice labels (①②③④⑤ or 1,2,3,4,5) only as spatial anchors.
 
-## Common mark patterns
-- Red/blue pen circles around answer numbers (①②③④⑤ or 1,2,3,4,5)
-- O/X written next to the problem number
-- Checkmarks (✓) or crosses (✗)
-- Underlines or highlights on specific choices
+## Detection rules
+1. Scan the page exhaustively from top to bottom, left to right.
+2. For EVERY visible problem number on the page, return exactly one object.
+3. For each problem, inspect the answer-choice region and detect whether the student added any handwritten mark:
+   - circle around a choice
+   - checkmark
+   - X mark
+   - underline
+   - handwritten number
+4. Distinguish preprinted circled labels (①②③④⑤) from handwritten circles:
+   - a handwritten circle is an additional pen/pencil stroke around or over the printed label
+   - handwritten marks may be red, blue, gray, or black
+5. Do not stop after finding one mark. Check every visible problem on the page.
+6. If uncertain, still return the problem object and set ambiguous: true.
 
 ## Output (JSON only, no markdown)
 {
   "marks": [
-    { "problem_number": "25", "user_answer": "4", "user_marked_correctness": null },
-    { "problem_number": "26", "user_answer": "3", "user_marked_correctness": "O" }
+    {
+      "problem_number": "25",
+      "user_answer": "4",
+      "user_marked_correctness": null,
+      "mark_type": "circle",
+      "confidence": 0.93,
+      "ambiguous": false,
+      "evidence": "red handwritten circle around printed choice ④"
+    },
+    {
+      "problem_number": "26",
+      "user_answer": null,
+      "user_marked_correctness": null,
+      "mark_type": null,
+      "confidence": 0.21,
+      "ambiguous": true,
+      "evidence": "no reliable handwritten mark detected"
+    }
   ]
 }
-If no handwritten marks are found, return { "marks": [] }. JSON only.
+If no problems are visible, return { "marks": [] }. JSON only.
 `;
 }
