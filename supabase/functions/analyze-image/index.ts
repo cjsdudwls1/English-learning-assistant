@@ -3,7 +3,7 @@ import { GoogleGenAI } from "https://esm.sh/@google/genai@1.21.0"
 import { createServiceSupabaseClient } from '../_shared/supabaseClient.ts'
 import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
 import { loadTaxonomyData } from '../_shared/taxonomy.ts'
-import { buildPrompt } from './_shared/prompts.ts'
+import { buildPrompt, buildHandwritingDetectionPrompt } from './_shared/prompts.ts'
 import { createAIClient } from '../_shared/aiClientFactory.ts'
 
 // 에러 처리 모듈
@@ -28,7 +28,7 @@ import { MODEL_SEQUENCE } from '../_shared/models.ts'
 // ocrProcessor.ts는 더 이상 사용하지 않음 (1단계 멀티모달 분석으로 전환)
 
 // 분석 처리 모듈
-import { analyzeImagesWithFailover } from './_shared/analysisProcessor.ts'
+import { analyzeImagesWithFailover, detectHandwritingMarks } from './_shared/analysisProcessor.ts'
 
 // Labels 생성 모듈
 import { buildLabelsPayload } from './_shared/labelProcessor.ts'
@@ -385,6 +385,7 @@ serve(async (req) => {
           console.log(`[Background] Step 3: Page ${pageNum}/${imageList.length} - multimodal analysis, prompt length: ${pagePrompt.length}, image size: ${imgData.imageBase64.length}`, { sessionId: createdSessionId });
 
           try {
+            // ─── Pass 1: 구조 추출 (텍스트, 선택지, 분류 등) ───
             const pageAnalysisResult = await analyzeImagesWithFailover({
               ai,
               supabase,
@@ -398,19 +399,59 @@ serve(async (req) => {
 
             const { usedModel: pageModel, result: pageResult, validatedItems: pageItems, usageMetadata: pageUsage } = pageAnalysisResult;
 
-            console.log(`[Background] Step 3: Page ${pageNum} done with ${pageModel}, items: ${pageItems.length}`, { sessionId: createdSessionId });
+            console.log(`[Background] Step 3 Pass 1: Page ${pageNum} structure extracted with ${pageModel}, items: ${pageItems.length}`, { sessionId: createdSessionId });
+
+            // ─── Pass 2: 필기 마크 감지 (user_answer, O/X) ───
+            const handwritingPrompt = buildHandwritingDetectionPrompt();
+            const imagePart = { inlineData: { data: imgData.imageBase64, mimeType: imgData.mimeType } };
+
+            const handwritingResult = await detectHandwritingMarks({
+              ai,
+              sessionId: createdSessionId!,
+              prompt: handwritingPrompt,
+              imageParts: [imagePart],
+            });
+
+            // ─── 결과 병합: Pass 2의 marks를 Pass 1의 items에 매칭 ───
+            if (handwritingResult.marks.length > 0) {
+              const markMap = new Map<string, { user_answer: string | null; user_marked_correctness: string | null }>();
+              for (const mark of handwritingResult.marks) {
+                markMap.set(String(mark.problem_number), {
+                  user_answer: mark.user_answer,
+                  user_marked_correctness: mark.user_marked_correctness,
+                });
+              }
+
+              for (const item of pageItems) {
+                const pNum = String(item.problem_number || '');
+                const match = markMap.get(pNum);
+                if (match) {
+                  item.user_answer = match.user_answer;
+                  item.user_marked_correctness = match.user_marked_correctness;
+                }
+              }
+
+              console.log(`[Background] Step 3 Merge: ${handwritingResult.marks.length} mark(s) merged into ${pageItems.length} item(s)`, { sessionId: createdSessionId });
+            }
 
             // 분석 완료 후 해당 페이지 이미지 메모리 해제
             (imageList[pageIdx] as any).imageBase64 = '';
 
-            return { pageItems, pageResult, pageModel, pageUsage };
+            // Pass 2 토큰 사용량도 합산
+            const combinedUsage = pageUsage ? { ...pageUsage } : {};
+            if (handwritingResult.usageMetadata) {
+              (combinedUsage as any).promptTokenCount = ((combinedUsage as any).promptTokenCount || 0) + (handwritingResult.usageMetadata.promptTokenCount || 0);
+              (combinedUsage as any).candidatesTokenCount = ((combinedUsage as any).candidatesTokenCount || 0) + (handwritingResult.usageMetadata.candidatesTokenCount || 0);
+              (combinedUsage as any).totalTokenCount = ((combinedUsage as any).totalTokenCount || 0) + (handwritingResult.usageMetadata.totalTokenCount || 0);
+            }
+
+            return { pageItems, pageResult, pageModel, pageUsage: combinedUsage };
           } catch (pageErr: any) {
             // 실패한 페이지도 메모리 해제
             if (imageList[pageIdx]) (imageList[pageIdx] as any).imageBase64 = '';
             console.error(`[Background] Step 3: Page ${pageNum} analysis FAILED`, {
               sessionId: createdSessionId,
               error: pageErr?.message || String(pageErr),
-              // StageError의 stage/details 필드를 보존하여 Supabase 대시보드에서 실패 원인 진단 가능
               stage: pageErr instanceof StageError ? pageErr.stage : 'unknown',
               details: pageErr instanceof StageError ? pageErr.details : undefined,
             });

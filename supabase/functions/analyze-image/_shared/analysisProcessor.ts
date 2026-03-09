@@ -236,3 +236,75 @@ export function validateParts(parts: any[], expectedImageCount: number, sessionI
         throw new Error(`Parts array inlineData count mismatch: expected ${expectedImageCount}, got ${inlineDataCount}`);
     }
 }
+
+// ─── Pass 2: 필기 마크 감지 전용 ───
+
+export interface HandwritingMark {
+    problem_number: string;
+    user_answer: string | null;
+    user_marked_correctness: string | null;
+}
+
+export interface DetectHandwritingParams {
+    ai: any;
+    sessionId: string;
+    prompt: string;
+    imageParts: any[]; // [{ inlineData: { data, mimeType } }]
+}
+
+/**
+ * Pass 2: 이미지에서 필기 마크(사용자 답변, O/X 표시)만 감지합니다.
+ * 경량 모델(flash)을 사용하여 비용을 최소화하고,
+ * 실패해도 빈 배열을 반환하여 Pass 1 결과에 영향을 주지 않습니다.
+ */
+export async function detectHandwritingMarks(params: DetectHandwritingParams): Promise<{
+    marks: HandwritingMark[];
+    usageMetadata?: UsageMetadata;
+}> {
+    const { ai, sessionId, prompt, imageParts } = params;
+
+    // 필기 감지에는 비용 효율적인 flash 모델 사용
+    const HANDWRITING_MODEL = 'gemini-2.5-flash';
+
+    try {
+        console.log(`[Background] Pass 2: Detecting handwriting marks with ${HANDWRITING_MODEL}...`, { sessionId });
+
+        const parts = [{ text: prompt }, ...imageParts];
+
+        const attempt = await generateWithRetry({
+            ai,
+            model: HANDWRITING_MODEL,
+            contents: { parts },
+            sessionId,
+            maxRetries: 1,
+            baseDelayMs: 2000,
+            temperature: 0.0,
+        });
+
+        const responseText = await extractTextFromResponse(attempt.response, HANDWRITING_MODEL);
+        const parsed = parseJsonResponse(responseText, HANDWRITING_MODEL) as { marks?: HandwritingMark[] };
+
+        if (!parsed || !Array.isArray(parsed.marks)) {
+            console.warn(`[Background] Pass 2: Invalid response format, returning empty marks`, {
+                sessionId,
+                parsedKeys: parsed ? Object.keys(parsed) : null,
+            });
+            return { marks: [], usageMetadata: attempt.usageMetadata };
+        }
+
+        console.log(`[Background] Pass 2: Detected ${parsed.marks.length} handwriting mark(s)`, {
+            sessionId,
+            marks: parsed.marks.map(m => `Q${m.problem_number}: answer=${m.user_answer}, correct=${m.user_marked_correctness}`),
+        });
+
+        return { marks: parsed.marks, usageMetadata: attempt.usageMetadata };
+    } catch (err: any) {
+        // Pass 2 실패는 치명적이지 않음 - 빈 marks 반환
+        console.warn(`[Background] Pass 2: Handwriting detection FAILED (non-critical):`, {
+            sessionId,
+            error: err?.message || String(err),
+        });
+        return { marks: [] };
+    }
+}
+
