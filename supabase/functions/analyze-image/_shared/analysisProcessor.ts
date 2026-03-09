@@ -37,13 +37,8 @@ export async function analyzeImagesWithFailover(params: AnalyzeImagesParams): Pr
     const { ai, supabase, sessionId, parts, imageCount, taxonomyByDepthKey, taxonomyByCode, preferredModel } = params;
 
     // preferredModel이 있으면 해당 모델만 시도
-    // 분석 단계에서는 gemini-2.5-pro(타임아웃 빈발)만 제외
-    // gemini-3-flash-preview는 품질이 우수하여 첫 번째로 시도, 실패 시 gemini-2.5-flash fallback
-    const analysisModels = (MODEL_SEQUENCE as readonly string[]).filter(
-        m => m !== 'gemini-2.5-pro'
-    ) as string[];
-    if (analysisModels.length === 0) analysisModels.push(...(MODEL_SEQUENCE as readonly string[]));
-    const sequence = preferredModel ? [preferredModel] : analysisModels;
+    // 없으면 MODEL_SEQUENCE 전체를 순서대로 시도 (gemini-3-pro → 3-flash → 2.5-pro → 2.5-flash)
+    const sequence = preferredModel ? [preferredModel] : [...MODEL_SEQUENCE] as string[];
 
     let usedModel: string = sequence[0];
     let responseText: string = '';
