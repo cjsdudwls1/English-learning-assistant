@@ -287,6 +287,7 @@ export const StatsPage: React.FC = () => {
             problemCounts={problemGen.problemCounts}
             onCountChange={problemGen.handleCountChange}
             onGenerate={problemGen.handleGenerateProblems}
+            onGenerateWithOptions={problemGen.handleGenerateWithOptions}
             onLoadExisting={problemGen.handleLoadExistingProblems}
             isGenerating={problemGen.isGeneratingProblems}
             isLoadingExisting={problemGen.isLoadingExistingProblems}

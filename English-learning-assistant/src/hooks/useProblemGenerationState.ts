@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useProblemGeneration } from './useProblemGeneration';
 import { loadProblemsWithExisting } from '../services/problemLoader';
+import type { AIGenerationOptions } from '../services/problemLoader';
 import type { GeneratedProblem } from '../types';
 
 type ProblemType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox';
@@ -34,6 +35,7 @@ interface UseProblemGenerationStateReturn {
   isLoadingExistingProblems: boolean;
   generationError: string | null;
   handleGenerateProblems: () => Promise<void>;
+  handleGenerateWithOptions: (options: AIGenerationOptions) => void;
   handleLoadExistingProblems: () => Promise<void>;
   handleGenerateSimilarProblems: () => void;
   resetGeneration: () => void;
@@ -59,6 +61,7 @@ export function useProblemGenerationState({
   const [generatedProblems, setGeneratedProblems] = useState<GeneratedProblem[]>([]);
   const [isLoadingExistingProblems, setIsLoadingExistingProblems] = useState(false);
   const [useExistingProblems, setUseExistingProblems] = useState(true);
+  const [aiOptions, setAiOptions] = useState<AIGenerationOptions | undefined>(undefined);
 
   const {
     isGenerating: isGeneratingProblems,
@@ -74,8 +77,10 @@ export function useProblemGenerationState({
       setGeneratedProblems(problems);
       setShowTestSheet(true);
       setShowProblemGenerator(false);
+      setAiOptions(undefined);
     },
     onError,
+    aiOptions,
   });
 
   const handleCountChange = useCallback((type: ProblemType, value: number) => {
@@ -91,6 +96,15 @@ export function useProblemGenerationState({
     setGeneratedProblems([]);
     resetGeneration();
   }, [resetGeneration]);
+
+  const handleGenerateWithOptions = useCallback((options: AIGenerationOptions) => {
+    setAiOptions(options);
+    // aiOptions state가 업데이트된 후 다음 렌더링에서 useProblemGeneration이 새 aiOptions를 반영
+    // 직접 생성 호출은 setTimeout으로 다음 tick에서 실행
+    setTimeout(() => {
+      baseHandleGenerateProblems();
+    }, 0);
+  }, [baseHandleGenerateProblems]);
 
   const handleLoadExistingProblems = useCallback(async () => {
     const totalCount = Object.values(problemCounts).reduce((sum, count) => sum + count, 0);
@@ -184,6 +198,7 @@ export function useProblemGenerationState({
     isLoadingExistingProblems,
     generationError,
     handleGenerateProblems: baseHandleGenerateProblems,
+    handleGenerateWithOptions,
     handleLoadExistingProblems,
     handleGenerateSimilarProblems,
     resetGeneration,
