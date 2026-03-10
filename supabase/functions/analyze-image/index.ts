@@ -662,6 +662,10 @@ serve(async (req) => {
             choices: normalizedChoices,
             user_answer: it.user_answer || null,
             user_marked_correctness: it.user_marked_correctness || null,
+            correct_answer: it.correct_answer || null,
+            handwriting_bbox: it.handwriting_bbox || null,
+            handwriting_observation: it.handwriting_observation || null,
+            handwriting_confidence: it.handwriting_confidence ?? null,
           };
 
           return {
