@@ -241,9 +241,11 @@ export function validateParts(parts: any[], expectedImageCount: number, sessionI
 
 export interface HandwritingMark {
     problem_number: string;
+    step1_observation?: string | null;
     user_answer: string | null;
     user_marked_correctness: string | null;
     mark_type?: string | null;
+    bbox_norm?: number[] | null;
     confidence?: number;
     ambiguous?: boolean;
     evidence?: string;

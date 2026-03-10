@@ -438,13 +438,46 @@ serve(async (req) => {
               item.user_marked_correctness = null;
             }
 
-            // Pass B 결과 병합: problem_number 기준 매칭
+            // Pass B 결과 병합: problem_number 기준 매칭 + grounding 검증
             if (handwritingResult.marks.length > 0) {
-              const markMap = new Map<string, { user_answer: string | null; user_marked_correctness: string | null }>();
+              const CONFIDENCE_THRESHOLD = 0.4;
+
+              for (const mark of handwritingResult.marks) {
+                // Grounding 검증: bbox_norm 없으면 answer 폐기
+                if (mark.user_answer && !mark.bbox_norm) {
+                  console.log(`[Pass B] Q${mark.problem_number}: answer "${mark.user_answer}" without bbox → discarded (grounding failure)`);
+                  mark.user_answer = null;
+                  mark.ambiguous = true;
+                }
+                // Confidence 검증: 낮으면 answer 폐기
+                if (mark.user_answer && (mark.confidence ?? 0) < CONFIDENCE_THRESHOLD) {
+                  console.log(`[Pass B] Q${mark.problem_number}: answer "${mark.user_answer}" with low confidence ${mark.confidence} → discarded`);
+                  mark.user_answer = null;
+                  mark.ambiguous = true;
+                }
+                // step1_observation 기반 검증: "no mark" 류 관찰이면 answer 폐기
+                const obs = (mark.step1_observation || '').toLowerCase();
+                if (mark.user_answer && (obs.includes('no ') && (obs.includes('mark') || obs.includes('stroke') || obs.includes('pen')))) {
+                  console.log(`[Pass B] Q${mark.problem_number}: step1_observation says no mark but answer present → discarded`);
+                  mark.user_answer = null;
+                  mark.ambiguous = true;
+                }
+              }
+
+              const markMap = new Map<string, {
+                user_answer: string | null;
+                user_marked_correctness: string | null;
+                bbox_norm: number[] | null;
+                step1_observation: string | null;
+                confidence: number;
+              }>();
               for (const mark of handwritingResult.marks) {
                 markMap.set(String(mark.problem_number), {
                   user_answer: mark.user_answer,
                   user_marked_correctness: mark.user_marked_correctness,
+                  bbox_norm: mark.bbox_norm || null,
+                  step1_observation: mark.step1_observation || null,
+                  confidence: mark.confidence ?? 0,
                 });
               }
 
@@ -454,12 +487,18 @@ serve(async (req) => {
                 if (match) {
                   item.user_answer = match.user_answer;
                   item.user_marked_correctness = match.user_marked_correctness;
+                  // content JSONB에 grounding 정보 포함
+                  item.handwriting_bbox = match.bbox_norm;
+                  item.handwriting_observation = match.step1_observation;
+                  item.handwriting_confidence = match.confidence;
                 }
               }
 
-              console.log(`[Background] Step 3 Merge B: ${handwritingResult.marks.length} mark(s) merged`, {
+              console.log(`[Background] Step 3 Merge B: ${handwritingResult.marks.length} mark(s) processed`, {
                 sessionId: createdSessionId,
-                mergeDetails: handwritingResult.marks.map(m => `Q${m.problem_number}=${m.user_answer} (conf=${m.confidence}, evidence=${m.evidence})`),
+                mergeDetails: handwritingResult.marks.map(m =>
+                  `Q${m.problem_number}=${m.user_answer ?? 'null'} (conf=${m.confidence}, bbox=${m.bbox_norm ? 'yes' : 'NO'}, obs="${(m.step1_observation || '').substring(0, 50)}")`
+                ),
               });
             }
 

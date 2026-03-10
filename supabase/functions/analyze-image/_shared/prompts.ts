@@ -51,58 +51,73 @@ If no questions found, return { "shared_passages": [], "items": [] }. JSON only.
  */
 export function buildHandwritingDetectionPrompt() {
   return `
-You are a visual handwriting detector for exam answer marks.
+You are detecting handwritten answer marks, not solving questions.
 
 Use printed problem numbers and choice labels only as location anchors.
 Do not read or understand the question content.
 Do not determine the correct answer from question content.
 
-For each visible problem on the page, follow this exact procedure:
-1. Locate the choice area for this problem (where ①②③④⑤ labels are printed).
-2. Check whether a handwritten mark (pen/pencil stroke NOT part of the original print) is visually present near any choice label.
-   - Handwritten marks include: circles drawn around a label, checkmarks, X marks, underlines, written numbers.
-   - Handwritten marks may be red, blue, gray, or black.
-   - Preprinted ①②③④⑤ are NOT handwritten marks.
-3. If NO handwritten mark is visually confirmed with high confidence, return user_answer=null and ambiguous=true. Do NOT guess.
-4. If a handwritten mark IS visually confirmed, return ONLY the label number it touches or surrounds.
-5. Return a bounding box [y_min, x_min, y_max, x_max] in pixel coordinates for the handwritten mark, or null if none found.
+For each visible problem on the page, follow this exact 3-step procedure:
+
+Step 1 - LOCATE: Scan the choice area (where ①②③④⑤ labels are printed).
+  Describe what you physically see: any pen/pencil stroke that is NOT part of the original print.
+  Handwritten marks include: circles drawn around a label, checkmarks, X marks, underlines, written numbers.
+  Handwritten marks may be red, blue, gray, or black.
+  Preprinted ①②③④⑤ are NOT handwritten marks.
+  Write your observation in "step1_observation".
+
+Step 2 - DECIDE: Based ONLY on Step 1, is there a confirmed handwritten mark?
+  If NO mark found → user_answer=null, bbox_norm=null, ambiguous=true.
+  If mark found → proceed to Step 3.
+
+Step 3 - MAP: Only after confirming a mark exists, identify which printed choice label (①~⑤) the mark touches or surrounds. Return that label number as user_answer.
+  Return bbox_norm [y_min, x_min, y_max, x_max] in pixel coordinates for the mark.
+
+## Grounding rule
+A returned user_answer is valid ONLY if:
+  - step1_observation describes a visible handwritten mark
+  - bbox_norm is not null
+If either is missing, user_answer MUST be null.
 
 ## Examples
 
 Example 1 - Mark found:
 {
   "problem_number": "25",
+  "step1_observation": "Red pen circle drawn around printed label ④ in the choice area",
   "user_answer": "4",
   "user_marked_correctness": null,
   "mark_type": "circle",
   "bbox_norm": [320, 180, 355, 215],
   "confidence": 0.91,
   "ambiguous": false,
-  "evidence": "red pen circle drawn around printed label ④"
+  "evidence": "grounded: red pen circle touching ④"
 }
 
 Example 2 - No mark found (correct output is null, NOT the correct answer):
 {
   "problem_number": "26",
+  "step1_observation": "Scanned choice area for problem 26. No additional pen or pencil stroke detected on or near any choice label.",
   "user_answer": null,
   "user_marked_correctness": null,
   "mark_type": null,
   "bbox_norm": null,
   "confidence": 0.15,
   "ambiguous": true,
-  "evidence": "inspected choice area for problem 26, no additional pen stroke detected"
+  "evidence": "no handwritten mark found"
 }
 
 Example 3 - Student marked WRONG answer (output must match the mark, not the correct answer):
 {
   "problem_number": "27",
+  "step1_observation": "Red pen circle visible around ② label, even though correct answer appears to be ⑤",
   "user_answer": "2",
   "user_marked_correctness": null,
   "mark_type": "circle",
   "bbox_norm": [680, 90, 710, 125],
   "confidence": 0.85,
   "ambiguous": false,
-  "evidence": "red pen circle around ②, even though the correct answer appears to be ⑤"
+  "evidence": "grounded: red pen circle around ②"
 }
 
 ## Output format (JSON only, no markdown)
@@ -110,7 +125,7 @@ Example 3 - Student marked WRONG answer (output must match the mark, not the cor
   "marks": [ ... one object per visible problem ... ]
 }
 
-Final rule: If the handwritten mark is not visually confirmed with high confidence, return user_answer=null. Never output the inferred correct answer.
+Final rule: Only output user_answer if grounded in a visible handwritten mark with bbox_norm. Never output the inferred correct answer.
 `;
 }
 
