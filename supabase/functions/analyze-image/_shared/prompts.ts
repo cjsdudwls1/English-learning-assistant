@@ -51,53 +51,66 @@ If no questions found, return { "shared_passages": [], "items": [] }. JSON only.
  */
 export function buildHandwritingDetectionPrompt() {
   return `
-## Task
-You are detecting student handwriting on an exam page image.
+You are a visual handwriting detector for exam answer marks.
 
-Important:
-- Do NOT solve the questions.
-- Do NOT transcribe the printed passages or choices.
-- You MAY use printed problem numbers and printed choice labels (①②③④⑤ or 1,2,3,4,5) only as spatial anchors.
+Use printed problem numbers and choice labels only as location anchors.
+Do not read or understand the question content.
+Do not determine the correct answer from question content.
 
-## Detection rules
-1. Scan the page exhaustively from top to bottom, left to right.
-2. For EVERY visible problem number on the page, return exactly one object.
-3. For each problem, inspect the answer-choice region and detect whether the student added any handwritten mark:
-   - circle around a choice
-   - checkmark
-   - X mark
-   - underline
-   - handwritten number
-4. Distinguish preprinted circled labels (①②③④⑤) from handwritten circles:
-   - a handwritten circle is an additional pen/pencil stroke around or over the printed label
-   - handwritten marks may be red, blue, gray, or black
-5. Do not stop after finding one mark. Check every visible problem on the page.
-6. If uncertain, still return the problem object and set ambiguous: true.
+For each visible problem on the page, follow this exact procedure:
+1. Locate the choice area for this problem (where ①②③④⑤ labels are printed).
+2. Check whether a handwritten mark (pen/pencil stroke NOT part of the original print) is visually present near any choice label.
+   - Handwritten marks include: circles drawn around a label, checkmarks, X marks, underlines, written numbers.
+   - Handwritten marks may be red, blue, gray, or black.
+   - Preprinted ①②③④⑤ are NOT handwritten marks.
+3. If NO handwritten mark is visually confirmed with high confidence, return user_answer=null and ambiguous=true. Do NOT guess.
+4. If a handwritten mark IS visually confirmed, return ONLY the label number it touches or surrounds.
+5. Return a bounding box [y_min, x_min, y_max, x_max] in pixel coordinates for the handwritten mark, or null if none found.
 
-## Output (JSON only, no markdown)
+## Examples
+
+Example 1 - Mark found:
 {
-  "marks": [
-    {
-      "problem_number": "25",
-      "user_answer": "4",
-      "user_marked_correctness": null,
-      "mark_type": "circle",
-      "confidence": 0.93,
-      "ambiguous": false,
-      "evidence": "red handwritten circle around printed choice ④"
-    },
-    {
-      "problem_number": "26",
-      "user_answer": null,
-      "user_marked_correctness": null,
-      "mark_type": null,
-      "confidence": 0.21,
-      "ambiguous": true,
-      "evidence": "no reliable handwritten mark detected"
-    }
-  ]
+  "problem_number": "25",
+  "user_answer": "4",
+  "user_marked_correctness": null,
+  "mark_type": "circle",
+  "bbox_norm": [320, 180, 355, 215],
+  "confidence": 0.91,
+  "ambiguous": false,
+  "evidence": "red pen circle drawn around printed label ④"
 }
-If no problems are visible, return { "marks": [] }. JSON only.
+
+Example 2 - No mark found (correct output is null, NOT the correct answer):
+{
+  "problem_number": "26",
+  "user_answer": null,
+  "user_marked_correctness": null,
+  "mark_type": null,
+  "bbox_norm": null,
+  "confidence": 0.15,
+  "ambiguous": true,
+  "evidence": "inspected choice area for problem 26, no additional pen stroke detected"
+}
+
+Example 3 - Student marked WRONG answer (output must match the mark, not the correct answer):
+{
+  "problem_number": "27",
+  "user_answer": "2",
+  "user_marked_correctness": null,
+  "mark_type": "circle",
+  "bbox_norm": [680, 90, 710, 125],
+  "confidence": 0.85,
+  "ambiguous": false,
+  "evidence": "red pen circle around ②, even though the correct answer appears to be ⑤"
+}
+
+## Output format (JSON only, no markdown)
+{
+  "marks": [ ... one object per visible problem ... ]
+}
+
+Final rule: If the handwritten mark is not visually confirmed with high confidence, return user_answer=null. Never output the inferred correct answer.
 `;
 }
 
@@ -114,11 +127,11 @@ export function buildClassificationPrompt(
 
   return `
 ## Task
-You are classifying English exam questions. Based on the text below, assign classification and metadata to each problem.
+You are classifying English exam questions.Based on the text below, assign classification and metadata to each problem.
 
-## Classification (MUST use EXACT values from list below)
+## Classification(MUST use EXACT values from list below)
 Each line is: depth1 > depth2 > depth3 > depth4
-\`\`\`
+  \`\`\`
 ${structure}
 \`\`\`
 You MUST select depth1~4 values EXACTLY as shown above. Do NOT invent or translate values.
