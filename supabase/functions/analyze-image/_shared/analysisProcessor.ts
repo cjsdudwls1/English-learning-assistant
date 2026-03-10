@@ -314,6 +314,7 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
 
 export interface ClassificationResult {
     problem_number: string;
+    correct_answer?: string | null;
     classification: {
         depth1?: string;
         depth2?: string;

@@ -7,6 +7,7 @@ export interface LabelPayload {
     user_answer: string;
     user_mark: null;
     is_correct: boolean | null;
+    correct_answer: string | null;
     classification: {
         depth1: string | null;
         depth2: string | null;
@@ -131,6 +132,7 @@ export async function buildLabelsPayload(params: BuildLabelsParams): Promise<Lab
             user_answer: it.user_answer || '',
             user_mark: null,
             is_correct: isCorrect,
+            correct_answer: it.correct_answer || null,
             classification: enrichedClassification,
         };
     }));

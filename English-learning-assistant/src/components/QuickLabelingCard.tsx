@@ -185,11 +185,21 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     )}
                   </div>
 
-                  {/* 사용자 답안 */}
-                  {problem.사용자가_기술한_정답?.text && (
-                    <div className="mb-3">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">사용자 답안: </span>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{problem.사용자가_기술한_정답.text}</span>
+                  {/* 사용자 답안 + 정답 */}
+                  {(problem.사용자가_기술한_정답?.text || problem.correct_answer) && (
+                    <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1">
+                      {problem.사용자가_기술한_정답?.text && (
+                        <span>
+                          <span className="text-sm text-slate-500 dark:text-slate-400">사용자 답안: </span>
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{problem.사용자가_기술한_정답.text}</span>
+                        </span>
+                      )}
+                      {problem.correct_answer && (
+                        <span>
+                          <span className="text-sm text-slate-500 dark:text-slate-400">정답: </span>
+                          <span className="text-sm font-bold text-green-600 dark:text-green-400">{problem.correct_answer}</span>
+                        </span>
+                      )}
                     </div>
                   )}
 

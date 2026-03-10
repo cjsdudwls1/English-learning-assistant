@@ -139,11 +139,16 @@ You MUST select depth1~4 values EXACTLY as shown above. Do NOT invent or transla
 ## Problems to classify
 ${itemsSummary}
 
+## Additional task
+For each problem, determine the correct answer by analyzing the passage/choices.
+Return it as "correct_answer" (the choice label number, e.g. "3" or "5").
+
 ## Output (JSON only, no markdown)
 {
   "classifications": [
     {
       "problem_number": "25",
+      "correct_answer": "5",
       "classification": { "depth1": "...", "depth2": "...", "depth3": "...", "depth4": "..." },
       "metadata": { "difficulty": "medium", "word_difficulty": 6, "problem_type": "..." }
     }

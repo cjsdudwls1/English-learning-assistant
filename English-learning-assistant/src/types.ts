@@ -69,6 +69,7 @@ export interface ProblemItem {
   문제내용: Text;
   문제_보기: Text[];
   사용자가_기술한_정답: UserAnswer;
+  correct_answer?: string | null;
   문제_유형_분류: ProblemClassification;
   분류_근거: string;
 }

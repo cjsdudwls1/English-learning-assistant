@@ -463,13 +463,14 @@ serve(async (req) => {
               });
             }
 
-            // Pass C 결과 병합: classification + metadata
+            // Pass C 결과 병합: classification + metadata + correct_answer
             if (classificationResult.classifications.length > 0) {
-              const classMap = new Map<string, { classification: any; metadata: any }>();
+              const classMap = new Map<string, { classification: any; metadata: any; correct_answer: string | null }>();
               for (const cls of classificationResult.classifications) {
                 classMap.set(String(cls.problem_number), {
                   classification: cls.classification,
                   metadata: cls.metadata,
+                  correct_answer: cls.correct_answer || null,
                 });
               }
 
@@ -479,6 +480,7 @@ serve(async (req) => {
                 if (match) {
                   item.classification = match.classification;
                   item.metadata = match.metadata;
+                  item.correct_answer = match.correct_answer;
                 }
               }
 

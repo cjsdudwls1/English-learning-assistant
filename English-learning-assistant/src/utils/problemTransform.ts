@@ -32,6 +32,7 @@ export function transformToProblemItem(
       auto_corrected: false,
       alternate_interpretations: [],
     },
+    correct_answer: label.correct_answer || null,
     문제_유형_분류: {
       depth1: classification.depth1 || '',
       depth2: classification.depth2 || '',
@@ -67,6 +68,7 @@ export function transformFromLabelJoin(row: any): ProblemItem {
       auto_corrected: false,
       alternate_interpretations: [],
     },
+    correct_answer: row.correct_answer || null,
     문제_유형_분류: {
       depth1: classification.depth1 || '',
       depth2: classification.depth2 || '',

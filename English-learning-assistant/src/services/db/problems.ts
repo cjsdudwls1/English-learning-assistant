@@ -33,6 +33,7 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
         user_answer,
         user_mark,
         is_correct,
+        correct_answer,
         classification
       )
     `)
