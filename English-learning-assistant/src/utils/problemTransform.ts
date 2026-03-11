@@ -10,17 +10,20 @@ export function transformToProblemItem(
 ): ProblemItem {
   const classification = label.classification || {};
 
-  // user_mark가 null이면 AI 분석 결과(is_correct)를 기본값으로 사용
-  const userMark = label.user_mark !== null && label.user_mark !== undefined
+  // 사용자가 직접 채점한 결과 (user_mark): 사용자가 검수 안 했으면 null
+  const userMark = label.user_mark != null
     ? normalizeMark(label.user_mark)
-    : (label.is_correct ? 'O' : 'X'); // AI 분석 결과를 기본값으로
+    : null;
+
+  // AI 자동 채점 (is_correct): user_answer vs correct_answer 비교 결과
+  const aiJudgment = label.is_correct != null
+    ? (label.is_correct ? '정답' : '오답')
+    : undefined;
 
   return {
     index: p.index_in_image,
     사용자가_직접_채점한_정오답: userMark,
-    AI가_판단한_정오답: label.is_correct !== undefined && label.is_correct !== null
-      ? (label.is_correct ? '정답' : '오답')
-      : undefined,
+    AI가_판단한_정오답: aiJudgment,
     문제내용: {
       text: p.content?.stem || p.stem || '',
     },

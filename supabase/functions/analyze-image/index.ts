@@ -414,21 +414,34 @@ serve(async (req) => {
 
             // ─── Pass C: 분류/메타데이터 전용 (텍스트 기반, 이미지 불필요) ───
             // Pass A에서 추출한 텍스트로 분류 요약 생성
+            // Pass C에 충분한 텍스트를 전달하여 정답 판단 정확도 향상
             const itemsSummary = pageItems.map((it: any) => {
               const instruction = it.instruction || it.question_text || it.stem || '';
-              const passage = (it._resolved_passage || it.passage || '').substring(0, 200);
+              const passage = (it._resolved_passage || it.passage || '').substring(0, 1500);
               const choicesText = (it.choices || []).map((c: any) => {
                 const text = typeof c === 'string' ? c : (c?.text || '');
-                return text.substring(0, 80);
+                return text.substring(0, 200);
               }).join(' / ');
-              return `### Problem ${it.problem_number}\nInstruction: ${instruction}\nPassage (first 200 chars): ${passage}\nChoices: ${choicesText}`;
+              // visual_context 정보도 포함 (그래프/도표/안내문 등)
+              let visualInfo = '';
+              if (it.visual_context) {
+                const vc = it.visual_context;
+                visualInfo = `\nVisual context [${vc.type || 'visual'}]: ${vc.title || ''}\n${(vc.content || '').substring(0, 500)}`;
+              }
+              return `### Problem ${it.problem_number}\nInstruction: ${instruction}\nPassage: ${passage}${visualInfo}\nChoices: ${choicesText}`;
             }).join('\n\n');
 
             const classificationPrompt = buildClassificationPrompt(taxonomyData, itemsSummary);
+            // 그래프/도표/시각자료가 있는 문제가 있으면 Pass C에도 이미지 전달
+            const hasVisualItems = pageItems.some((it: any) => it.visual_context);
+            const classifyImageParts = hasVisualItems
+              ? [{ inlineData: { data: imgData.imageBase64, mimeType: imgData.mimeType } }]
+              : undefined;
             const classificationResult = await classifyItems({
               ai,
               sessionId: createdSessionId!,
               prompt: classificationPrompt,
+              imageParts: classifyImageParts,
             });
 
             // ─── 결과 병합 ───
@@ -440,7 +453,15 @@ serve(async (req) => {
 
             // Pass B 결과 병합: problem_number 기준 매칭 + grounding 검증
             if (handwritingResult.marks.length > 0) {
-              const CONFIDENCE_THRESHOLD = 0.4;
+              const CONFIDENCE_THRESHOLD = 0.45;
+
+              // 진단 로그: 필터링 전 전체 marks 출력
+              console.log(`[Pass B] Raw marks BEFORE filtering:`, {
+                sessionId: createdSessionId,
+                marks: handwritingResult.marks.map(m =>
+                  `Q${m.problem_number}: answer=${m.user_answer}, conf=${m.confidence}, bbox=${m.bbox_norm ? 'yes' : 'NO'}, obs="${(m.step1_observation || '').substring(0, 80)}"`
+                ),
+              });
 
               for (const mark of handwritingResult.marks) {
                 // Grounding 검증: bbox_norm 없으면 answer 폐기
@@ -451,7 +472,7 @@ serve(async (req) => {
                 }
                 // Confidence 검증: 낮으면 answer 폐기
                 if (mark.user_answer && (mark.confidence ?? 0) < CONFIDENCE_THRESHOLD) {
-                  console.log(`[Pass B] Q${mark.problem_number}: answer "${mark.user_answer}" with low confidence ${mark.confidence} → discarded`);
+                  console.log(`[Pass B] Q${mark.problem_number}: answer "${mark.user_answer}" with low confidence ${mark.confidence} → discarded (threshold=${CONFIDENCE_THRESHOLD})`);
                   mark.user_answer = null;
                   mark.ambiguous = true;
                 }
@@ -461,6 +482,15 @@ serve(async (req) => {
                   console.log(`[Pass B] Q${mark.problem_number}: step1_observation says no mark but answer present → discarded`);
                   mark.user_answer = null;
                   mark.ambiguous = true;
+                }
+                // 선택지 범위 초과 검증: 유효한 선택지 번호(1~5)가 아니면 폐기
+                if (mark.user_answer) {
+                  const ansNum = parseInt(mark.user_answer, 10);
+                  if (isNaN(ansNum) || ansNum < 1 || ansNum > 5) {
+                    console.log(`[Pass B] Q${mark.problem_number}: answer "${mark.user_answer}" out of valid range (1-5) → discarded`);
+                    mark.user_answer = null;
+                    mark.ambiguous = true;
+                  }
                 }
               }
 
@@ -663,9 +693,6 @@ serve(async (req) => {
             user_answer: it.user_answer || null,
             user_marked_correctness: it.user_marked_correctness || null,
             correct_answer: it.correct_answer || null,
-            handwriting_bbox: it.handwriting_bbox || null,
-            handwriting_observation: it.handwriting_observation || null,
-            handwriting_confidence: it.handwriting_confidence ?? null,
           };
 
           return {

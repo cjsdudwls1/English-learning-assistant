@@ -40,17 +40,19 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       const data = await fetchSessionProblems(sessionId);
       setProblems(data);
 
-      // AI 분석 결과를 초기값으로 설정 (user_mark가 null이면 AI 분석 결과 사용)
+      // 초기값 설정: 사용자 직접 채점(user_mark) → AI 자동 채점(is_correct) → 미설정
       const initialLabels: Record<string, 'O' | 'X'> = {};
       data.forEach(p => {
-        // user_mark가 이미 있는 경우 그대로 사용, 없으면 AI 분석 결과 사용
         const mark = p.사용자가_직접_채점한_정오답;
         if (mark === 'O' || mark === 'X') {
+          // 사용자가 검수한 결과가 있으면 사용
           initialLabels[`${p.index}`] = mark;
-        } else {
-          // AI 분석 결과 사용
-          initialLabels[`${p.index}`] = p.AI가_판단한_정오답 === '정답' ? 'O' : 'X';
+        } else if (p.AI가_판단한_정오답 === '정답') {
+          initialLabels[`${p.index}`] = 'O';
+        } else if (p.AI가_판단한_정오답 === '오답') {
+          initialLabels[`${p.index}`] = 'X';
         }
+        // 둘 다 없으면 미설정 (사용자가 직접 선택)
       });
       setLabels(initialLabels);
     } catch (error) {

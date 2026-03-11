@@ -44,14 +44,44 @@ export async function buildLabelsPayload(params: BuildLabelsParams): Promise<Lab
     }
 
     const labelsPayload = await Promise.all(items.map(async (it: any, idx: number) => {
-        // user_marked_correctness가 "Unknown"인 경우 is_correct를 null로 설정
+        // ─── is_correct 판정 ───
+        // 1차: 시험지의 O/X 채점 마크 (user_marked_correctness) 기반
+        // 2차: 마크 없으면 user_answer vs correct_answer 자동 비교
         const rawMark = it.user_marked_correctness;
-        const isUnknown = rawMark && String(rawMark).trim().toLowerCase() === 'unknown';
-
         let isCorrect: boolean | null = null;
-        if (!isUnknown) {
-            const normalizedMark = normalizeMark(rawMark);
-            isCorrect = normalizedMark === 'O';
+
+        if (rawMark != null && String(rawMark).trim() !== '') {
+            // O/X 마크가 존재하는 경우
+            const normalized = normalizeMark(rawMark);
+            if (normalized === 'O') isCorrect = true;
+            else if (normalized === 'X') isCorrect = false;
+            // 'Unknown'이면 null 유지
+        }
+
+        // 자동 채점: O/X 마크가 없고, user_answer와 correct_answer가 모두 있으면 비교
+        if (isCorrect === null) {
+            const userAns = String(it.user_answer || '').trim();
+            const correctAns = String(it.correct_answer || '').trim();
+            if (userAns && correctAns) {
+                // 숫자 파싱 비교: "4" vs "④", "4번" vs "4" 등 표기 차이 처리
+                const parseAnswerNumber = (s: string): number | null => {
+                    // circled numbers: ①②③④⑤
+                    const circled = '①②③④⑤';
+                    const circledIdx = circled.indexOf(s);
+                    if (circledIdx !== -1) return circledIdx + 1;
+                    // "4번", "4." 등에서 숫자 추출
+                    const numMatch = s.match(/(\d+)/);
+                    return numMatch ? parseInt(numMatch[1], 10) : null;
+                };
+                const userNum = parseAnswerNumber(userAns);
+                const correctNum = parseAnswerNumber(correctAns);
+                if (userNum !== null && correctNum !== null) {
+                    isCorrect = userNum === correctNum;
+                } else {
+                    // 숫자 파싱 불가 시 문자열 비교 (서술형 등)
+                    isCorrect = userAns.toLowerCase() === correctAns.toLowerCase();
+                }
+            }
         }
 
         const classification = it.classification || {};

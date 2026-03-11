@@ -333,14 +333,22 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
                 });
             }
 
-            // marks가 있으면 성공, 이 모델로 확정
+            // marks가 있으면 기존 결과와 합산 (problem_number 기준 중복 제거)
             if (marks.length > 0) {
-                allMarks = marks;
-                break;
+                for (const mark of marks) {
+                    const existing = allMarks.find(m => String(m.problem_number) === String(mark.problem_number));
+                    if (!existing) {
+                        // 새로운 문제 → 추가
+                        allMarks.push(mark);
+                    } else if ((mark.confidence ?? 0) > (existing.confidence ?? 0)) {
+                        // 같은 문제인데 더 높은 confidence → 교체
+                        const existIdx = allMarks.indexOf(existing);
+                        allMarks[existIdx] = mark;
+                    }
+                }
+                console.log(`[Pass B] Accumulated ${allMarks.length} unique mark(s) after ${model}`, { sessionId });
+                // break 제거: 다음 모델도 시도하여 누락 문제 보완
             }
-
-            // marks가 0개이고 다음 모델이 있으면 재시도
-            console.warn(`[Pass B] ${model} returned 0 marks, trying next model...`, { sessionId });
 
         } catch (err: any) {
             console.warn(`[Pass B] ${model} FAILED (non-critical):`, {

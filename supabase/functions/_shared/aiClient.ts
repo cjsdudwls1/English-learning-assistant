@@ -58,6 +58,7 @@ export interface GenerateWithRetryParams {
     maxRetries: number;
     baseDelayMs: number;
     temperature: number;
+    maxOutputTokens?: number; // 응답 truncation 방지용
 }
 
 // 재시도 결과
@@ -69,7 +70,7 @@ export interface GenerateWithRetryResult {
 
 // 재시도 로직이 포함된 모델 생성 함수
 export async function generateWithRetry(params: GenerateWithRetryParams): Promise<GenerateWithRetryResult> {
-    const { ai, model, contents, sessionId, maxRetries, baseDelayMs, temperature } = params;
+    const { ai, model, contents, sessionId, maxRetries, baseDelayMs, temperature, maxOutputTokens } = params;
     let attempt = 0;
     let lastParsed: ReturnType<typeof parseModelError> | null = null;
     let lastErr: unknown = null;
@@ -85,6 +86,7 @@ export async function generateWithRetry(params: GenerateWithRetryParams): Promis
                     generationConfig: {
                         responseMimeType: "application/json",
                         temperature,
+                        ...(maxOutputTokens ? { maxOutputTokens } : {}),
                     },
                     // RECITATION 및 기타 안전 필터로 인한 차단 방지
                     safetySettings: [

@@ -22,6 +22,7 @@ export interface ProblemContent {
     choices: NormalizedChoice[];
     user_answer: string | null;
     user_marked_correctness: string | null;
+    correct_answer: string | null;
 }
 
 // 문제 메타데이터 구조
@@ -105,6 +106,7 @@ export function buildProblemContent(item: ExtractedItem, normalizedChoices: Norm
         choices: normalizedChoices,
         user_answer: item.user_answer || null,
         user_marked_correctness: item.user_marked_correctness || null,
+        correct_answer: (item as any).correct_answer || null,
     };
 }
 

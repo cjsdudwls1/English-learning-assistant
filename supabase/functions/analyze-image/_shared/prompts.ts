@@ -61,14 +61,19 @@ For each visible problem on the page, follow this exact 3-step procedure:
 
 Step 1 - LOCATE: Scan the choice area (where ①②③④⑤ labels are printed).
   Describe what you physically see: any pen/pencil stroke that is NOT part of the original print.
-  Handwritten marks include: circles drawn around a label, checkmarks, X marks, underlines, written numbers.
+  Handwritten marks include: circles drawn around a label, checkmarks, X marks, underlines, written numbers, or any colored pen/pencil stroke near choices.
   Handwritten marks may be red, blue, gray, or black.
-  Preprinted ①②③④⑤ are NOT handwritten marks.
+  Distinguishing printed vs handwritten:
+  - Preprinted ①②③④⑤ are uniform and crisp — these alone are NOT handwritten marks.
+  - A circle DRAWN AROUND or ON TOP OF a printed label IS a handwritten mark (it will be larger, rougher, or a different color).
+  - A number or letter written by hand near the problem area IS a handwritten mark.
+  - Any colored pen stroke (red, blue) overlaying printed text IS a handwritten mark.
+  IMPORTANT: When in doubt, report the mark with a lower confidence rather than omitting it. Let the filtering logic decide.
   Write your observation in "step1_observation".
 
-Step 2 - DECIDE: Based ONLY on Step 1, is there a confirmed handwritten mark?
-  If NO mark found → user_answer=null, bbox_norm=null, ambiguous=true.
-  If mark found → proceed to Step 3.
+Step 2 - DECIDE: Based ONLY on Step 1, is there a handwritten mark?
+  If NO mark at all → user_answer=null, bbox_norm=null, ambiguous=true.
+  If mark found (even if faint or uncertain) → proceed to Step 3. Use confidence to express certainty.
 
 Step 3 - MAP: Only after confirming a mark exists, identify which printed choice label (①~⑤) the mark touches or surrounds. Return that label number as user_answer.
   Return bbox_norm [y_min, x_min, y_max, x_max] in pixel coordinates for the mark.
@@ -154,9 +159,17 @@ You MUST select depth1~4 values EXACTLY as shown above. Do NOT invent or transla
 ## Problems to classify
 ${itemsSummary}
 
-## Additional task
-For each problem, determine the correct answer by analyzing the passage/choices.
+## Additional task - Correct Answer Determination
+For each problem, determine the correct answer by carefully analyzing the full passage and all choices.
 Return it as "correct_answer" (the choice label number, e.g. "3" or "5").
+
+**IMPORTANT guidelines for determining correct_answer:**
+- Read the ENTIRE passage carefully before evaluating choices.
+- For "일치하지 않는 것" / "NOT true" / "doesn't match" type questions: find the ONE choice that contradicts the passage. All other choices ARE supported by the passage.
+- For graph/chart questions: compare EACH choice against the visual data. The correct answer is the one that matches (or doesn't match, depending on the instruction).
+- Evaluate EVERY choice against the passage — do not stop after finding one that seems correct.
+- If the passage or visual_context contains specific data (numbers, names, dates), verify each choice against that data precisely.
+- If an image is attached, use it to verify graph/chart/table data when determining the correct answer for visual questions.
 
 ## Output (JSON only, no markdown)
 {
