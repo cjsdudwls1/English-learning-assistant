@@ -71,7 +71,18 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
     } catch (e) {
       // Supabase Auth SDK의 navigator.locks 충돌 에러는 무시
       // (여러 탭에서 동시 세션 갱신 시 발생하는 일시적 에러)
-      const msg = e instanceof Error ? e.message : String(e);
+      // PostgrestError 등 plain object는 Error 인스턴스가 아니므로
+      // message 프로퍼티를 우선 확인하고, 없으면 JSON.stringify fallback
+      let msg: string;
+      if (e instanceof Error) {
+        msg = e.message;
+      } else if (e && typeof e === 'object' && 'message' in e) {
+        msg = String((e as any).message);
+      } else if (e && typeof e === 'object') {
+        try { msg = JSON.stringify(e); } catch { msg = String(e); }
+      } else {
+        msg = String(e);
+      }
       if (msg.includes('Lock broken') || msg.includes('steal')) {
         console.warn('[Stats] Auth lock conflict, retrying on next poll:', msg);
         return;

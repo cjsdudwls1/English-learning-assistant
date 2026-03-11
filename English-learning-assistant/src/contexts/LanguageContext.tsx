@@ -70,8 +70,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
           setHasCheckedProfile(true);
         }
-      } catch (error) {
-        console.error('Error checking user language:', error);
+      } catch (error: any) {
+        // Auth Lock 충돌 에러는 무시 (여러 탭 또는 폴링 경쟁 시 발생)
+        const errMsg = error?.message || String(error);
+        if (errMsg.includes('Lock broken') || errMsg.includes('steal')) {
+          console.warn('Language check skipped due to auth lock conflict');
+        } else {
+          console.error('Error checking user language:', error);
+        }
         setHasCheckedProfile(true);
       } finally {
         setIsLoading(false);

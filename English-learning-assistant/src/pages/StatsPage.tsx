@@ -220,7 +220,7 @@ export const StatsPage: React.FC = () => {
   }, [language, statsData]);
 
   if (statsData.loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">{t.common.loading}</div>;
-  if (statsData.error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{statsData.error}</div>;
+  if (statsData.error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{typeof statsData.error === 'string' ? statsData.error : JSON.stringify(statsData.error)}</div>;
 
   return (
     <div className="mx-auto space-y-6 w-full max-w-full px-2 sm:px-4 md:px-6 lg:max-w-5xl overflow-x-hidden">
