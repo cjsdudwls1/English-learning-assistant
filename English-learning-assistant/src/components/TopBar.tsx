@@ -22,6 +22,7 @@ export const TopBar: React.FC<TopBarProps> = ({ status = 'idle' }) => {
       <nav>
         <Link to="/upload" data-discover="true">업로드</Link>
         <Link to="/stats" data-discover="true">통계</Link>
+        <Link to="/problems" data-discover="true">문제 관리</Link>
         <Link to="/profile" data-discover="true">프로필</Link>
       </nav>
       <div className="top-actions">

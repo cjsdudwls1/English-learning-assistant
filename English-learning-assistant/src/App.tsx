@@ -13,6 +13,7 @@ import { RecentProblemsPage } from './pages/RecentProblemsPage';
 import { AnalyzingPage } from './pages/AnalyzingPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { RetryProblemsPage } from './pages/RetryProblemsPage';
+import { AllProblemsPage } from './pages/AllProblemsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { useLanguage } from './contexts/LanguageContext';
 import { useTheme } from './contexts/ThemeContext';
@@ -870,6 +871,7 @@ const App: React.FC = () => {
       <Route path="/retry" element={<AuthGate><PageLayout><RetryProblemsPage /></PageLayout></AuthGate>} />
       <Route path="/recent" element={<AuthGate><PageLayout><RecentProblemsPage /></PageLayout></AuthGate>} />
       <Route path="/stats" element={<AuthGate><PageLayout><StatsPage /></PageLayout></AuthGate>} />
+      <Route path="/problems" element={<AuthGate><PageLayout><AllProblemsPage /></PageLayout></AuthGate>} />
       <Route path="/profile" element={<AuthGate><PageLayout><ProfilePage /></PageLayout></AuthGate>} />
       <Route path="*" element={<AuthGate><PageLayout><div className="text-center py-10"><a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">{language === 'ko' ? '문제 업로드하러 가기' : 'Go to Upload'}</a></div></PageLayout></AuthGate>} />
     </Routes>

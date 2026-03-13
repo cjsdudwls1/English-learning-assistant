@@ -9,6 +9,7 @@ export interface AIGenerationOptions {
   includePassage?: boolean;
   passageLength?: number;
   passageTopic?: { category: string; subfield: string };
+  passageGenre?: string;
   difficultyLevel?: number;
   vocabLevel?: number;
 }

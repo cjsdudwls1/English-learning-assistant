@@ -76,6 +76,19 @@ const PASSAGE_TOPICS = [
   },
 ];
 
+const PASSAGE_GENRES = [
+  { id: 'dialogue', ko: '대화문', en: 'Dialogue' },
+  { id: 'news', ko: '기사', en: 'News Article' },
+  { id: 'interview', ko: '인터뷰', en: 'Interview' },
+  { id: 'fiction', ko: '소설/단편', en: 'Fiction' },
+  { id: 'essay', ko: '에세이', en: 'Essay' },
+  { id: 'advertisement', ko: '광고', en: 'Advertisement' },
+  { id: 'notice', ko: '안내문', en: 'Notice' },
+  { id: 'letter', ko: '편지/이메일', en: 'Letter/Email' },
+  { id: 'speech', ko: '연설', en: 'Speech' },
+  { id: 'journal', ko: '논문/학술', en: 'Journal/Academic' },
+];
+
 export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
   problemCounts,
   onCountChange,
@@ -95,6 +108,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
   const [includePassage, setIncludePassage] = useState(false);
   const [passageLength, setPassageLength] = useState(1000);
   const [passageTopic, setPassageTopic] = useState<{ category: string; subfield: string } | null>(null);
+  const [passageGenre, setPassageGenre] = useState<string | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [difficultyLevel, setDifficultyLevel] = useState(3);
   const [vocabLevel, setVocabLevel] = useState(3);
@@ -316,6 +330,41 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* 지문 종류 선택 (genre) */}
+              <div>
+                <span className="text-xs text-slate-600 dark:text-slate-400 block mb-2">
+                  {language === 'ko' ? '지문 종류 (선택)' : 'Passage genre (optional)'}
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {PASSAGE_GENRES.map((genre) => (
+                    <button
+                      key={genre.id}
+                      type="button"
+                      onClick={() => setPassageGenre(passageGenre === genre.id ? null : genre.id)}
+                      className={`px-3 py-1.5 text-xs rounded-full transition-colors ${
+                        passageGenre === genre.id
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-indigo-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600'
+                      }`}
+                    >
+                      {language === 'ko' ? genre.ko : genre.en}
+                    </button>
+                  ))}
+                </div>
+                {passageGenre && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-indigo-600 dark:text-indigo-400">
+                      {language === 'ko'
+                        ? `선택: ${PASSAGE_GENRES.find(g => g.id === passageGenre)?.[language === 'ko' ? 'ko' : 'en'] || passageGenre}`
+                        : `Selected: ${PASSAGE_GENRES.find(g => g.id === passageGenre)?.en || passageGenre}`}
+                    </span>
+                    <button type="button" onClick={() => setPassageGenre(null)} className="text-xs text-red-500 hover:underline">
+                      {language === 'ko' ? '초기화' : 'Reset'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -396,6 +445,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                 includePassage,
                 ...(includePassage && { passageLength }),
                 ...(includePassage && passageTopic && { passageTopic }),
+                ...(includePassage && passageGenre && { passageGenre: PASSAGE_GENRES.find(g => g.id === passageGenre)?.[language === 'ko' ? 'ko' : 'en'] || passageGenre }),
                 difficultyLevel,
                 vocabLevel,
               });

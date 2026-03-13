@@ -245,13 +245,14 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
 
     if (problemUpdateError) throw problemUpdateError;
 
-    // labels 테이블 업데이트
+    // labels 테이블 업데이트 (사용자 답안, 정답, 채점 정보)
     const { error: labelUpdateError } = await supabase
       .from('labels')
       .update({
         user_answer: item.사용자가_기술한_정답.text,
         user_mark: normalizeMark(item.사용자가_직접_채점한_정오답),
         is_correct: isCorrectFromMark(item.사용자가_직접_채점한_정오답),
+        correct_answer: item.correct_answer || null,
         classification: item.문제_유형_분류,
       })
       .eq('problem_id', problemId);

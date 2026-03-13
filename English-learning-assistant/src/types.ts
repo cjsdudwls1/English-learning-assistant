@@ -62,6 +62,8 @@ export interface AnalysisResult {
 }
 
 // 멀티 문항 결과 타입 (신규)
+export type QuestionType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox' | 'unknown';
+
 export interface ProblemItem {
   index: number;
   사용자가_직접_채점한_정오답: 'O' | 'X' | '△' | '✓' | string;
@@ -70,6 +72,7 @@ export interface ProblemItem {
   문제_보기: Text[];
   사용자가_기술한_정답: UserAnswer;
   correct_answer?: string | null;
+  question_type?: QuestionType;
   문제_유형_분류: ProblemClassification;
   분류_근거: string;
 }

@@ -44,100 +44,47 @@ If no questions found, return { "shared_passages": [], "items": [] }. JSON only.
 }
 
 /**
- * Pass B: 필기 감지 전용 프롬프트
- * - 이미지에서 손글씨 마크(사용자 답안, O/X 표시)만 감지
- * - 구조 추출, 분류, 메타데이터 생성은 일체 하지 않음
- * - 인쇄된 문제 번호/선택지를 공간 앵커로 사용
+ * Pass B: 필기 감지 + 정답 확인 전용 프롬프트 (단순화)
+ * - 이미지에서 "모든 문제 유형"의 필기 흔적을 감지
+ * - 사용자 답안(user_answer)과 실제 정답(correct_answer)만 추출
+ * - 문제번호 매칭을 통해 AI가 헷갈리지 않도록 지시
  */
-export function buildHandwritingDetectionPrompt() {
+export function buildHandwritingDetectionPrompt(imageCount: number = 1) {
   return `
-You are detecting handwritten answer marks, not solving questions.
+You have ${imageCount} exam page image(s).
+For each problem number on the page(s), detect TWO things:
 
-Use printed problem numbers and choice labels only as location anchors.
-Do not read or understand the question content.
-Do not determine the correct answer from question content.
+1. **user_answer**: The choice or text that has a handwritten mark (circle, checkmark, underline, written number/text, colored pen stroke).
+   - For multiple choice (①②③④⑤): return the choice number (e.g. "1", "2", "3", "4", "5")
+   - For short answer / essay: return the handwritten text verbatim
+   - For O/X (True/False): return "O" or "X"
+   - If no handwritten mark is found, return null
 
-For each visible problem on the page, follow this exact 3-step procedure:
+2. **correct_answer**: The printed correct answer if visible on the page (answer key, teacher's correction marks, printed answer overlay).
+   - Return the correct answer text/number if visible, or null if not visible
+   - Do NOT solve the question yourself. ONLY report what is PRINTED as the correct answer.
 
-Step 1 - LOCATE: Scan the choice area (where ①②③④⑤ labels are printed).
-  Describe what you physically see: any pen/pencil stroke that is NOT part of the original print.
-  Handwritten marks include: circles drawn around a label, checkmarks, X marks, underlines, written numbers, or any colored pen/pencil stroke near choices.
-  Handwritten marks may be red, blue, gray, or black.
-  Distinguishing printed vs handwritten:
-  - Preprinted ①②③④⑤ are uniform and crisp — these alone are NOT handwritten marks.
-  - A circle DRAWN AROUND or ON TOP OF a printed label IS a handwritten mark (it will be larger, rougher, or a different color).
-  - A number or letter written by hand near the problem area IS a handwritten mark.
-  - Any colored pen stroke (red, blue) overlaying printed text IS a handwritten mark.
-  IMPORTANT: When in doubt, report the mark with a lower confidence rather than omitting it. Let the filtering logic decide.
-  Write your observation in "step1_observation".
+${imageCount > 1 ? `IMPORTANT: You have ${imageCount} pages. Problem numbers may continue across pages (e.g., page 1 has Q1-Q15, page 2 has Q16-Q30). Make sure each problem is reported ONCE with its correct problem_number.` : ''}
 
-Step 2 - DECIDE: Based ONLY on Step 1, is there a handwritten mark?
-  If NO mark at all → user_answer=null, bbox_norm=null, ambiguous=true.
-  If mark found (even if faint or uncertain) → proceed to Step 3. Use confidence to express certainty.
-
-Step 3 - MAP: Only after confirming a mark exists, identify which printed choice label (①~⑤) the mark touches or surrounds. Return that label number as user_answer.
-  Return bbox_norm [y_min, x_min, y_max, x_max] in pixel coordinates for the mark.
-
-## Grounding rule
-A returned user_answer is valid ONLY if:
-  - step1_observation describes a visible handwritten mark
-  - bbox_norm is not null
-If either is missing, user_answer MUST be null.
-
-## Examples
-
-Example 1 - Mark found:
+Output JSON only:
 {
-  "problem_number": "25",
-  "step1_observation": "Red pen circle drawn around printed label ④ in the choice area",
-  "user_answer": "4",
-  "user_marked_correctness": null,
-  "mark_type": "circle",
-  "bbox_norm": [320, 180, 355, 215],
-  "confidence": 0.91,
-  "ambiguous": false,
-  "evidence": "grounded: red pen circle touching ④"
+  "marks": [
+    { "problem_number": "25", "user_answer": "4", "correct_answer": "5" },
+    { "problem_number": "26", "user_answer": null, "correct_answer": null }
+  ]
 }
 
-Example 2 - No mark found (correct output is null, NOT the correct answer):
-{
-  "problem_number": "26",
-  "step1_observation": "Scanned choice area for problem 26. No additional pen or pencil stroke detected on or near any choice label.",
-  "user_answer": null,
-  "user_marked_correctness": null,
-  "mark_type": null,
-  "bbox_norm": null,
-  "confidence": 0.15,
-  "ambiguous": true,
-  "evidence": "no handwritten mark found"
-}
-
-Example 3 - Student marked WRONG answer (output must match the mark, not the correct answer):
-{
-  "problem_number": "27",
-  "step1_observation": "Red pen circle visible around ② label, even though correct answer appears to be ⑤",
-  "user_answer": "2",
-  "user_marked_correctness": null,
-  "mark_type": "circle",
-  "bbox_norm": [680, 90, 710, 125],
-  "confidence": 0.85,
-  "ambiguous": false,
-  "evidence": "grounded: red pen circle around ②"
-}
-
-## Output format (JSON only, no markdown)
-{
-  "marks": [ ... one object per visible problem ... ]
-}
-
-Final rule: Only output user_answer if grounded in a visible handwritten mark with bbox_norm. Never output the inferred correct answer.
+Rules:
+- Do NOT solve any question. Do NOT guess answers. ONLY detect visible marks and printed answers.
+- Ignore all pre-printed text that is not an answer key or user mark.
+- Report ALL problems found on the page(s), even if they have no marks.
 `;
 }
 
 /**
  * Pass C: 분류/메타데이터 전용 프롬프트
  * - 이미지 없이 텍스트만으로 분류/메타데이터 생성
- * - 이 분리를 통해 모델이 문제를 "풀어서" user_answer를 오염시키는 것을 방지
+ * - 정답 추론은 Pass B에서 처리하므로 여기서는 수행하지 않음
  */
 export function buildClassificationPrompt(
   classificationData: { structure: string },
@@ -147,9 +94,9 @@ export function buildClassificationPrompt(
 
   return `
 ## Task
-You are classifying English exam questions.Based on the text below, assign classification and metadata to each problem.
+You are classifying English exam questions. Based on the text below, assign classification and metadata to each problem.
 
-## Classification(MUST use EXACT values from list below)
+## Classification (MUST use EXACT values from list below)
 Each line is: depth1 > depth2 > depth3 > depth4
   \`\`\`
 ${structure}
@@ -159,24 +106,11 @@ You MUST select depth1~4 values EXACTLY as shown above. Do NOT invent or transla
 ## Problems to classify
 ${itemsSummary}
 
-## Additional task - Correct Answer Determination
-For each problem, determine the correct answer by carefully analyzing the full passage and all choices.
-Return it as "correct_answer" (the choice label number, e.g. "3" or "5").
-
-**IMPORTANT guidelines for determining correct_answer:**
-- Read the ENTIRE passage carefully before evaluating choices.
-- For "일치하지 않는 것" / "NOT true" / "doesn't match" type questions: find the ONE choice that contradicts the passage. All other choices ARE supported by the passage.
-- For graph/chart questions: compare EACH choice against the visual data. The correct answer is the one that matches (or doesn't match, depending on the instruction).
-- Evaluate EVERY choice against the passage — do not stop after finding one that seems correct.
-- If the passage or visual_context contains specific data (numbers, names, dates), verify each choice against that data precisely.
-- If an image is attached, use it to verify graph/chart/table data when determining the correct answer for visual questions.
-
 ## Output (JSON only, no markdown)
 {
   "classifications": [
     {
       "problem_number": "25",
-      "correct_answer": "5",
       "classification": { "depth1": "...", "depth2": "...", "depth3": "...", "depth4": "..." },
       "metadata": { "difficulty": "medium", "word_difficulty": 6, "problem_type": "..." }
     }

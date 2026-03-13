@@ -241,14 +241,10 @@ export function validateParts(parts: any[], expectedImageCount: number, sessionI
 
 export interface HandwritingMark {
     problem_number: string;
-    step1_observation?: string | null;
     user_answer: string | null;
-    user_marked_correctness: string | null;
-    mark_type?: string | null;
-    bbox_norm?: number[] | null;
-    confidence?: number;
+    correct_answer?: string | null;
+    user_marked_correctness?: string | null;
     ambiguous?: boolean;
-    evidence?: string;
 }
 
 export interface DetectHandwritingParams {
@@ -329,7 +325,7 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
             } else {
                 console.log(`[Pass B] ${model} detected ${marks.length} mark(s):`, {
                     sessionId,
-                    marks: marks.map(m => `Q${m.problem_number}: answer=${m.user_answer}, conf=${m.confidence}, bbox=${m.bbox_norm ? 'yes' : 'NO'}`),
+                    marks: marks.map(m => `Q${m.problem_number}: answer=${m.user_answer}`),
                 });
             }
 
@@ -340,14 +336,22 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
                     if (!existing) {
                         // 새로운 문제 → 추가
                         allMarks.push(mark);
-                    } else if ((mark.confidence ?? 0) > (existing.confidence ?? 0)) {
-                        // 같은 문제인데 더 높은 confidence → 교체
+                    } else if (!existing.user_answer && mark.user_answer) {
+                        // 기존에 null이었는데 새 모델에서 답을 감지 → 교체
                         const existIdx = allMarks.indexOf(existing);
                         allMarks[existIdx] = mark;
                     }
                 }
                 console.log(`[Pass B] Accumulated ${allMarks.length} unique mark(s) after ${model}`, { sessionId });
-                // break 제거: 다음 모델도 시도하여 누락 문제 보완
+
+                // null answer가 남아있으면 다음 모델로 보충 시도, 전부 감지되었으면 종료
+                const nullCount = allMarks.filter(m => !m.user_answer).length;
+                if (nullCount === 0) {
+                  console.log(`[Pass B] All marks have answers, stopping early`, { sessionId });
+                  break;
+                } else {
+                  console.log(`[Pass B] ${nullCount} mark(s) still have null answer, trying next model for supplementation...`, { sessionId });
+                }
             }
 
         } catch (err: any) {
