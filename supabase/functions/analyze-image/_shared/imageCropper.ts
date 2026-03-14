@@ -23,6 +23,25 @@ async function ensureWasmInitialized() {
   console.log('[ImageCropper] magick-wasm initialized');
 }
 
+// ─── WASM 뮤텍스: 동시 접근 방지 ───────────────────────────
+// magick-wasm은 단일 WASM 인스턴스를 공유하므로,
+// 병렬 페이지 처리에서 동시 크롭 호출 시 상태 오염 발생.
+// 뮤텍스로 크롭 작업만 직렬화 (API 호출은 병렬 유지).
+let wasmMutex: Promise<void> = Promise.resolve();
+
+async function withWasmLock<T>(fn: () => Promise<T>): Promise<T> {
+  let release: () => void;
+  const acquired = new Promise<void>(resolve => { release = resolve; });
+  const previous = wasmMutex;
+  wasmMutex = acquired;
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release!();
+  }
+}
+
 // 바운딩 박스 타입
 export interface BoundingBox {
   problem_number: string;
@@ -126,7 +145,7 @@ export async function cropImageRegions(
 
 /**
  * 두 종류의 바운딩 박스(답안 영역 + 전체 문제)를 한 번에 크롭한다.
- * base64 디코딩을 1회만 수행하여 효율적.
+ * withWasmLock으로 감싸서 병렬 페이지 처리 시에도 WASM 동시 접근을 방지.
  */
 export async function cropDualRegions(
   imageBase64: string,
@@ -137,23 +156,25 @@ export async function cropDualRegions(
     answer_area_bbox: { x1: number; y1: number; x2: number; y2: number };
   }>,
 ): Promise<{ answerAreaCrops: CroppedImage[]; fullCrops: CroppedImage[] }> {
-  // 답안 영역 크롭
-  const answerRegions = problems.map(p => ({
-    problem_number: p.problem_number,
-    answer_area_bbox: p.answer_area_bbox,
-  }));
-  const answerAreaCrops = await cropImageRegions(imageBase64, mimeType, answerRegions, 5);
-
-  // 전체 문제 크롭 (full_bbox가 있는 것만)
-  const fullRegions = problems
-    .filter(p => p.full_bbox)
-    .map(p => ({
+  return withWasmLock(async () => {
+    // 답안 영역 크롭
+    const answerRegions = problems.map(p => ({
       problem_number: p.problem_number,
-      answer_area_bbox: p.full_bbox!, // full_bbox를 answer_area_bbox 필드로 매핑
+      answer_area_bbox: p.answer_area_bbox,
     }));
-  const fullCrops = fullRegions.length > 0
-    ? await cropImageRegions(imageBase64, mimeType, fullRegions, 2)
-    : [];
+    const answerAreaCrops = await cropImageRegions(imageBase64, mimeType, answerRegions, 5);
 
-  return { answerAreaCrops, fullCrops };
+    // 전체 문제 크롭 (full_bbox가 있는 것만)
+    const fullRegions = problems
+      .filter(p => p.full_bbox)
+      .map(p => ({
+        problem_number: p.problem_number,
+        answer_area_bbox: p.full_bbox!,
+      }));
+    const fullCrops = fullRegions.length > 0
+      ? await cropImageRegions(imageBase64, mimeType, fullRegions, 2)
+      : [];
+
+    return { answerAreaCrops, fullCrops };
+  });
 }

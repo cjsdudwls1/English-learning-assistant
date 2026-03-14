@@ -125,7 +125,7 @@ serve(async (req) => {
           sessionId: createdSessionId!,
         });
 
-        // Step 3: 페이지별 3-Pass 분석 (배치 병렬 처리)
+        // Step 3: 페이지별 3-Pass 분석 (배치 병렬 — WASM 뮤텍스로 크롭 직렬화)
         const ANALYSIS_BATCH_SIZE = 3;
         console.log(`[Background] Step 3: Starting direct multimodal analysis for ${imageList.length} page(s) (batch size: ${ANALYSIS_BATCH_SIZE})...`, { sessionId: createdSessionId, pageCount: imageList.length });
 
