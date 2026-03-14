@@ -1,0 +1,39 @@
+{
+  "provider": "vertex",
+  "model": "gemini-3-flash-preview",
+  "bounding_boxes": {
+    "problems": [
+      {
+        "problem_number": "25",
+        "answer_area_bbox": {
+          "x1": 128,
+          "y1": 358,
+          "x2": 542,
+          "y2": 578
+        },
+        "description": "Multiple choice ①②③④⑤ integrated into the paragraph for Q25"
+      },
+      {
+        "problem_number": "26",
+        "answer_area_bbox": {
+          "x1": 580,
+          "y1": 184,
+          "x2": 920,
+          "y2": 302
+        },
+        "description": "Multiple choice ①②③④⑤ area for Q26"
+      },
+      {
+        "problem_number": "27",
+        "answer_area_bbox": {
+          "x1": 572,
+          "y1": 822,
+          "x2": 850,
+          "y2": 928
+        },
+        "description": "Multiple choice ①②③④⑤ area for Q27"
+      }
+    ],
+    "image_dimensions_note": "Coordinates are normalized 0-1000"
+  }
+}

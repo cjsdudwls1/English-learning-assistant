@@ -58,6 +58,9 @@ export function useProblemGeneration({
   const pollingActiveRef = useRef<boolean>(false);
   const receivedProblemsCountRef = useRef<number>(0);
   const expectedProblemCountsRef = useRef<{ [key: string]: number }>({});
+  // aiOptions의 최신 값을 항상 참조하기 위한 ref (클로저 stale 문제 방지)
+  const aiOptionsRef = useRef(aiOptions);
+  aiOptionsRef.current = aiOptions;
 
   // expectedProblemCounts가 변경될 때마다 ref 업데이트
   useEffect(() => {
@@ -451,26 +454,40 @@ export function useProblemGeneration({
       const collectedProblemIds: string[] = [];
       let hasError = false;
 
+      // 지문 포함 모드: 첫 번째 호출에서 생성된 passage를 이후 호출에 공유
+      const currentAiOptions = aiOptionsRef.current;
+      let sharedPassage: string | null = null;
+      const isPassageMode = currentAiOptions?.includePassage === true;
+
       for (const problemType of problemTypes) {
         const count = problemCounts[problemType];
         if (count <= 0) continue;
 
         try {
           const { data: { session } } = await supabase.auth.getSession();
+
+          // 지문 모드에서 두 번째 이후 호출에는 sharedPassage 전달
+          const requestBody: any = {
+            problemType: problemType,
+            problemCount: count,
+            userId: userId,
+            language: language,
+            classification: classificationToUse,
+            ...(currentAiOptions || {}),
+          };
+
+          if (isPassageMode && sharedPassage) {
+            requestBody.sharedPassage = sharedPassage;
+            console.log(`[${problemType}] 공유 지문 전달 (${sharedPassage.length}자)`);
+          }
+
           const response = await fetch(functionUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${session?.access_token}`,
             },
-            body: JSON.stringify({
-              problemType: problemType,
-              problemCount: count,
-              userId: userId,
-              language: language,
-              classification: classificationToUse,
-              ...(aiOptions || {}),
-            }),
+            body: JSON.stringify(requestBody),
           });
 
           if (!response.ok) {
@@ -553,6 +570,12 @@ export function useProblemGeneration({
             throw new Error(errorMsg);
           }
 
+          // 지문 모드: 첫 번째 호출의 응답에서 passage 추출하여 이후 호출에 공유
+          if (isPassageMode && !sharedPassage && result.passage) {
+            sharedPassage = result.passage;
+            console.log(`[${problemType}] 지문 추출 성공 (${sharedPassage!.length}자), 이후 문제 유형에 공유 예정`);
+          }
+
           // 동기식 응답에서 생성된 문제 ID 수집
           if (result.problems && Array.isArray(result.problems)) {
             const ids = result.problems.map((p: any) => p.id).filter(Boolean);
@@ -560,6 +583,22 @@ export function useProblemGeneration({
             console.log(`[${problemType}] ${ids.length}개 문제 생성 완료 (총 수집: ${collectedProblemIds.length}개)`);
           } else {
             console.log(`[${problemType}] 문제 생성 완료 (응답에 ID 없음, 수: ${result.count || 0})`);
+          }
+
+          // 지문 모드에서 첫 번째 호출 후 passage를 아직 못 얻었으면 DB에서 조회
+          if (isPassageMode && !sharedPassage && result.problems?.length > 0) {
+            const firstProblemId = result.problems[0]?.id;
+            if (firstProblemId) {
+              const { data: firstProblem } = await supabase
+                .from('generated_problems')
+                .select('passage')
+                .eq('id', firstProblemId)
+                .single();
+              if (firstProblem?.passage) {
+                sharedPassage = firstProblem.passage;
+                console.log(`[${problemType}] DB fallback으로 지문 추출 성공 (${sharedPassage!.length}자)`);
+              }
+            }
           }
         } catch (innerError) {
           console.error(`Error generating ${problemType} problems:`, innerError);

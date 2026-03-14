@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchUserSessions, deleteSession, fetchPendingLabelingSessions, fetchAnalyzingSessions, fetchFailedSessions } from '../services/db';
-import { ImageModal } from '../components/ImageModal';
+import { ImageLightbox } from '../components/ImageLightbox';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import { AnalyzingCard } from '../components/AnalyzingCard';
+import { FailedAnalysisCard } from '../components/FailedAnalysisCard';
 import type { SessionWithProblems } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
@@ -19,9 +20,7 @@ export const RecentProblemsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [visibleSessionCount, setVisibleSessionCount] = useState(5);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalImageUrl, setModalImageUrl] = useState<string>('');
-  const [modalSessionId, setModalSessionId] = useState<string>('');
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
   const [pollingActive, setPollingActive] = useState(true);
   const lastAnalyzingSeenAtRef = useRef<number>(0);
@@ -111,12 +110,6 @@ export const RecentProblemsPage: React.FC = () => {
     }
   };
 
-  const handleSessionImageClick = (sessionId: string, imageUrl: string) => {
-    setModalImageUrl(imageUrl);
-    setModalSessionId(sessionId);
-    setIsModalOpen(true);
-  };
-
   const toggleSessionSelection = (sessionId: string) => {
     const newSelected = new Set(selectedSessions);
     if (newSelected.has(sessionId)) {
@@ -157,43 +150,19 @@ export const RecentProblemsPage: React.FC = () => {
           key={session.id}
           sessionId={session.id}
           imageUrl={session.image_url}
+          imageUrls={session.image_urls}
           onDelete={handleDelete}
           analysisModel={session.analysis_model}
         />
       ))}
 
-      {/* 분석 실패 UI - 분석 중 다음 */}
+      {/* 분석 실패 UI - FailedAnalysisCard 컴포넌트 사용 */}
       {failedSessions.map((session) => (
-        <div
+        <FailedAnalysisCard
           key={session.id}
-          className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-red-200 dark:border-red-800 mb-6"
-        >
-          <div className="flex items-start gap-6">
-            <img
-              src={session.image_url}
-              alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
-              className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 flex-shrink-0"
-            />
-            <div className="flex-1">
-              <h3 className="text-xl font-bold text-red-700 dark:text-red-300 mb-2">
-                {language === 'ko' ? 'AI 분석 실패' : 'AI Analysis Failed'}
-              </h3>
-              <p className="text-slate-600 dark:text-slate-400">
-                {language === 'ko'
-                  ? '이미지에서 문제를 추출하지 못했습니다. (0문항) 이미지가 선명한지 확인 후 다시 업로드하거나, 해당 세션을 삭제해주세요.'
-                  : 'Failed to extract problems from the image (0 items). Please re-upload with a clearer image or delete this session.'}
-              </p>
-              <div className="mt-4 flex gap-2 justify-end">
-                <button
-                  onClick={() => handleDelete(session.id)}
-                  className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
-                >
-                  {language === 'ko' ? '삭제' : 'Delete'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+          session={session}
+          onDelete={handleDelete}
+        />
       ))}
 
       {/* 라벨링 UI - 분석 중 다음 */}
@@ -202,6 +171,7 @@ export const RecentProblemsPage: React.FC = () => {
           key={session.id}
           sessionId={session.id}
           imageUrl={session.image_url}
+          imageUrls={session.image_urls}
           analysisModel={session.analysis_model}
           modelsUsed={session.models_used}
           onSave={handleLabelingComplete}
@@ -239,56 +209,75 @@ export const RecentProblemsPage: React.FC = () => {
           <p className="text-slate-500 text-center py-4">{t.recent.noProblems}</p>
         ) : (
           <div className="space-y-3">
-            {displayedSessions.map((session) => (
-              <div key={session.id} className="border border-slate-200 rounded-lg p-4 flex items-center gap-4">
-                <input
-                  type="checkbox"
-                  checked={selectedSessions.has(session.id)}
-                  onChange={() => toggleSessionSelection(session.id)}
-                  className="w-5 h-5"
-                />
-                <img
-                  src={session.image_url}
-                  alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
-                  className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80"
-                  onClick={() => handleSessionImageClick(session.id, session.image_url)}
-                />
-                <div className="flex-1">
-                  <p className="text-sm text-slate-500">
-                    {new Date(session.created_at).toLocaleString('ko-KR', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
-                  {session.problem_count === 0 ? (
-                    <p className="text-orange-600 font-medium mt-1">
-                      {language === 'ko' ? '🔍 AI 분석 중... 잠시 후 새로고침해주세요' : '🔍 AI analyzing... Please refresh later'}
+            {displayedSessions.map((session) => {
+              const sessionImageUrls = (session.image_urls && session.image_urls.length > 0)
+                ? session.image_urls
+                : (session.image_url ? [session.image_url] : []);
+
+              return (
+                <div key={session.id} className="border border-slate-200 rounded-lg p-4 flex items-center gap-4">
+                  <input
+                    type="checkbox"
+                    checked={selectedSessions.has(session.id)}
+                    onChange={() => toggleSessionSelection(session.id)}
+                    className="w-5 h-5"
+                  />
+                  {/* 다중 이미지 썸네일 */}
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    {sessionImageUrls.map((url, idx) => (
+                      <img
+                        key={`${idx}-${url}`}
+                        src={url}
+                        alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
+                        className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all"
+                        onClick={() => setLightboxImageUrl(url)}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-slate-500">
+                      {new Date(session.created_at).toLocaleString('ko-KR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
                     </p>
-                  ) : (
-                    <p className="text-slate-700 mt-1">
-                      {language === 'ko'
-                        ? `문제 ${session.problem_count}개 | 정답 ${session.correct_count}개 | 오답 ${session.incorrect_count}개`
-                        : `${t.recent.problemCount} ${session.problem_count} | ${t.stats.correct}: ${session.correct_count} | ${t.stats.incorrect}: ${session.incorrect_count}`}
-                    </p>
-                  )}
+                    {session.problem_count === 0 ? (
+                      <p className="text-orange-600 font-medium mt-1">
+                        {language === 'ko' ? 'AI 분석 중... 잠시 후 새로고침해주세요' : 'AI analyzing... Please refresh later'}
+                      </p>
+                    ) : (
+                      <p className="text-slate-700 mt-1">
+                        {language === 'ko'
+                          ? `문제 ${session.problem_count}개 | 정답 ${session.correct_count}개 | 오답 ${session.incorrect_count}개`
+                          : `${t.recent.problemCount} ${session.problem_count} | ${t.stats.correct}: ${session.correct_count} | ${t.stats.incorrect}: ${session.incorrect_count}`}
+                      </p>
+                    )}
+                    {sessionImageUrls.length > 1 && (
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {language === 'ko'
+                          ? `이미지 ${sessionImageUrls.length}장`
+                          : `${sessionImageUrls.length} images`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigate(`/session/${session.id}`)}
+                      disabled={session.problem_count === 0}
+                      className={`px-4 py-2 text-white text-sm rounded-lg ${session.problem_count === 0
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-700'
+                        }`}
+                    >
+                      {t.recent.viewDetails}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => navigate(`/session/${session.id}`)}
-                    disabled={session.problem_count === 0}
-                    className={`px-4 py-2 text-white text-sm rounded-lg ${session.problem_count === 0
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-indigo-600 hover:bg-indigo-700'
-                      }`}
-                  >
-                    {t.recent.viewDetails}
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {visibleSessionCount < sessions.length && (
               <div className="text-center pt-4">
                 <button
@@ -303,12 +292,13 @@ export const RecentProblemsPage: React.FC = () => {
         )}
       </div>
 
-      <ImageModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        imageUrl={modalImageUrl}
-        sessionId={modalSessionId}
-      />
+      {lightboxImageUrl && (
+        <ImageLightbox
+          imageUrl={lightboxImageUrl}
+          alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
+          onClose={() => setLightboxImageUrl(null)}
+        />
+      )}
     </div>
   );
 };

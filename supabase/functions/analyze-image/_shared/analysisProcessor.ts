@@ -254,8 +254,146 @@ export interface DetectHandwritingParams {
     imageParts: any[];
 }
 
+// ─── Pass 0: 바운딩 박스 검출 ───────────────────────────
+
+export interface BoundingBoxResult {
+    problems: Array<{
+        problem_number: string;
+        full_bbox?: { x1: number; y1: number; x2: number; y2: number };
+        answer_area_bbox: { x1: number; y1: number; x2: number; y2: number };
+    }>;
+}
+
 /**
- * Pass B: 이미지에서 필기 마크(사용자 답변, O/X 표시)만 감지합니다.
+ * Pass 0: 이미지에서 각 문제의 바운딩 박스를 검출합니다.
+ * full_bbox (문제 전체) + answer_area_bbox (답안 영역) 두 종류 반환
+ */
+export async function detectBoundingBoxes(params: {
+    ai: any;
+    sessionId: string;
+    prompt: string;
+    imageParts: any[];
+}): Promise<BoundingBoxResult | null> {
+    const { ai, sessionId, prompt, imageParts } = params;
+    const model = MODEL_SEQUENCE[0];
+
+    try {
+        console.log(`[Pass 0] Detecting bounding boxes with ${model}...`, { sessionId });
+
+        const parts = [{ text: prompt }, ...imageParts];
+        const attempt = await generateWithRetry({
+            ai,
+            model,
+            contents: { parts },
+            sessionId,
+            maxRetries: 2,
+            baseDelayMs: 2000,
+            temperature: 1.0,
+        });
+
+        const responseText = await extractTextFromResponse(attempt.response, model);
+        console.log(`[Pass 0] Response (${responseText.length} chars):`, {
+            sessionId,
+            preview: responseText.substring(0, 500),
+        });
+
+        const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+
+        if (!parsed.problems || !Array.isArray(parsed.problems)) {
+            console.warn(`[Pass 0] Invalid response format: no problems array`, { sessionId });
+            return null;
+        }
+
+        // 좌표 유효성 검사: answer_area_bbox 필수
+        const isBboxValid = (bbox: any) => bbox && bbox.x1 >= 0 && bbox.y1 >= 0 && bbox.x2 > bbox.x1 && bbox.y2 > bbox.y1;
+        const validProblems = parsed.problems.filter((p: any) => isBboxValid(p.answer_area_bbox));
+
+        console.log(`[Pass 0] Found ${validProblems.length} valid bounding boxes (with full_bbox: ${validProblems.filter((p: any) => isBboxValid(p.full_bbox)).length})`, { sessionId });
+        return { problems: validProblems };
+
+    } catch (error) {
+        console.error(`[Pass 0] Bounding box detection failed:`, (error as Error).message, { sessionId });
+        return null;
+    }
+}
+
+// ─── Pass B (크롭 이미지별): 개별 문제 필기 감지 ──────────
+
+/**
+ * 크롭된 이미지 각각에 대해 개별적으로 필기 감지를 수행합니다.
+ * 모든 문제에 대해 100% 확대 분석을 보장.
+ */
+export async function detectHandwritingFromCroppedImages(params: {
+    ai: any;
+    sessionId: string;
+    croppedImages: Array<{ problem_number: string; croppedBase64: string; mimeType: string }>;
+    buildPromptFn: (problemNumber: string) => string;
+}): Promise<{ marks: HandwritingMark[]; usageMetadata?: UsageMetadata }> {
+    const { ai, sessionId, croppedImages, buildPromptFn } = params;
+    const model = MODEL_SEQUENCE[0];
+    const marks: HandwritingMark[] = [];
+    let lastUsageMetadata: UsageMetadata | undefined;
+
+    console.log(`[Pass B-Crop] Processing ${croppedImages.length} cropped images...`, { sessionId });
+
+    // 각 크롭 이미지를 병렬로 처리 (최대 3개씩 배치)
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < croppedImages.length; i += BATCH_SIZE) {
+        const batch = croppedImages.slice(i, i + BATCH_SIZE);
+
+        const batchResults = await Promise.allSettled(
+            batch.map(async (cropped) => {
+                const prompt = buildPromptFn(cropped.problem_number);
+                const parts = [
+                    { text: prompt },
+                    { inlineData: { data: cropped.croppedBase64, mimeType: cropped.mimeType } },
+                ];
+
+                try {
+                    const attempt = await generateWithRetry({
+                        ai,
+                        model,
+                        contents: { parts },
+                        sessionId,
+                        maxRetries: 1,
+                        baseDelayMs: 1000,
+                        temperature: 1.0,
+                    });
+
+                    const responseText = await extractTextFromResponse(attempt.response, model);
+                    lastUsageMetadata = attempt.usageMetadata;
+
+                    console.log(`[Pass B-Crop] Q${cropped.problem_number} response: ${responseText.substring(0, 200)}`, { sessionId });
+
+                    const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+                    const parsed = JSON.parse(cleaned);
+
+                    return {
+                        problem_number: parsed.problem_number || cropped.problem_number,
+                        user_answer: parsed.user_answer ?? null,
+                        correct_answer: parsed.correct_answer ?? null,
+                    } as HandwritingMark;
+                } catch (e) {
+                    console.error(`[Pass B-Crop] Q${cropped.problem_number} failed:`, (e as Error).message, { sessionId });
+                    return null;
+                }
+            })
+        );
+
+        for (const result of batchResults) {
+            if (result.status === 'fulfilled' && result.value) {
+                marks.push(result.value);
+            }
+        }
+    }
+
+    console.log(`[Pass B-Crop] Completed: ${marks.length}/${croppedImages.length} marks detected`, { sessionId });
+    return { marks, usageMetadata: lastUsageMetadata };
+}
+
+/**
+ * Pass B (폴백): 이미지에서 필기 마크(사용자 답변, O/X 표시)만 감지합니다.
  * MODEL_SEQUENCE를 따라 failover: marks=0이면 다음 모델로 재시도
  * 실패해도 빈 배열을 반환하여 전체 파이프라인에 영향을 주지 않습니다.
  */
@@ -276,7 +414,6 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
             console.log(`[Background] Pass B: Detecting handwriting marks with ${model}...`, { sessionId });
 
             const parts = [{ text: prompt }, ...imageParts];
-
             const attempt = await generateWithRetry({
                 ai,
                 model,
@@ -284,8 +421,7 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
                 sessionId,
                 maxRetries: 1,
                 baseDelayMs: 2000,
-                temperature: 0.1, // 0.0에서 약간 올려 마크 보고 적극성 향상
-                maxOutputTokens: 4096, // 응답 truncation 방지
+                temperature: 1.0,
             });
 
             const responseText = await extractTextFromResponse(attempt.response, model);
@@ -294,7 +430,7 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
             // 디버깅 로그: raw response 프리뷰
             console.log(`[Pass B] Raw response from ${model} (${responseText.length} chars):`, {
                 sessionId,
-                preview: responseText.substring(0, 500),
+                preview: responseText.substring(0, 2000),
             });
 
             // Pass B 전용 JSON 파싱: parseJsonResponse의 폴백이 { pages: [...] }를 반환하는 문제 방지
@@ -325,7 +461,7 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
             } else {
                 console.log(`[Pass B] ${model} detected ${marks.length} mark(s):`, {
                     sessionId,
-                    marks: marks.map(m => `Q${m.problem_number}: answer=${m.user_answer}`),
+                    marks: marks.map(m => `Q${m.problem_number}: user=${m.user_answer}, correct=${(m as any).correct_answer}`),
                 });
             }
 
@@ -366,7 +502,9 @@ export async function detectHandwritingMarks(params: DetectHandwritingParams): P
     return { marks: allMarks, usageMetadata: lastUsageMetadata };
 }
 
+
 // ─── Pass C: 분류/메타데이터 생성 (텍스트 기반, 이미지 불필요) ───
+
 
 export interface ClassificationResult {
     problem_number: string;

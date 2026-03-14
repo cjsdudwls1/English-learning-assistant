@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { getCurrentUserId } from '../services/db';
+import { deleteProblems } from '../services/db/problems';
 import { useLanguage } from '../contexts/LanguageContext';
 import type { QuestionType } from '../types';
 
@@ -35,6 +36,11 @@ export const AllProblemsPage: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+
+  // 선택 및 삭제 관련 상태
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadProblems();
@@ -138,6 +144,53 @@ export const AllProblemsPage: React.FC = () => {
   const incorrectCount = problems.filter(p => p.is_correct === false).length;
   const unmarkedCount = problems.filter(p => p.is_correct === null).length;
 
+  // 현재 표시된 항목 기준 전체 선택 여부
+  const allPagedSelected = paged.length > 0 && paged.every(p => selectedIds.has(p.id));
+  const someSelected = selectedIds.size > 0;
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (allPagedSelected) {
+      // 현재 페이지 항목 전부 해제
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        paged.forEach(p => next.delete(p.id));
+        return next;
+      });
+    } else {
+      // 현재 페이지 항목 전부 선택
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        paged.forEach(p => next.add(p.id));
+        return next;
+      });
+    }
+  }, [allPagedSelected, paged]);
+
+  const handleDelete = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      setDeleting(true);
+      const deletedCount = await deleteProblems(Array.from(selectedIds));
+      console.log(`[Delete] ${deletedCount}개 문제 삭제 완료`);
+      setSelectedIds(new Set());
+      setShowDeleteConfirm(false);
+      await loadProblems();
+    } catch (err) {
+      console.error('Failed to delete problems:', err);
+      setError(language === 'ko' ? '문제 삭제 중 오류가 발생했습니다.' : 'Error deleting problems.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -214,6 +267,31 @@ export const AllProblemsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* 선택 컨트롤 바 */}
+      {someSelected && (
+        <div className="flex items-center justify-between mb-4 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+            {language === 'ko'
+              ? `${selectedIds.size}개 문제 선택됨`
+              : `${selectedIds.size} problem(s) selected`}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="px-3 py-1.5 text-sm rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+            >
+              {language === 'ko' ? '선택 해제' : 'Deselect'}
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+            >
+              {language === 'ko' ? '선택 삭제' : 'Delete Selected'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg">
           {error}
@@ -226,6 +304,15 @@ export const AllProblemsPage: React.FC = () => {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900/50">
               <tr>
+                <th className="px-3 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    checked={allPagedSelected}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    title={language === 'ko' ? '전체 선택' : 'Select all'}
+                  />
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300">#</th>
                 <th className="px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '문제 내용' : 'Problem'}
@@ -257,9 +344,19 @@ export const AllProblemsPage: React.FC = () => {
                 return (
                   <tr
                     key={p.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
+                    className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors ${
+                      selectedIds.has(p.id) ? 'bg-indigo-50/50 dark:bg-indigo-900/20' : ''
+                    }`}
                     onClick={() => navigate(`/session/${p.session_id}`)}
                   >
+                    <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.id)}
+                        onChange={() => toggleSelect(p.id)}
+                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{idx + 1}</td>
                     <td className="px-4 py-3 text-slate-800 dark:text-slate-200 max-w-xs">
                       <span title={stem}>{truncated || (language === 'ko' ? '내용 없음' : 'No content')}</span>
@@ -321,6 +418,41 @@ export const AllProblemsPage: React.FC = () => {
           ? `${filtered.length}개 중 ${paged.length}개 표시`
           : `Showing ${paged.length} of ${filtered.length}`}
       </div>
+
+      {/* 삭제 확인 모달 */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 border border-slate-200 dark:border-slate-700">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-3">
+              {language === 'ko' ? '문제 삭제 확인' : 'Confirm Delete'}
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+              {language === 'ko'
+                ? `선택된 ${selectedIds.size}개의 문제를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`
+                : `Are you sure you want to delete ${selectedIds.size} problem(s)? This action cannot be undone.`}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+              >
+                {language === 'ko' ? '취소' : 'Cancel'}
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleting && (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                )}
+                {language === 'ko' ? '삭제' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

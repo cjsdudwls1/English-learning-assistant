@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ImageLightbox } from './ImageLightbox';
 import { useNavigate } from 'react-router-dom';
 import { fetchSessionProblems, updateProblemLabels } from '../services/db';
 import type { ProblemItem, QuestionType } from '../types';
@@ -8,10 +9,19 @@ import { getTranslation } from '../utils/translations';
 interface QuickLabelingCardProps {
   sessionId: string;
   imageUrl: string;
+  imageUrls?: string[];
   analysisModel?: string | null;
   modelsUsed?: { ocr?: string; analysis?: string } | null;
   onSave?: () => void;
   onDelete?: (sessionId: string) => void;
+}
+
+/** 사용자 답안과 정답을 비교하여 자동 판정 */
+function autoJudge(userAnswer: string, correctAnswer: string): 'O' | 'X' | null {
+  const ua = userAnswer.trim().toLowerCase();
+  const ca = correctAnswer.trim().toLowerCase();
+  if (!ua || !ca) return null; // 둘 중 하나라도 비어있으면 자동 판정 불가
+  return ua === ca ? 'O' : 'X';
 }
 
 /** 문제 유형 판별 헬퍼 */
@@ -32,6 +42,7 @@ function inferQuestionType(problem: ProblemItem): QuestionType {
 export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   sessionId,
   imageUrl,
+  imageUrls,
   analysisModel,
   modelsUsed,
   onSave,
@@ -46,6 +57,10 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   const [editableCorrectAnswers, setEditableCorrectAnswers] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+
+  // 실제 표시할 이미지 목록 결정
+  const displayImageUrls = (imageUrls && imageUrls.length > 0) ? imageUrls : (imageUrl ? [imageUrl] : []);
 
   useEffect(() => {
     loadProblems();
@@ -91,10 +106,22 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
 
   const handleAnswerChange = (index: number, value: string) => {
     setEditableAnswers(prev => ({ ...prev, [`${index}`]: value }));
+    // 사용자 답안 변경 시 자동 재판정
+    const correctAnswer = editableCorrectAnswers[`${index}`] ?? '';
+    const result = autoJudge(value, correctAnswer);
+    if (result !== null) {
+      setLabels(prev => ({ ...prev, [`${index}`]: result }));
+    }
   };
 
   const handleCorrectAnswerChange = (index: number, value: string) => {
     setEditableCorrectAnswers(prev => ({ ...prev, [`${index}`]: value }));
+    // 정답 변경 시 자동 재판정
+    const userAnswer = editableAnswers[`${index}`] ?? '';
+    const result = autoJudge(userAnswer, value);
+    if (result !== null) {
+      setLabels(prev => ({ ...prev, [`${index}`]: result }));
+    }
   };
 
   const handleSave = async () => {
@@ -164,11 +191,19 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
         </button>
       )}
       <div className="flex items-start gap-6 mb-6">
-        <img
-          src={imageUrl}
-          alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
-          className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 flex-shrink-0"
-        />
+        {/* 다중 이미지 썸네일 */}
+        <div className="flex gap-2 flex-shrink-0">
+          {displayImageUrls.map((url, idx) => (
+            <img
+              key={`${idx}-${url}`}
+              src={url}
+              alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
+              className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all"
+              onClick={() => setLightboxImageUrl(url)}
+              title={language === 'ko' ? '클릭하여 원본 보기' : 'Click to view original'}
+            />
+          ))}
+        </div>
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
@@ -194,6 +229,13 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
               ? `AI가 분석한 문제 ${problems.length}개를 확인하고 검수해주세요.`
               : `Please review and verify ${problems.length} problem(s) analyzed by AI.`}
           </p>
+          {displayImageUrls.length > 1 && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              {language === 'ko'
+                ? `이미지 ${displayImageUrls.length}장 (클릭하여 확대)`
+                : `${displayImageUrls.length} images (click to enlarge)`}
+            </p>
+          )}
         </div>
       </div>
 
@@ -328,6 +370,13 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           {saving ? t.labeling.saving : t.labeling.finalSave}
         </button>
       </div>
+      {lightboxImageUrl && (
+        <ImageLightbox
+          imageUrl={lightboxImageUrl}
+          alt={language === 'ko' ? '문제 이미지' : 'Problem Image'}
+          onClose={() => setLightboxImageUrl(null)}
+        />
+      )}
     </div>
   );
 };

@@ -25,7 +25,7 @@ export interface ModelResponse {
 
 // 생성 설정 타입
 export interface GenerationConfig {
-    responseMimeType: string;
+    responseMimeType?: string;
     temperature: number;
 }
 
@@ -37,6 +37,7 @@ export interface AIClient {
             contents: unknown;
             generationConfig: GenerationConfig;
             safetySettings?: Array<{ category: string; threshold: string }>;
+            tools?: unknown[];
         }) => Promise<ModelResponse>;
     };
 }
@@ -59,6 +60,7 @@ export interface GenerateWithRetryParams {
     baseDelayMs: number;
     temperature: number;
     maxOutputTokens?: number; // 응답 truncation 방지용
+    tools?: unknown[]; // Gemini 도구 (코드 실행 등)
 }
 
 // 재시도 결과
@@ -70,7 +72,7 @@ export interface GenerateWithRetryResult {
 
 // 재시도 로직이 포함된 모델 생성 함수
 export async function generateWithRetry(params: GenerateWithRetryParams): Promise<GenerateWithRetryResult> {
-    const { ai, model, contents, sessionId, maxRetries, baseDelayMs, temperature, maxOutputTokens } = params;
+    const { ai, model, contents, sessionId, maxRetries, baseDelayMs, temperature, maxOutputTokens, tools } = params;
     let attempt = 0;
     let lastParsed: ReturnType<typeof parseModelError> | null = null;
     let lastErr: unknown = null;
@@ -84,7 +86,8 @@ export async function generateWithRetry(params: GenerateWithRetryParams): Promis
                     model,
                     contents,
                     generationConfig: {
-                        responseMimeType: "application/json",
+                        // 코드 실행 사용 시 responseMimeType 제거 (멀티파트 응답과 충돌)
+                        ...(tools ? {} : { responseMimeType: "application/json" }),
                         temperature,
                         ...(maxOutputTokens ? { maxOutputTokens } : {}),
                     },
@@ -95,10 +98,11 @@ export async function generateWithRetry(params: GenerateWithRetryParams): Promis
                         { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
                         { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
                     ],
+                    ...(tools ? { tools } : {}),
                 }),
                 new Promise<never>((_, reject) => {
-                    // thinking 모델은 추론 시간이 더 걸리므로 90초, 일반 모델은 60초
-                    const timeoutMs = model.includes('gemini-3') ? 90000 : 60000;
+                    // thinking 모델은 추론 시간이 더 걸리므로 90초, 코드 실행은 120초, 일반 모델은 60초
+                    const timeoutMs = tools ? 120000 : model.includes('gemini-3') ? 90000 : 60000;
                     setTimeout(() => reject(new Error(`API call timeout after ${timeoutMs / 1000}s`)), timeoutMs);
                 }),
             ]) as ModelResponse;

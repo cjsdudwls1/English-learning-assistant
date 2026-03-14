@@ -37,8 +37,10 @@ interface ProblemRequest {
     includePassage?: boolean;
     passageLength?: number;
     passageTopic?: { category: string; subfield: string };
+    passageGenre?: string;
     difficultyLevel?: number;
     vocabLevel?: number;
+    sharedPassage?: string;
 }
 
 interface PromptTemplate {
@@ -241,26 +243,53 @@ function buildPrompt(request: ProblemRequest): string {
     }
 
     if (request.includePassage) {
-        prompt += language === 'ko'
-            ? `\n\n[지문 포함 지시]\n각 문제에 700~2000자 분량의 영어 지문(passage)을 포함하여 출제하라. 지문은 학술적이거나 교양적인 내용의 영어 원문이어야 하며, 문제는 해당 지문을 읽고 풀 수 있도록 설계하라.`
-            : `\n\n[Passage Inclusion]\nInclude an English passage of 700~2000 characters with each problem. The passage should be academic or informational English text, and the problem should be designed to be answered after reading the passage.`;
-
-        // 지문 길이 지정
-        if (request.passageLength) {
+        if (request.sharedPassage) {
+            // 공유 지문이 제공된 경우: 새 지문을 생성하지 않고 제공된 지문을 사용
             prompt += language === 'ko'
-                ? `\n지문 길이는 약 ${request.passageLength}자(±100자)로 작성하라.`
-                : `\nThe passage length should be approximately ${request.passageLength} characters (±100 characters).`;
-        }
-
-        // 지문 분야 지정
-        if (request.passageTopic?.category && request.passageTopic?.subfield) {
+                ? `\n\n[지문 기반 출제 지시]\n아래 제공된 영어 지문을 읽고, 이 지문의 내용에 기반하여 문제를 출제하라. 지문 내용을 정확히 이해해야만 풀 수 있는 문제를 만들어라.\n\n--- 지문 ---\n${request.sharedPassage}\n--- 지문 끝 ---`
+                : `\n\n[Passage-Based Problem Creation]\nRead the passage below and create problems based on its content. Problems should require accurate understanding of the passage to answer.\n\n--- Passage ---\n${request.sharedPassage}\n--- End of Passage ---`;
+        } else {
+            // 지문을 새로 생성해야 하는 경우
             prompt += language === 'ko'
-                ? `\n지문의 주제는 ${request.passageTopic.category} 분야의 ${request.passageTopic.subfield}에 관한 학술적/교양적 내용으로 작성하라.`
-                : `\nThe passage topic should be about ${request.passageTopic.subfield} in the field of ${request.passageTopic.category}, written as academic or informational content.`;
+                ? `\n\n[지문 포함 지시]\n하나의 영어 지문(passage)을 생성하고, 모든 문제를 그 지문에 기반하여 출제하라. 지문은 학술적이거나 교양적인 내용의 영어 원문이어야 하며, 문제는 해당 지문을 읽고 풀 수 있도록 설계하라. 모든 문제의 "passage" 필드에 동일한 지문을 포함시켜라.`
+                : `\n\n[Passage Inclusion]\nGenerate ONE English passage and create ALL problems based on that single passage. The passage should be academic or informational English text, and all problems should be designed to be answered after reading the passage. Include the same passage in the "passage" field of every problem.`;
+
+            // 지문 길이 지정
+            if (request.passageLength) {
+                prompt += language === 'ko'
+                    ? `\n지문 길이는 약 ${request.passageLength}자(±100자)로 작성하라.`
+                    : `\nThe passage length should be approximately ${request.passageLength} characters (±100 characters).`;
+            }
+
+            // 지문 분야 지정
+            if (request.passageTopic?.category && request.passageTopic?.subfield) {
+                prompt += language === 'ko'
+                    ? `\n지문의 주제는 ${request.passageTopic.category} 분야의 ${request.passageTopic.subfield}에 관한 학술적/교양적 내용으로 작성하라.`
+                    : `\nThe passage topic should be about ${request.passageTopic.subfield} in the field of ${request.passageTopic.category}, written as academic or informational content.`;
+            }
+
+            // 지문 종류(genre) 지정
+            if (request.passageGenre) {
+                prompt += language === 'ko'
+                    ? `\n지문의 형식(종류)은 반드시 "${request.passageGenre}" 형태로 작성하라. 예: 편지라면 Dear...로 시작, 기사라면 헤드라인+본문, 대화문이라면 A/B 화자 교대 등.`
+                    : `\nThe passage MUST be written in "${request.passageGenre}" format. For example: a letter should start with "Dear...", a news article should have a headline and body, a dialogue should alternate between speakers, etc.`;
+            }
         }
     }
 
-    prompt += '\n\n' + template.format;
+    // includePassage일 때 JSON format 문자열에 passage 필드 예시를 동적 삽입
+    // (템플릿 자체를 수정하지 않고, format 문자열 내 첫 번째 JSON 객체에 passage 필드를 추가)
+    let formatStr = template.format;
+    if (request.includePassage) {
+        // JSON 예시의 첫 번째 키 앞에 passage 필드 삽입 ("stem" 또는 첫 키 앞)
+        const passageField = language === 'ko'
+            ? '"passage": "지문 전문 (영어 원문)",\n    '
+            : '"passage": "Full passage text",\n    ';
+        // JSON 객체 시작 후 첫 번째 필드 앞에 삽입
+        formatStr = formatStr.replace(/\{\s*\n\s+"/, `{\n    ${passageField}"`);
+    }
+
+    prompt += '\n\n' + formatStr;
     prompt += '\n\n' + (language === 'ko' ? '중요 사항:' : 'Important:');
     template.requirements.forEach((req, idx) => {
         prompt += `\n${idx + 1}. ${req}`;
@@ -268,9 +297,15 @@ function buildPrompt(request: ProblemRequest): string {
 
     if (request.includePassage) {
         const passageReqIdx = template.requirements.length + 1;
-        prompt += language === 'ko'
-            ? `\n${passageReqIdx}. 각 문제 JSON 객체에 "passage" 필드를 추가하여 지문 전문을 포함하세요.`
-            : `\n${passageReqIdx}. Add a "passage" field to each problem JSON object containing the full passage text.`;
+        if (request.sharedPassage) {
+            prompt += language === 'ko'
+                ? `\n${passageReqIdx}. 각 문제 JSON 객체에 "passage" 필드를 추가하여 위에서 제공한 지문 전문을 그대로 포함하세요.`
+                : `\n${passageReqIdx}. Add a "passage" field to each problem JSON object containing the exact passage text provided above.`;
+        } else {
+            prompt += language === 'ko'
+                ? `\n${passageReqIdx}. 모든 문제 JSON 객체의 "passage" 필드에 동일한 지문 전문을 포함하세요.`
+                : `\n${passageReqIdx}. Include the same full passage text in the "passage" field of every problem JSON object.`;
+        }
     }
 
     return prompt;
@@ -285,6 +320,15 @@ async function generateProblemsInBackground(
 
     try {
         console.log('[Background] Starting problem generation...');
+        console.log('[Background] Request AI options:', {
+          includePassage: request.includePassage,
+          passageLength: request.passageLength,
+          passageTopic: request.passageTopic,
+          passageGenre: request.passageGenre,
+          difficultyLevel: request.difficultyLevel,
+          vocabLevel: request.vocabLevel,
+          classification: request.classification,
+        });
         const { ai, provider } = createAIClient(GoogleGenAI);
         console.log('[Background] AI provider:', provider);
         const prompt = buildPrompt(request);
@@ -417,6 +461,18 @@ async function generateProblemsInBackground(
 
         console.log(`[Background] Successfully parsed ${problems.length} problems`);
 
+        // sharedPassage가 제공된 경우, 모든 문제에 동일한 passage 적용
+        // (AI가 passage를 응답에 포함하지 않았더라도 강제 할당)
+        if (request.sharedPassage) {
+            problems.forEach((p: any) => {
+                p.passage = request.sharedPassage;
+            });
+            console.log(`[Background] Applied sharedPassage to all ${problems.length} problems`);
+        }
+
+        // 첫 번째 문제의 passage를 추출 (응답에 포함하기 위해)
+        const generatedPassage = problems[0]?.passage || null;
+
         // generated_problems 테이블에 저장
         const problemsToSave = problems.map((problem: any, index: number) => {
             const baseRecord: any = {
@@ -431,8 +487,19 @@ async function generateProblemsInBackground(
             // 문제 유형별 추가 필드 처리
             switch (request.problemType) {
                 case 'multiple_choice':
-                    baseRecord.choices = problem.choices || [];
-                    baseRecord.correct_answer_index = problem.choices?.findIndex((c: any) => c.is_correct) ?? -1;
+                    // choices 정규화: AI가 is_correct를 다른 형태로 반환할 수 있음
+                    const rawChoices = problem.choices || [];
+                    baseRecord.choices = rawChoices.map((c: any) => ({
+                        text: c.text || '',
+                        is_correct: c.is_correct === true || c.is_correct === 'true' || c.isCorrect === true,
+                    }));
+                    baseRecord.correct_answer_index = baseRecord.choices.findIndex((c: any) => c.is_correct);
+                    if (baseRecord.correct_answer_index === -1 && baseRecord.choices.length > 0) {
+                        // 정답이 없으면 첫 번째를 정답으로 설정 (fallback)
+                        baseRecord.correct_answer_index = 0;
+                        baseRecord.choices[0].is_correct = true;
+                        console.warn(`[Background] No correct answer found in choices, defaulting to index 0`);
+                    }
                     baseRecord.explanation = problem.explanation || null;
                     break;
                 case 'short_answer':
@@ -447,7 +514,7 @@ async function generateProblemsInBackground(
                     baseRecord.explanation = problem.explanation || null;
                     break;
                 case 'ox':
-                    baseRecord.correct_answer = problem.correct_answer;
+                    baseRecord.correct_answer = String(problem.correct_answer);
                     baseRecord.explanation = problem.explanation || null;
                     break;
             }
@@ -455,19 +522,37 @@ async function generateProblemsInBackground(
             return baseRecord;
         });
 
+        console.log(`[Background] Saving ${problemsToSave.length} problems. First record keys:`, 
+            problemsToSave.length > 0 ? Object.keys(problemsToSave[0]) : 'empty');
+
         const { data: insertedProblems, error: insertError } = await supabase
             .from('generated_problems')
             .insert(problemsToSave)
             .select('id');
 
         if (insertError) {
-            console.error('[Background] Failed to save problems:', insertError);
+            console.error('[Background] Failed to save problems:', JSON.stringify(insertError));
             throw insertError;
         }
 
-        console.log(`[Background] Successfully saved ${insertedProblems?.length || 0} problems to database`);
+        // insert().select('id') 결과가 비어있으면 별도 조회로 fallback
+        let finalProblems = insertedProblems || [];
+        if (finalProblems.length === 0 && problemsToSave.length > 0) {
+            console.warn('[Background] insert().select() returned empty. Trying fallback query...');
+            const { data: fallbackProblems } = await supabase
+                .from('generated_problems')
+                .select('id')
+                .eq('user_id', request.userId)
+                .eq('problem_type', request.problemType)
+                .order('created_at', { ascending: false })
+                .limit(problemsToSave.length);
+            finalProblems = fallbackProblems || [];
+            console.log(`[Background] Fallback query found ${finalProblems.length} problems`);
+        }
 
-        return { count: insertedProblems?.length || 0, problems: insertedProblems || [] };
+        console.log(`[Background] Successfully saved ${finalProblems.length} problems to database`);
+
+        return { count: finalProblems.length, problems: finalProblems, passage: generatedPassage };
 
     } catch (error: any) {
         console.error('[Background] Error in background task:', error);
@@ -545,6 +630,7 @@ Deno.serve(async (req) => {
                 message: 'Problems generated successfully',
                 count: result?.count || 0,
                 problems: result?.problems || [],
+                passage: result?.passage || null,
             }), {
                 status: 200,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }

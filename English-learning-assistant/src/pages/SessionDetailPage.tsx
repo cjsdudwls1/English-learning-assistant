@@ -13,10 +13,7 @@ export const SessionDetailPage: React.FC = () => {
   const [data, setData] = useState<ProblemItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sessionStatus, setSessionStatus] = useState<string>('pending');
-  const [imageUrl, setImageUrl] = useState<string>('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const originalImageUrlRef = React.useRef<string>('');
   const originalImageUrlsRef = React.useRef<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
@@ -30,9 +27,7 @@ export const SessionDetailPage: React.FC = () => {
     // sessionId 변경 시 이전 데이터 초기화
     setData(null);
     setError(null);
-    setImageUrl('');
     setImageUrls([]);
-    originalImageUrlRef.current = '';
     originalImageUrlsRef.current = [];
 
     (async () => {
@@ -41,7 +36,6 @@ export const SessionDetailPage: React.FC = () => {
 
         // 세션 상태 확인
         const status = await getSessionStatus(sessionId);
-        setSessionStatus(status);
 
         if (status === 'processing') {
           // 분석 중이면 analyzing 페이지로 리다이렉트
@@ -54,7 +48,7 @@ export const SessionDetailPage: React.FC = () => {
           return;
         }
 
-        if (status === 'completed') {
+        if (status === 'completed' || status === 'labeled') {
           // 분석 완료된 경우에만 문제 데이터 로드
           const items = await fetchSessionProblems(sessionId);
           setData(items);
@@ -96,15 +90,8 @@ export const SessionDetailPage: React.FC = () => {
                   .map((u: string) => u.trim());
               }
             }
-
-
-
             setImageUrls(urls);
             originalImageUrlsRef.current = [...urls];
-
-            const first = urls[0] || '';
-            setImageUrl(first);
-            originalImageUrlRef.current = first;
           }
         }
       } catch (e) {
@@ -150,7 +137,7 @@ export const SessionDetailPage: React.FC = () => {
       // 주의: blob: 미리보기 URL이 아닌 원본 서버 URL을 사용해야 함
       const currentUrls = originalImageUrlsRef.current.length > 0
         ? originalImageUrlsRef.current
-        : (imageUrls.length > 0 ? imageUrls : (imageUrl ? [imageUrl] : []));
+        : imageUrls;
 
       if (imageIndex < 0 || imageIndex >= currentUrls.length) {
         throw new Error('이미지 인덱스가 유효하지 않습니다.');
@@ -190,7 +177,6 @@ export const SessionDetailPage: React.FC = () => {
       // 회전 시 image_urls도 업데이트
       const updatedUrls = [...currentUrls];
       updatedUrls[imageIndex] = cacheBustedUrl;
-      const updatedImageUrl = updatedUrls[0] || cacheBustedUrl;
 
       // DB 업데이트(재시도 포함) - image_urls만 업데이트
       let updateError: any = null;
@@ -207,8 +193,6 @@ export const SessionDetailPage: React.FC = () => {
 
       setImageUrls(updatedUrls);
       originalImageUrlsRef.current = updatedUrls;
-      setImageUrl(updatedImageUrl);
-      originalImageUrlRef.current = updatedImageUrl;
 
     } catch (error) {
       console.error('Image rotation failed:', error);
@@ -285,21 +269,13 @@ export const SessionDetailPage: React.FC = () => {
                 </div>
               ))}
             </div>
-          ) : imageUrl ? (
-            <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 max-h-[800px] overflow-auto bg-slate-50 dark:bg-slate-900 flex items-start justify-center">
-              <ImageRotator
-                imageUrl={imageUrl || '/placeholder-image.jpg'}
-                onRotate={(blob) => handleRotate(blob, 0)}
-                className="max-w-full max-h-[800px] object-contain"
-              />
-            </div>
           ) : (
             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900 flex items-center justify-center min-h-[200px]">
               <p className="text-slate-500 dark:text-slate-400">이미지가 없습니다</p>
             </div>
           )}
 
-          {(imageUrls.length > 0 || imageUrl) && (
+          {imageUrls.length > 0 && (
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
               회전 버튼을 사용하여 각 이미지의 방향을 조정할 수 있습니다
             </p>
@@ -323,7 +299,7 @@ export const SessionDetailPage: React.FC = () => {
       <ImageModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        imageUrl={imageUrls[selectedImageIndex] || imageUrl}
+        imageUrl={imageUrls[selectedImageIndex] || ''}
         sessionId={sessionId}
       />
     </div>

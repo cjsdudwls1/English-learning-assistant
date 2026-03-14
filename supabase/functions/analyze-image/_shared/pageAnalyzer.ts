@@ -1,8 +1,9 @@
-// pageAnalyzer.ts — 단일 페이지 3-Pass 분석 오케스트레이터
-// (Pass A + Pass B) 병렬 실행 → Pass C(분류/메타데이터) 순차 실행 후 결과 병합
+// pageAnalyzer.ts — 단일 페이지 분석 오케스트레이터
+// Pass A + Pass 0 병렬 → 서버 크롭 → Pass B(크롭별) → Pass C
 
-import { buildPrompt, buildHandwritingDetectionPrompt, buildClassificationPrompt } from './prompts.ts';
-import { analyzeImagesWithFailover, detectHandwritingMarks, classifyItems } from './analysisProcessor.ts';
+import { buildPrompt, buildBoundingBoxPrompt, buildCroppedUserAnswerPrompt, buildCroppedCorrectAnswerPrompt, buildHandwritingDetectionPrompt, buildClassificationPrompt } from './prompts.ts';
+import { analyzeImagesWithFailover, detectBoundingBoxes, detectHandwritingFromCroppedImages, detectHandwritingMarks, classifyItems } from './analysisProcessor.ts';
+import { cropDualRegions } from './imageCropper.ts';
 import { StageError } from '../../_shared/errors.ts';
 import type { TaxonomyByDepthKey, TaxonomyByCode } from './validation.ts';
 
@@ -35,7 +36,7 @@ export interface PageAnalysisResult {
  * Pass B marks를 검증하고 pageItems에 병합한다.
  * - 객관식(선택지 1~5)의 경우 범위 밖이면 폐기
  * - 주관식/서술형/O/X는 자유 텍스트 허용
- * - correct_answer도 함께 병합
+ * - user_answer 및 correct_answer 모두 병합
  */
 function mergeHandwritingMarks(
   pageItems: any[],
@@ -66,7 +67,7 @@ function mergeHandwritingMarks(
     }
   }
 
-  // problem_number → mark 데이터 매핑
+  // problem_number → mark 데이터 매핑 (user_answer + correct_answer)
   const markMap = new Map<string, {
     user_answer: string | null;
     correct_answer: string | null;
@@ -75,7 +76,7 @@ function mergeHandwritingMarks(
   for (const mark of marks) {
     markMap.set(String(mark.problem_number), {
       user_answer: mark.user_answer,
-      correct_answer: mark.correct_answer || null,
+      correct_answer: (mark as any).correct_answer || null,
       user_marked_correctness: mark.user_marked_correctness || null,
     });
   }
@@ -85,10 +86,8 @@ function mergeHandwritingMarks(
     const match = markMap.get(pNum);
     if (match) {
       item.user_answer = match.user_answer;
+      item.correct_answer = match.correct_answer;
       item.user_marked_correctness = match.user_marked_correctness;
-      if (match.correct_answer) {
-        item.correct_answer = match.correct_answer;
-      }
     }
   }
 
@@ -109,12 +108,12 @@ function mergeClassifications(
 ): void {
   if (classifications.length === 0) return;
 
-  const classMap = new Map<string, { classification: any; metadata: any; correct_answer: string | null }>();
+  // Pass C는 classification + metadata만 반환 (correct_answer는 Pass B에서 설정됨)
+  const classMap = new Map<string, { classification: any; metadata: any }>();
   for (const cls of classifications) {
     classMap.set(String(cls.problem_number), {
       classification: cls.classification,
       metadata: cls.metadata,
-      correct_answer: cls.correct_answer || null,
     });
   }
 
@@ -124,12 +123,13 @@ function mergeClassifications(
     if (match) {
       item.classification = match.classification;
       item.metadata = match.metadata;
-      item.correct_answer = match.correct_answer;
+      // correct_answer는 Pass B에서 설정된 값을 보존 (Pass C는 해당 필드를 반환하지 않음)
     }
   }
 
   console.log(`[Background] Step 3 Merge C: ${classifications.length} classification(s) merged`, { sessionId });
 }
+
 
 // ─── Pass C용 itemsSummary 생성 ────────────────────────────
 
@@ -164,13 +164,13 @@ function sumUsage(base: any, ...extras: (any | undefined)[]): any {
   return result;
 }
 
-// ─── 메인 함수: 단일 페이지 3-Pass 분석 ────────────────────
+// ─── 메인 함수: 단일 페이지 4-Pass 분석 ────────────────────
 
 /**
  * 단일 페이지에 대해 3-Pass 분석을 수행한다.
  *
- * 1. (Pass A + Pass B): 병렬 실행 — 구조 추출과 필기 감지를 동시에 수행
- * 2. Pass C: Pass A 결과를 입력으로 분류/메타데이터 생성 (순차)
+ * 1. (Pass A + Pass B): 병렬 실행 — 구조 추출과 필기 감지/문제 풀이를 동시에 수행
+ * 2. Pass C: Pass A 결과 기반으로 분류/메타데이터 생성
  *
  * 각 Pass 결과를 problem_number 기준으로 병합하여 반환한다.
  * 실패 시 null을 반환하여 전체 파이프라인을 중단하지 않는다.
@@ -197,14 +197,14 @@ export async function analyzeOnePage(params: PageAnalysisParams): Promise<PageAn
       { inlineData: { data: imageData.imageBase64, mimeType: imageData.mimeType } },
     ];
 
-    // ─── Pass B 준비: 이미지 기반 필기 감지 (사용자 답안 + 실제 정답) ───
-    const handwritingPrompt = buildHandwritingDetectionPrompt(totalPages);
+    // ─── Pass 0 준비: 바운딩 박스 검출 ───
+    const bboxPrompt = buildBoundingBoxPrompt();
     const imagePart = { inlineData: { data: imageData.imageBase64, mimeType: imageData.mimeType } };
 
-    console.log(`[Background] Step 3 Pass A+B: Page ${pageNum}/${totalPages} - parallel execution start`, { sessionId, promptLength: pagePrompt.length });
+    console.log(`[Background] Step 3 Pass A+Pass0: Page ${pageNum}/${totalPages} - parallel execution start`, { sessionId });
 
-    // ─── Pass A + Pass B: 병렬 실행 ───
-    const [pageAnalysisResult, handwritingResult] = await Promise.all([
+    // ─── Pass A + Pass 0: 병렬 실행 ───
+    const [pageAnalysisResult, bboxResult] = await Promise.all([
       analyzeImagesWithFailover({
         ai,
         supabase,
@@ -215,26 +215,110 @@ export async function analyzeOnePage(params: PageAnalysisParams): Promise<PageAn
         taxonomyByCode,
         preferredModel,
       }),
-      detectHandwritingMarks({
+      detectBoundingBoxes({
         ai,
         sessionId,
-        prompt: handwritingPrompt,
+        prompt: bboxPrompt,
         imageParts: [imagePart],
       }),
     ]);
 
     const { usedModel: pageModel, result: pageResult, validatedItems: pageItems, usageMetadata: pageUsage } = pageAnalysisResult;
-
     console.log(`[Background] Step 3 Pass A: Page ${pageNum} done with ${pageModel}, items: ${pageItems.length}`, { sessionId });
+
+    // ─── Pass B: 두 종류 크롭(답안 영역 + 전체 문제) 병렬 수행 ───
+    let handwritingResult: { marks: any[]; usageMetadata?: any };
+
+    if (bboxResult && bboxResult.problems.length > 0) {
+      console.log(`[Background] Step 3 Pass 0: Page ${pageNum} done, bboxes: ${bboxResult.problems.length}`, { sessionId });
+
+      try {
+        // 두 종류 크롭 1회 수행: 답안 영역 + 전체 문제
+        const { answerAreaCrops, fullCrops } = await cropDualRegions(
+          imageData.imageBase64,
+          imageData.mimeType,
+          bboxResult.problems,
+        );
+        console.log(`[Background] Step 3 Crop: Page ${pageNum} - answer: ${answerAreaCrops.length}, full: ${fullCrops.length}`, { sessionId });
+
+        // 병렬 처리: 답안 영역 → user_answer, 전체 문제 → correct_answer
+        const [userAnswerResult, correctAnswerResult] = await Promise.all([
+          detectHandwritingFromCroppedImages({
+            ai,
+            sessionId,
+            croppedImages: answerAreaCrops,
+            buildPromptFn: buildCroppedUserAnswerPrompt,
+          }),
+          fullCrops.length > 0
+            ? detectHandwritingFromCroppedImages({
+                ai,
+                sessionId,
+                croppedImages: fullCrops,
+                buildPromptFn: buildCroppedCorrectAnswerPrompt,
+              })
+            : Promise.resolve({ marks: [], usageMetadata: undefined }),
+        ]);
+
+        // 결과 병합: user_answer + correct_answer를 problem_number로 매칭
+        const mergedMarks: any[] = userAnswerResult.marks.map(ua => {
+          const ca = correctAnswerResult.marks.find(m => m.problem_number === ua.problem_number);
+          return {
+            problem_number: ua.problem_number,
+            user_answer: ua.user_answer,
+            correct_answer: ca?.correct_answer ?? null,
+          };
+        });
+
+        // correct_answer만 있고 user_answer 결과가 없는 문제 추가
+        for (const ca of correctAnswerResult.marks) {
+          if (!mergedMarks.find(m => m.problem_number === ca.problem_number)) {
+            mergedMarks.push({
+              problem_number: ca.problem_number,
+              user_answer: null,
+              correct_answer: ca.correct_answer,
+            });
+          }
+        }
+
+        console.log(`[Background] Step 3 Pass B merged: ${mergedMarks.length} marks (user: ${userAnswerResult.marks.length}, correct: ${correctAnswerResult.marks.length})`, { sessionId });
+
+        handwritingResult = {
+          marks: mergedMarks,
+          usageMetadata: userAnswerResult.usageMetadata || correctAnswerResult.usageMetadata,
+        };
+      } catch (cropError) {
+        console.error(`[Background] Step 3 Crop failed, falling back to full image:`, (cropError as Error).message, { sessionId });
+        const handwritingPrompt = buildHandwritingDetectionPrompt(totalPages);
+        handwritingResult = await detectHandwritingMarks({
+          ai,
+          sessionId,
+          prompt: handwritingPrompt,
+          imageParts: [imagePart],
+        });
+      }
+    } else {
+      // 바운딩 박스 실패 → 기존 코드 실행 방식으로 폴백
+      console.log(`[Background] Step 3 Pass 0: No bboxes found, falling back to full image analysis`, { sessionId });
+      const handwritingPrompt = buildHandwritingDetectionPrompt(totalPages);
+      handwritingResult = await detectHandwritingMarks({
+        ai,
+        sessionId,
+        prompt: handwritingPrompt,
+        imageParts: [imagePart],
+      });
+    }
+
     console.log(`[Background] Step 3 Pass B: Page ${pageNum} done, marks: ${handwritingResult.marks.length}`, { sessionId });
 
-    // ─── Pass C: 분류/메타데이터 (Pass A 결과 필요, 순차 실행) ───
+    // ─── Pass C: Pass A 텍스트 기반 분류 ───
     const itemsSummary = buildItemsSummary(pageItems);
-    const classificationPrompt = buildClassificationPrompt(taxonomyData, itemsSummary);
+    const classificationPrompt = buildClassificationPrompt(taxonomyData, itemsSummary, userLanguage);
     const hasVisualItems = pageItems.some((it: any) => it.visual_context);
     const classifyImageParts = hasVisualItems
       ? [{ inlineData: { data: imageData.imageBase64, mimeType: imageData.mimeType } }]
       : undefined;
+
+    console.log(`[Background] Step 3 Pass C: Page ${pageNum} - execution start`, { sessionId });
 
     const classificationResult = await classifyItems({
       ai,
@@ -243,17 +327,19 @@ export async function analyzeOnePage(params: PageAnalysisParams): Promise<PageAn
       imageParts: classifyImageParts,
     });
 
+    console.log(`[Background] Step 3 Pass C: Page ${pageNum} done, classifications: ${classificationResult.classifications.length}`, { sessionId });
+
     // ─── 결과 병합 ───
-    // Pass A의 user 필드를 null로 초기화 (안전 장치)
     for (const item of pageItems) {
       item.user_answer = null;
       item.user_marked_correctness = null;
+      item.correct_answer = null;
     }
 
     mergeHandwritingMarks(pageItems, handwritingResult.marks, sessionId);
     mergeClassifications(pageItems, classificationResult.classifications, sessionId);
 
-    // 토큰 사용량 합산 (Pass A + B + C)
+    // 토큰 사용량 합산 (Pass A + 0 + B + C)
     const combinedUsage = sumUsage(pageUsage, handwritingResult.usageMetadata, classificationResult.usageMetadata);
 
     return { pageItems, pageResult, pageModel, pageUsage: combinedUsage };

@@ -98,12 +98,14 @@ export function useProblemGenerationState({
   }, [resetGeneration]);
 
   const handleGenerateWithOptions = useCallback((options: AIGenerationOptions) => {
+    console.log('[handleGenerateWithOptions] Setting aiOptions:', JSON.stringify(options));
     setAiOptions(options);
-    // aiOptions state가 업데이트된 후 다음 렌더링에서 useProblemGeneration이 새 aiOptions를 반영
-    // 직접 생성 호출은 setTimeout으로 다음 tick에서 실행
+    // React 상태 업데이트가 반영될 때까지 충분히 대기 후 생성 실행
+    // (setAiOptions → 다음 렌더링 → useProblemGeneration이 새 aiOptions 반영 → ref 업데이트)
     setTimeout(() => {
+      console.log('[handleGenerateWithOptions] Calling baseHandleGenerateProblems');
       baseHandleGenerateProblems();
-    }, 0);
+    }, 100);
   }, [baseHandleGenerateProblems]);
 
   const handleLoadExistingProblems = useCallback(async () => {

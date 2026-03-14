@@ -270,3 +270,18 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
   if (sessionUpdateError) throw sessionUpdateError;
 }
 
+// 선택된 문제 삭제 (RLS가 소유자 검증 수행, labels는 CASCADE 삭제)
+export async function deleteProblems(problemIds: string[]): Promise<number> {
+  if (!problemIds || problemIds.length === 0) return 0;
+
+  const { data, error } = await supabase
+    .from('problems')
+    .delete()
+    .in('id', problemIds)
+    .select('id');
+
+  if (error) throw error;
+
+  return data?.length ?? 0;
+}
+

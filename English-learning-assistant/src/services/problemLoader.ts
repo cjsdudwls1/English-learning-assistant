@@ -12,6 +12,7 @@ export interface AIGenerationOptions {
   passageGenre?: string;
   difficultyLevel?: number;
   vocabLevel?: number;
+  sharedPassage?: string;
 }
 
 export interface ProblemLoadOptions {

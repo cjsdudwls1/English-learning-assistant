@@ -35,6 +35,7 @@ export function createVertexAIClient(config: VertexAIConfig): AIClient {
                 contents: unknown;
                 generationConfig: GenerationConfig;
                 safetySettings?: Array<{ category: string; threshold: string }>;
+                tools?: unknown[];
             }): Promise<ModelResponse> => {
                 const accessToken = await getAccessToken(credentials);
 
@@ -53,6 +54,10 @@ export function createVertexAIClient(config: VertexAIConfig): AIClient {
 
                 if (params.safetySettings && params.safetySettings.length > 0) {
                     body.safetySettings = params.safetySettings;
+                }
+
+                if (params.tools && params.tools.length > 0) {
+                    body.tools = params.tools;
                 }
 
                 const response = await fetch(url, {

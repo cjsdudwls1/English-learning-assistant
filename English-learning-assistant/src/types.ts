@@ -85,6 +85,7 @@ export interface SessionWithProblems {
   id: string;
   created_at: string;
   image_url: string;
+  image_urls?: string[];
   problem_count: number;
   correct_count: number;
   incorrect_count: number;

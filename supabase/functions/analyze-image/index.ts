@@ -23,9 +23,7 @@ import { saveProblems } from './_shared/problemSaver.ts'
 // Labels 생성 모듈
 import { buildLabelsPayload } from './_shared/labelProcessor.ts'
 
-// 메타데이터 생성 모듈
-import { generateBatchMetadata, type MetadataInput } from './_shared/metadataGenerator.ts'
-import { buildStemText } from './_shared/problemProcessor.ts'
+
 
 // 토큰 사용량 로깅 모듈
 import { logAiUsage } from '../_shared/usageLogger.ts'
@@ -238,73 +236,73 @@ serve(async (req) => {
 
         console.log(`[Background] Step 5 completed: AI analysis results saved (pending user review)`, { sessionId: createdSessionId });
 
-        // Step 6: 메타데이터 생성
-        console.log(`[Background] Step 6: Generate problem metadata...`, { sessionId: createdSessionId });
+        // Step 6: 메타데이터 저장 (Pass C에서 이미 생성된 데이터 활용, AI 호출 불필요)
+        console.log(`[Background] Step 6: Saving problem metadata from Pass C results...`, { sessionId: createdSessionId });
 
         if (problems.length > 0) {
-          const problemItemMap = new Map<number, any>();
-          for (let i = 0; i < validatedItems.length; i++) {
-            problemItemMap.set(i, validatedItems[i]);
-          }
-
-          const problemLabelsMap = new Map<string, any>();
-          for (const label of validLabelsPayload) {
-            problemLabelsMap.set(label.problem_id, label);
-          }
-
-          const batchInputs: MetadataInput[] = [];
-          const problemTypeById = new Map<string, string>();
+          let metaSuccessCount = 0;
+          let metaErrorCount = 0;
 
           for (const p of problems) {
-            const originalItem = problemItemMap.get(p.index_in_image);
+            const originalItem = validatedItems[p.index_in_image];
             if (!originalItem) continue;
 
-            const label = problemLabelsMap.get(p.id);
-            const stem = String(buildStemText(originalItem) || '').trim();
-            if (!stem) continue;
+            const meta = originalItem.metadata || {};
+            const cls = originalItem.classification || {};
 
-            const classification = label?.classification || {};
+            // problem_type 생성
             const typeParts = [
-              classification.depth1,
-              classification.depth2,
-              classification.depth3,
-              classification.depth4,
+              cls.depth1, cls.depth2, cls.depth3, cls.depth4,
             ].filter((v: any) => typeof v === 'string' && v.trim().length > 0) as string[];
             const problemType = typeParts.length > 0
               ? typeParts.join(' - ')
               : (userLanguage === 'ko' ? '분류 없음' : 'Unclassified');
 
-            const choices = (originalItem.choices || []).map((c: any) => {
-              if (typeof c === 'string') return c;
-              return c?.text || '';
-            }).join('\n');
+            // 난이도 정규화
+            let difficulty = meta.difficulty;
+            if (userLanguage === 'en') {
+              const valid = ['high', 'medium', 'low'];
+              if (!valid.includes(difficulty || '')) {
+                if (difficulty === '상') difficulty = 'high';
+                else if (difficulty === '중') difficulty = 'medium';
+                else if (difficulty === '하') difficulty = 'low';
+                else difficulty = 'medium';
+              }
+            } else {
+              const valid = ['상', '중', '하'];
+              if (!valid.includes(difficulty || '')) {
+                if (difficulty === 'high') difficulty = '상';
+                else if (difficulty === 'medium') difficulty = '중';
+                else if (difficulty === 'low') difficulty = '하';
+                else difficulty = '중';
+              }
+            }
 
-            problemTypeById.set(p.id, problemType);
-            batchInputs.push({
-              problem_id: p.id,
-              problem_type: problemType,
-              stem,
-              choices,
-              user_answer: originalItem.user_answer || '',
-              is_correct: label?.is_correct ?? null,
-            });
+            // 단어 난이도 1-9
+            const wdNum = Number(meta.word_difficulty);
+            const wordDifficulty = (!isNaN(wdNum) && wdNum >= 1 && wdNum <= 9) ? Math.round(wdNum) : 5;
+
+            const { error: updateError } = await supabase
+              .from('problems')
+              .update({
+                problem_metadata: {
+                  difficulty,
+                  word_difficulty: wordDifficulty,
+                  problem_type: problemType,
+                  analysis: meta.analysis || '',
+                }
+              })
+              .eq('id', p.id);
+
+            if (updateError) {
+              console.error(`[Background] Step 6: Error updating metadata for problem ${p.id}:`, updateError, { sessionId: createdSessionId });
+              metaErrorCount++;
+            } else {
+              metaSuccessCount++;
+            }
           }
 
-          try {
-            await generateBatchMetadata({
-              ai,
-              supabase,
-              batchInputs,
-              problemTypeById,
-              userLanguage,
-              sessionId: createdSessionId!,
-            });
-          } catch (metaErr: any) {
-            console.warn(`[Background] Step 6: Metadata generation failed (non-critical, continuing):`, {
-              sessionId: createdSessionId,
-              error: metaErr?.message || String(metaErr),
-            });
-          }
+          console.log(`[Background] Step 6 completed: Metadata saved for ${metaSuccessCount}/${problems.length} problems (${metaErrorCount} errors)`, { sessionId: createdSessionId });
         }
 
         // Step 7: 세션 완료 업데이트

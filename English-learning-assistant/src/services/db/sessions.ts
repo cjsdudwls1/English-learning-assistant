@@ -43,6 +43,7 @@ export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
         id: session.id,
         created_at: session.created_at,
         image_url: session.image_urls?.[0] || '',
+        image_urls: session.image_urls || [],
         status: session.status,
         ...stats,
       };
@@ -143,6 +144,7 @@ export async function fetchSessionsByStatus(status: string): Promise<SessionWith
       id: session.id,
       created_at: session.created_at,
       image_url: session.image_urls?.[0] || '',
+      image_urls: session.image_urls || [],
       ...stats,
     };
   });
@@ -188,6 +190,7 @@ export async function fetchAnalyzingSessions(): Promise<SessionWithProblems[]> {
         id: session.id,
         created_at: session.created_at,
         image_url: session.image_urls?.[0] || '',
+        image_urls: session.image_urls || [],
         problem_count,
         correct_count: 0,
         incorrect_count: 0,
@@ -262,6 +265,7 @@ export async function fetchFailedSessions(): Promise<SessionWithProblems[]> {
     id: session.id,
     created_at: session.created_at,
     image_url: session.image_urls?.[0] || '',
+    image_urls: session.image_urls || [],
     status: session.status,
     failure_stage: session.failure_stage ?? null,
     failure_message: session.failure_message ?? null,
@@ -326,6 +330,7 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
         id: session.id,
         created_at: session.created_at,
         image_url: session.image_urls?.[0] || '',
+        image_urls: session.image_urls || [],
         analysis_model: session.analysis_model ?? null,
         models_used: session.models_used || null,
         problem_count,

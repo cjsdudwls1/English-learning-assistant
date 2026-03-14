@@ -230,6 +230,7 @@ export const StatsPage: React.FC = () => {
           key={session.id}
           sessionId={session.id}
           imageUrl={session.image_url}
+          imageUrls={session.image_urls}
           onDelete={handleDeleteSession}
           analysisModel={session.analysis_model}
         />
@@ -246,6 +247,7 @@ export const StatsPage: React.FC = () => {
           key={session.id}
           sessionId={session.id}
           imageUrl={session.image_url}
+          imageUrls={session.image_urls}
           analysisModel={session.analysis_model}
           modelsUsed={session.models_used}
           onSave={statsData.handleLabelingComplete}
