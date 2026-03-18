@@ -72,12 +72,19 @@ export function parseAnalyzeRequest(requestData: any): ParsedRequest {
     if (requestData.imageBase64) requestData.imageBase64 = null;
   }
 
-  if (imageList.length === 0 || !userId) {
+  if (!userId) {
+    console.error('Missing required field: userId');
+    throw new Error('Missing required field: userId');
+  }
+
+  // mode: analyze에서는 원본 이미지 없이 크롭된 이미지만 전달되므로 imageList가 비어도 OK
+  const mode = requestData?.mode as string | undefined;
+  if (imageList.length === 0 && mode !== 'analyze') {
     console.error('Missing required fields:', {
       imageCount: imageList.length,
       hasUserId: !!userId,
     });
-    throw new Error('Missing required fields: images (or imageBase64), userId');
+    throw new Error('Missing required fields: images (or imageBase64)');
   }
 
   const MAX_IMAGES = 3;

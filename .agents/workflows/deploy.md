@@ -1,5 +1,5 @@
 ---
-description: Supabase Edge Function 및 Netlify 프론트엔드 배포 절차
+description: Supabase Edge Function 배포 절차
 ---
 
 # 배포 절차

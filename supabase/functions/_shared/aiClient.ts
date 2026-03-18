@@ -29,13 +29,13 @@ export interface GenerationConfig {
     temperature: number;
 }
 
-// AI 클라이언트 인터페이스
+// AI 클라이언트 인터페이스 (공식 @google/genai SDK 호환)
 export interface AIClient {
     models: {
         generateContent: (params: {
             model: string;
             contents: unknown;
-            generationConfig: GenerationConfig;
+            config?: Record<string, unknown>;
             safetySettings?: Array<{ category: string; threshold: string }>;
             tools?: unknown[];
         }) => Promise<ModelResponse>;
@@ -61,6 +61,7 @@ export interface GenerateWithRetryParams {
     temperature: number;
     maxOutputTokens?: number; // 응답 truncation 방지용
     tools?: unknown[]; // Gemini 도구 (코드 실행 등)
+    responseJsonSchema?: unknown; // JSON 응답 구조 강제용 스키마 (공식 SDK: config.responseJsonSchema)
 }
 
 // 재시도 결과
@@ -72,7 +73,7 @@ export interface GenerateWithRetryResult {
 
 // 재시도 로직이 포함된 모델 생성 함수
 export async function generateWithRetry(params: GenerateWithRetryParams): Promise<GenerateWithRetryResult> {
-    const { ai, model, contents, sessionId, maxRetries, baseDelayMs, temperature, maxOutputTokens, tools } = params;
+    const { ai, model, contents, sessionId, maxRetries, baseDelayMs, temperature, maxOutputTokens, tools, responseJsonSchema } = params;
     let attempt = 0;
     let lastParsed: ReturnType<typeof parseModelError> | null = null;
     let lastErr: unknown = null;
@@ -81,16 +82,25 @@ export async function generateWithRetry(params: GenerateWithRetryParams): Promis
         try {
             console.log(`[Background] Model call attempt ${attempt + 1}/${maxRetries} (model=${model})...`, { sessionId });
 
+            // 공식 SDK 스타일: config 객체 구성
+            const config: Record<string, unknown> = {
+                temperature,
+                ...(maxOutputTokens ? { maxOutputTokens } : {}),
+            };
+            // 코드 실행 사용 시 responseMimeType 제거 (멀티파트 응답과 충돌)
+            if (!tools) {
+                config.responseMimeType = 'application/json';
+            }
+            // responseJsonSchema가 있으면 구조 강제 (응답이 반드시 스키마에 맞음)
+            if (responseJsonSchema) {
+                config.responseJsonSchema = responseJsonSchema;
+            }
+
             const response = await Promise.race([
                 ai.models.generateContent({
                     model,
                     contents,
-                    generationConfig: {
-                        // 코드 실행 사용 시 responseMimeType 제거 (멀티파트 응답과 충돌)
-                        ...(tools ? {} : { responseMimeType: "application/json" }),
-                        temperature,
-                        ...(maxOutputTokens ? { maxOutputTokens } : {}),
-                    },
+                    config,
                     // RECITATION 및 기타 안전 필터로 인한 차단 방지
                     safetySettings: [
                         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },

@@ -164,7 +164,191 @@ function sumUsage(base: any, ...extras: (any | undefined)[]): any {
   return result;
 }
 
-// ─── 메인 함수: 단일 페이지 4-Pass 분석 ────────────────────
+// ─── 분리 함수 1: 구조 + 좌표 추출 전용 (mode: extract) ─────
+
+export interface ExtractResult {
+  pageItems: any[];
+  pageResult: any;
+  pageModel: string;
+  pageUsage: any;
+  bboxes: any[] | null;
+}
+
+/**
+ * Pass A (구조 추출) + Pass 0 (좌표 추출)만 수행하고 결과를 반환한다.
+ * 크롭은 하지 않으므로 CPU 부담이 없다.
+ */
+export async function extractStructureAndBboxes(params: PageAnalysisParams): Promise<ExtractResult | null> {
+  const {
+    ai, supabase, sessionId,
+    imageData, pageNum, totalPages,
+    taxonomyData, taxonomyByDepthKey, taxonomyByCode,
+    userLanguage, preferredModel,
+  } = params;
+
+  if (!imageData?.imageBase64 || imageData.imageBase64.length === 0) {
+    console.warn(`[Extract] Page ${pageNum} has no image data, skipping`, { sessionId });
+    return null;
+  }
+
+  try {
+    const pagePrompt = buildPrompt(taxonomyData, userLanguage, 1);
+    const pageParts: any[] = [
+      { text: pagePrompt },
+      { text: `Page ${pageNum} of ${totalPages}. Extract all printed text and structure from this exam page image.` },
+      { inlineData: { data: imageData.imageBase64, mimeType: imageData.mimeType } },
+    ];
+
+    const bboxPrompt = buildBoundingBoxPrompt();
+    const imagePart = { inlineData: { data: imageData.imageBase64, mimeType: imageData.mimeType } };
+
+    console.log(`[Extract] Pass A+Pass0: Page ${pageNum}/${totalPages} - parallel execution start`, { sessionId });
+
+    const [pageAnalysisResult, bboxResult] = await Promise.all([
+      analyzeImagesWithFailover({
+        ai, supabase, sessionId,
+        parts: pageParts,
+        imageCount: 1,
+        taxonomyByDepthKey, taxonomyByCode, preferredModel,
+      }),
+      detectBoundingBoxes({
+        ai, sessionId,
+        prompt: bboxPrompt,
+        imageParts: [imagePart],
+      }),
+    ]);
+
+    const { usedModel: pageModel, result: pageResult, validatedItems: pageItems, usageMetadata: pageUsage } = pageAnalysisResult;
+    console.log(`[Extract] Pass A: Page ${pageNum} done with ${pageModel}, items: ${pageItems.length}`, { sessionId });
+    console.log(`[Extract] Pass 0: Page ${pageNum} done, bboxes: ${bboxResult?.problems?.length ?? 0}`, { sessionId });
+
+    return {
+      pageItems,
+      pageResult,
+      pageModel,
+      pageUsage,
+      bboxes: bboxResult?.problems ?? null,
+    };
+  } catch (err: any) {
+    console.error(`[Extract] Page ${pageNum} FAILED`, {
+      sessionId,
+      error: err?.message || String(err),
+    });
+    return null;
+  }
+}
+
+// ─── 분리 함수 2: 크롭된 이미지로 Pass B + C (mode: analyze) ──
+
+export interface AnalyzeWithCropsParams {
+  ai: any;
+  supabase: any;
+  sessionId: string;
+  pageItems: any[];
+  answerAreaCrops: Array<{ problem_number: string; croppedBase64: string; mimeType: string }>;
+  fullCrops: Array<{ problem_number: string; croppedBase64: string; mimeType: string }>;
+  taxonomyData: any;
+  userLanguage: 'ko' | 'en';
+  imageBase64ForClassification?: string;
+  imageMimeType?: string;
+}
+
+/**
+ * 클라이언트에서 크롭된 이미지를 받아 Pass B (필기 인식) + Pass C (분류) 수행.
+ * 이미지 크롭을 하지 않으므로 CPU 부담이 없다.
+ */
+export async function analyzeWithCroppedImages(params: AnalyzeWithCropsParams): Promise<{
+  marks: any[];
+  classifications: any[];
+  usageMetadata: any;
+} | null> {
+  const {
+    ai, sessionId,
+    pageItems, answerAreaCrops, fullCrops,
+    taxonomyData, userLanguage,
+    imageBase64ForClassification, imageMimeType,
+  } = params;
+
+  try {
+    // ─── Pass B: 크롭된 이미지별 필기 인식 (병렬) ───
+    console.log(`[Analyze] Pass B: Processing ${answerAreaCrops.length} answer + ${fullCrops.length} full crops`, { sessionId });
+
+    const [userAnswerResult, correctAnswerResult] = await Promise.all([
+      detectHandwritingFromCroppedImages({
+        ai, sessionId,
+        croppedImages: answerAreaCrops,
+        buildPromptFn: buildCroppedUserAnswerPrompt,
+      }),
+      fullCrops.length > 0
+        ? detectHandwritingFromCroppedImages({
+            ai, sessionId,
+            croppedImages: fullCrops,
+            buildPromptFn: buildCroppedCorrectAnswerPrompt,
+          })
+        : Promise.resolve({ marks: [], usageMetadata: undefined }),
+    ]);
+
+    // user_answer + correct_answer 병합
+    const mergedMarks: any[] = userAnswerResult.marks.map(ua => {
+      const ca = correctAnswerResult.marks.find(m => m.problem_number === ua.problem_number);
+      return {
+        problem_number: ua.problem_number,
+        user_answer: ua.user_answer,
+        correct_answer: ca?.correct_answer ?? null,
+      };
+    });
+
+    for (const ca of correctAnswerResult.marks) {
+      if (!mergedMarks.find(m => m.problem_number === ca.problem_number)) {
+        mergedMarks.push({
+          problem_number: ca.problem_number,
+          user_answer: null,
+          correct_answer: ca.correct_answer,
+        });
+      }
+    }
+
+    console.log(`[Analyze] Pass B merged: ${mergedMarks.length} marks`, { sessionId });
+
+    // ─── Pass C: 분류/메타데이터 추론 ───
+    const itemsSummary = buildItemsSummary(pageItems);
+    const classificationPrompt = buildClassificationPrompt(taxonomyData, itemsSummary, userLanguage);
+    const hasVisualItems = pageItems.some((it: any) => it.visual_context);
+    const classifyImageParts = hasVisualItems && imageBase64ForClassification
+      ? [{ inlineData: { data: imageBase64ForClassification, mimeType: imageMimeType || 'image/jpeg' } }]
+      : undefined;
+
+    console.log(`[Analyze] Pass C: Classifying ${pageItems.length} items`, { sessionId });
+
+    const classificationResult = await classifyItems({
+      ai, sessionId,
+      prompt: classificationPrompt,
+      imageParts: classifyImageParts,
+    });
+
+    console.log(`[Analyze] Pass C done: ${classificationResult.classifications.length} classifications`, { sessionId });
+
+    const combinedUsage = sumUsage(
+      userAnswerResult.usageMetadata,
+      correctAnswerResult.usageMetadata,
+      classificationResult.usageMetadata,
+    );
+
+    return {
+      marks: mergedMarks,
+      classifications: classificationResult.classifications,
+      usageMetadata: combinedUsage,
+    };
+  } catch (err: any) {
+    console.error(`[Analyze] Pass B+C FAILED`, {
+      sessionId,
+      error: err?.message || String(err),
+    });
+    return null;
+  }
+}
+
+// ─── 메인 함수: 단일 페이지 4-Pass 분석 (하위 호환) ─────────
 
 /**
  * 단일 페이지에 대해 3-Pass 분석을 수행한다.

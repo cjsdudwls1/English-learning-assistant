@@ -626,15 +626,13 @@ const App: React.FC = () => {
         return;
       }
 
-      console.log(`Starting upload and analysis for ${imageFiles.length} images...`);
+      console.log(`Starting 2-phase analysis for ${imageFiles.length} images...`);
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`;
       const session = await supabase.auth.getSession();
       const accessToken = session.data.session?.access_token;
 
-      // accessToken 검증
       if (!accessToken) {
         const errorMsg = language === 'ko' ? '인증 토큰이 없습니다. 다시 로그인해주세요.' : 'Authentication token is missing. Please login again.';
-        console.error('Access token is missing. Session:', session);
         setError(errorMsg);
         setIsLoading(false);
         setStatus('error');
@@ -644,7 +642,6 @@ const App: React.FC = () => {
 
       if (!userData.user?.id) {
         const errorMsg = language === 'ko' ? '사용자 ID를 가져올 수 없습니다. 다시 로그인해주세요.' : 'Cannot get user ID. Please login again.';
-        console.error('User ID is missing. UserData:', userData);
         setError(errorMsg);
         setIsLoading(false);
         setStatus('error');
@@ -657,20 +654,11 @@ const App: React.FC = () => {
       const imagesArray = await Promise.all(
         imageFiles.map(async (imageFile, index) => {
           try {
-            console.log(`[${index}] Processing file:`, imageFile.file.name, 'Size:', imageFile.file.size, 'Type:', imageFile.file.type);
             const { base64, mimeType } = await fileToBase64(imageFile.file);
-            console.log(`[${index}] File converted to base64:`, imageFile.file.name, 'Base64 length:', base64?.length, 'MimeType:', mimeType);
-
             if (!base64 || typeof base64 !== 'string' || !base64.trim()) {
-              console.error(`[${index}] Invalid base64:`, imageFile.file.name);
               throw new Error(`Invalid base64 for file: ${imageFile.file.name}`);
             }
-
-            return {
-              imageBase64: base64,
-              mimeType: mimeType || 'image/jpeg',
-              fileName: imageFile.file.name,
-            };
+            return { imageBase64: base64, mimeType: mimeType || 'image/jpeg', fileName: imageFile.file.name };
           } catch (convertError) {
             console.error(`[${index}] Failed to convert file:`, imageFile.file.name, convertError);
             throw convertError;
@@ -678,42 +666,161 @@ const App: React.FC = () => {
         })
       );
 
-      // ✅ Edge Function(analyze-image)은 멀티 이미지 입력(images[])을 지원
-      // => 여러 이미지를 한 번에 전송해서 "한 세션"으로 분석(문항 연속성 유지)
-      console.log(`Sending analyze-image request with ${imagesArray.length} image(s)...`);
+      // ═══════════════════════════════════════════════════════
+      // PHASE 1: Extract (구조 + 좌표 추출)
+      // ═══════════════════════════════════════════════════════
+      console.log(`[Phase 1] Sending extract request with ${imagesArray.length} image(s)...`);
 
-      const response = await fetch(functionUrl, {
+      const extractResponse = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
+          mode: 'extract',
           images: imagesArray,
           userId: userData.user.id,
           language: currentLanguage,
         }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Edge Function error:', response.status, errorText);
-        throw new Error(`Edge Function error: ${response.status} - ${errorText}`);
+      if (!extractResponse.ok) {
+        const errorText = await extractResponse.text();
+        throw new Error(`Extract failed: ${extractResponse.status} - ${errorText}`);
       }
 
-      const result = await response.json();
-      const createdSessionId = result?.sessionId ? String(result.sessionId) : '';
-      if (!createdSessionId) {
-        console.warn('Unexpected analyze-image response:', result);
-        throw new Error(language === 'ko' ? '세션 생성에 실패했습니다. (sessionId 없음)' : 'Failed to create session. (Missing sessionId)');
+      const extractResult = await extractResponse.json();
+      const createdSessionId = extractResult?.sessionId;
+      const pages = extractResult?.pages;
+
+      if (!createdSessionId || !pages || !Array.isArray(pages)) {
+        throw new Error(language === 'ko' ? '구조 추출 결과가 유효하지 않습니다.' : 'Invalid extract result.');
       }
 
-      console.log('Session created:', { sessionId: createdSessionId, imageCount: imagesArray.length });
+      console.log(`[Phase 1] Extract done. Session: ${createdSessionId}, Pages: ${pages.length}`);
+
+      // ═══════════════════════════════════════════════════════
+      // PHASE 1.5: Client-Side Canvas Crop
+      // ═══════════════════════════════════════════════════════
+      console.log(`[Phase 1.5] Starting client-side canvas crop...`);
+
+      const { cropAllRegions } = await import('./utils/canvasCropper');
+
+      const pagesWithCrops: any[] = [];
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        const imageData = imagesArray[i];
+
+        if (!page.bboxes || page.bboxes.length === 0) {
+          console.warn(`[Phase 1.5] Page ${page.pageNum}: No bboxes, skipping crop`);
+          pagesWithCrops.push({
+            ...page,
+            answerAreaCrops: [],
+            fullCrops: [],
+          });
+          continue;
+        }
+
+        try {
+          const dataUri = `data:${imageData.mimeType};base64,${imageData.imageBase64}`;
+          const { answerAreaCrops, fullCrops } = await cropAllRegions(dataUri, page.bboxes);
+
+          console.log(`[Phase 1.5] Page ${page.pageNum}: ${answerAreaCrops.length} answer + ${fullCrops.length} full crops`);
+
+          pagesWithCrops.push({
+            ...page,
+            answerAreaCrops,
+            fullCrops,
+          });
+        } catch (cropError) {
+          console.error(`[Phase 1.5] Page ${page.pageNum}: Crop failed`, cropError);
+          pagesWithCrops.push({
+            ...page,
+            answerAreaCrops: [],
+            fullCrops: [],
+          });
+        }
+      }
+
+      console.log(`[Phase 1.5] Client-side crop completed for ${pagesWithCrops.length} pages`);
+
+      // ═══════════════════════════════════════════════════════
+      // PHASE 2: Detect (크롭된 이미지로 필기 인식 — analyze-detect)
+      // ═══════════════════════════════════════════════════════
+      console.log(`[Phase 2] Sending detect request to analyze-detect...`);
+
+      const detectUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-detect`;
+      const detectResponse = await fetch(detectUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          sessionId: createdSessionId,
+          pages: pagesWithCrops.map(p => ({
+            answerAreaCrops: p.answerAreaCrops,
+            fullCrops: p.fullCrops,
+          })),
+        }),
+      });
+
+      if (!detectResponse.ok) {
+        const errorText = await detectResponse.text();
+        throw new Error(`Detect failed: ${detectResponse.status} - ${errorText}`);
+      }
+
+      const detectResult = await detectResponse.json();
+      console.log(`[Phase 2] Detect done. Merging marks into pageItems...`);
+
+      // marks를 pageItems에 병합
+      const pagesWithMarks = pagesWithCrops.map((page, i) => {
+        const detectedMarks = detectResult.pages?.[i]?.marks || [];
+        const mergedItems = (page.pageItems || []).map((item: any) => {
+          const mark = detectedMarks.find((m: any) => m.problem_number === item.problem_number);
+          return {
+            ...item,
+            user_answer: mark?.user_answer ?? null,
+            correct_answer: mark?.correct_answer ?? null,
+          };
+        });
+        return {
+          pageItems: mergedItems,
+          pageModel: page.pageModel || '',
+        };
+      });
+
+      // ═══════════════════════════════════════════════════════
+      // PHASE 3: Classify (분류 + DB 저장 — analyze-classify, 백그라운드)
+      // ═══════════════════════════════════════════════════════
+      console.log(`[Phase 3] Sending classify request to analyze-classify...`);
+
+      const classifyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-classify`;
+      const classifyResponse = await fetch(classifyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          sessionId: createdSessionId,
+          userId: userData.user.id,
+          language: currentLanguage,
+          pages: pagesWithMarks,
+        }),
+      });
+
+      if (!classifyResponse.ok) {
+        const errorText = await classifyResponse.text();
+        throw new Error(`Classify failed: ${classifyResponse.status} - ${errorText}`);
+      }
+
+      const classifyResult = await classifyResponse.json();
+      console.log(`[Phase 3] Classify request accepted. Session: ${classifyResult?.sessionId}`);
 
       setIsLoading(false);
       setStatus('done');
-
-      // 분석 완료 후 이미지 목록 초기화 (다음 분석을 위해)
       setImageFiles([]);
 
       const uploadMessage =
@@ -722,7 +829,6 @@ const App: React.FC = () => {
           : `${imagesArray.length} image(s) uploaded. AI analysis is in progress. (Session: ${createdSessionId}) You can leave the app.`;
       alert(uploadMessage);
 
-      // React Router를 사용하여 페이지 이동 (전체 리로드 없이)
       navigate('/stats');
     } catch (err) {
       console.error(err);
@@ -734,6 +840,7 @@ const App: React.FC = () => {
       setStatus('error');
     }
   }, [imageFiles, language]);
+
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const MAX_IMAGES = 3; // wall time 제한 내에서 안정적으로 처리 가능한 수

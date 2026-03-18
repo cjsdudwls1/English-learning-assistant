@@ -532,6 +532,7 @@ export interface ClassifyItemsParams {
 /**
  * Pass C: 텍스트만으로 문제를 분류하고 메타데이터를 생성합니다.
  * 이미지를 사용하지 않으므로 정답 추론에 의한 user_answer 오염이 원천 차단됩니다.
+ * responseJsonSchema를 적용하여 응답 구조를 강제합니다.
  * 실패해도 빈 배열을 반환하여 전체 파이프라인에 영향을 주지 않습니다.
  */
 export async function classifyItems(params: ClassifyItemsParams): Promise<{
@@ -539,6 +540,41 @@ export async function classifyItems(params: ClassifyItemsParams): Promise<{
     usageMetadata?: UsageMetadata;
 }> {
     const { ai, sessionId, prompt, imageParts } = params;
+
+    // responseJsonSchema: 모델이 반드시 이 구조로 응답하도록 강제
+    const CLASSIFICATION_SCHEMA = {
+        type: "object",
+        properties: {
+            classifications: {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        problem_number: { type: "string" },
+                        classification: {
+                            type: "object",
+                            properties: {
+                                depth1: { type: "string" },
+                                depth2: { type: "string" },
+                                depth3: { type: "string" },
+                                depth4: { type: "string" },
+                            },
+                        },
+                        metadata: {
+                            type: "object",
+                            properties: {
+                                difficulty: { type: "string" },
+                                word_difficulty: { type: "number" },
+                                analysis: { type: "string" },
+                            },
+                        },
+                    },
+                    required: ["problem_number", "classification", "metadata"],
+                },
+            },
+        },
+        required: ["classifications"],
+    };
 
     // MODEL_SEQUENCE를 따라 failover
     const CLASSIFICATION_MODELS = [...MODEL_SEQUENCE] as string[];
@@ -561,12 +597,21 @@ export async function classifyItems(params: ClassifyItemsParams): Promise<{
             maxRetries: 1,
             baseDelayMs: 2000,
             temperature: 0.0,
+            responseJsonSchema: CLASSIFICATION_SCHEMA,
         });
 
         const responseText = await extractTextFromResponse(attempt.response, classificationModel);
-        const parsed = parseJsonResponse(responseText, classificationModel) as { classifications?: ClassificationResult[] };
+        const parsed = parseJsonResponse(responseText, classificationModel) as any;
 
-        if (!parsed || !Array.isArray(parsed.classifications)) {
+        // 2중 안전장치: {classifications: [...]} 또는 배열 직접 반환 모두 허용
+        let classifications: ClassificationResult[] = [];
+        if (parsed && Array.isArray(parsed.classifications)) {
+            classifications = parsed.classifications;
+        } else if (Array.isArray(parsed)) {
+            // 모델이 wrapper 없이 배열만 반환한 경우
+            classifications = parsed;
+            console.log(`[Background] Pass C: Array response accepted (no wrapper) from ${classificationModel}`, { sessionId });
+        } else {
             console.warn(`[Background] Pass C: Invalid response format from ${classificationModel}, trying next model...`, {
                 sessionId,
                 parsedKeys: parsed ? Object.keys(parsed) : null,
@@ -574,9 +619,9 @@ export async function classifyItems(params: ClassifyItemsParams): Promise<{
             continue; // 다음 모델 시도
         }
 
-        console.log(`[Background] Pass C: Classified ${parsed.classifications.length} item(s) with ${classificationModel}`, { sessionId });
+        console.log(`[Background] Pass C: Classified ${classifications.length} item(s) with ${classificationModel}`, { sessionId });
 
-        return { classifications: parsed.classifications, usageMetadata: attempt.usageMetadata };
+        return { classifications, usageMetadata: attempt.usageMetadata };
       } catch (err: any) {
         console.warn(`[Background] Pass C: ${classificationModel} FAILED, trying next model...`, {
             sessionId,
