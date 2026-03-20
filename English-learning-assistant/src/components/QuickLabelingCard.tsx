@@ -177,67 +177,83 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
     );
   }
 
+  const isMany = displayImageUrls.length > 4;
+
+  const thumbnails = (
+    <div className={`flex flex-wrap gap-2 ${isMany ? 'w-full mb-4' : 'flex-shrink-0'}`}>
+      {displayImageUrls.map((url, idx) => (
+        <img
+          key={`${idx}-${url}`}
+          src={url}
+          alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
+          className={`${isMany ? 'w-16 h-16' : 'w-24 h-24'} object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
+          onClick={() => setLightboxImageUrl(url)}
+          title={language === 'ko' ? '클릭하여 원본 보기' : 'Click to view original'}
+        />
+      ))}
+    </div>
+  );
+
+  const headerContent = (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-2 mb-2">
+        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
+          {language === 'ko' ? 'AI 분석 완료' : 'AI Analysis Complete'}
+        </h3>
+        {modelsUsed ? (
+          <div className="flex flex-wrap gap-1">
+            <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
+              OCR: {modelsUsed.ocr || '?'}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+              {language === 'ko' ? '분석' : 'Analysis'}: {modelsUsed.analysis || '?'}
+            </span>
+          </div>
+        ) : analysisModel ? (
+          <span className="text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">
+            Model: {analysisModel}
+          </span>
+        ) : null}
+      </div>
+      <p className="text-slate-600 dark:text-slate-400">
+        {language === 'ko'
+          ? `AI가 분석한 문제 ${problems.length}개를 확인하고 검수해주세요.`
+          : `Please review and verify ${problems.length} problem(s) analyzed by AI.`}
+      </p>
+      {displayImageUrls.length > 1 && (
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+          {language === 'ko'
+            ? `이미지 ${displayImageUrls.length}장 (클릭하여 확대)`
+            : `${displayImageUrls.length} images (click to enlarge)`}
+        </p>
+      )}
+    </div>
+  );
+
   return (
-    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6">
+    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
       {onDelete && (
         <button
           type="button"
           onClick={() => onDelete(sessionId)}
           aria-label={language === 'ko' ? '세션 삭제' : 'Delete session'}
           title={language === 'ko' ? '삭제' : 'Delete'}
-          className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200 dark:hover:bg-red-900/40"
+          className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200 dark:hover:bg-red-900/40"
         >
           <span className="text-xl leading-none">&times;</span>
         </button>
       )}
-      <div className="flex items-start gap-6 mb-6">
-        {/* 다중 이미지 썸네일 */}
-        <div className="flex gap-2 flex-shrink-0">
-          {displayImageUrls.map((url, idx) => (
-            <img
-              key={`${idx}-${url}`}
-              src={url}
-              alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
-              className="w-24 h-24 object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all"
-              onClick={() => setLightboxImageUrl(url)}
-              title={language === 'ko' ? '클릭하여 원본 보기' : 'Click to view original'}
-            />
-          ))}
+      {isMany ? (
+        <div className="mb-6">
+          {thumbnails}
+          {headerContent}
         </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
-              {language === 'ko' ? 'AI 분석 완료' : 'AI Analysis Complete'}
-            </h3>
-            {modelsUsed ? (
-              <div className="flex flex-wrap gap-1">
-                <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
-                  OCR: {modelsUsed.ocr || '?'}
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
-                  {language === 'ko' ? '분석' : 'Analysis'}: {modelsUsed.analysis || '?'}
-                </span>
-              </div>
-            ) : analysisModel ? (
-              <span className="text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">
-                Model: {analysisModel}
-              </span>
-            ) : null}
-          </div>
-          <p className="text-slate-600 dark:text-slate-400">
-            {language === 'ko'
-              ? `AI가 분석한 문제 ${problems.length}개를 확인하고 검수해주세요.`
-              : `Please review and verify ${problems.length} problem(s) analyzed by AI.`}
-          </p>
-          {displayImageUrls.length > 1 && (
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-              {language === 'ko'
-                ? `이미지 ${displayImageUrls.length}장 (클릭하여 확대)`
-                : `${displayImageUrls.length} images (click to enlarge)`}
-            </p>
-          )}
+      ) : (
+        <div className="flex items-start gap-6 mb-6">
+          {thumbnails}
+          {headerContent}
         </div>
-      </div>
+      )}
 
       {/* 문제 목록 */}
       <div className="space-y-4 mb-6">

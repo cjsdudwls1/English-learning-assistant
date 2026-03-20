@@ -5,6 +5,7 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY: string;
   readonly VITE_GEMINI_API_KEY: string;
   readonly VITE_API_KEY: string;
+  readonly VITE_ANALYZE_GCF_URL: string;
 }
 
 interface ImportMeta {

@@ -26,7 +26,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesSelect }) 
   }, [imageFiles, onImagesSelect]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const MAX_IMAGES = 3;
+    const MAX_IMAGES = 10;
     const files = event.target.files;
     if (!files || files.length === 0) return;
 

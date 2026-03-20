@@ -200,8 +200,8 @@ const MainPage: React.FC<{
                   }}
                 >
                   {imageFiles.length > 0
-                    ? (language === 'ko' ? `${imageFiles.length}/3장 선택됨 (클릭하여 추가)` : `${imageFiles.length}/3 selected (Click to add more)`)
-                    : (language === 'ko' ? '+ 이미지 업로드 (최대 3장)' : '+ Upload Images (max 3)')}
+                    ? (language === 'ko' ? `${imageFiles.length}장 선택됨 (클릭하여 추가)` : `${imageFiles.length} selected (Click to add more)`)
+                    : (language === 'ko' ? '+ 이미지 업로드 (최대 10장)' : '+ Upload Images (max 10)')}
                 </label>
                 <input
                   id="hero-image-input"
@@ -627,18 +627,12 @@ const App: React.FC = () => {
       }
 
       console.log(`Starting 2-phase analysis for ${imageFiles.length} images...`);
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`;
-      const session = await supabase.auth.getSession();
-      const accessToken = session.data.session?.access_token;
-
-      if (!accessToken) {
-        const errorMsg = language === 'ko' ? '인증 토큰이 없습니다. 다시 로그인해주세요.' : 'Authentication token is missing. Please login again.';
-        setError(errorMsg);
-        setIsLoading(false);
-        setStatus('error');
-        alert(errorMsg);
-        return;
-      }
+      // ═══════════════════════════════════════════════════════
+      // Google Cloud Function으로 전체 분석 파이프라인 단일 호출
+      // 서버에서 Extract → Crop → Detect → Classify → DB 저장 수행
+      // 사용자는 호출 후 즉시 페이지를 떠날 수 있음
+      // ═══════════════════════════════════════════════════════
+      const gcfUrl = import.meta.env.VITE_ANALYZE_GCF_URL;
 
       if (!userData.user?.id) {
         const errorMsg = language === 'ko' ? '사용자 ID를 가져올 수 없습니다. 다시 로그인해주세요.' : 'Cannot get user ID. Please login again.';
@@ -666,168 +660,43 @@ const App: React.FC = () => {
         })
       );
 
-      // ═══════════════════════════════════════════════════════
-      // PHASE 1: Extract (구조 + 좌표 추출)
-      // ═══════════════════════════════════════════════════════
-      console.log(`[Phase 1] Sending extract request with ${imagesArray.length} image(s)...`);
+      console.log(`[GCF] Sending ${imagesArray.length} image(s) to Cloud Function...`);
 
-      const extractResponse = await fetch(functionUrl, {
+      // Cloud Function은 분석 완료 후 응답 (이미지 수에 따라 수 분 소요)
+      const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000; // 10분
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
+
+      const gcfResponse = await fetch(gcfUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: 'extract',
           images: imagesArray,
           userId: userData.user.id,
           language: currentLanguage,
         }),
+        signal: controller.signal,
       });
 
-      if (!extractResponse.ok) {
-        const errorText = await extractResponse.text();
-        throw new Error(`Extract failed: ${extractResponse.status} - ${errorText}`);
+      clearTimeout(timeoutId);
+
+      if (!gcfResponse.ok) {
+        const errorText = await gcfResponse.text();
+        throw new Error(`Cloud Function failed: ${gcfResponse.status} - ${errorText}`);
       }
 
-      const extractResult = await extractResponse.json();
-      const createdSessionId = extractResult?.sessionId;
-      const pages = extractResult?.pages;
+      const gcfResult = await gcfResponse.json();
+      const createdSessionId = gcfResult?.sessionId;
 
-      if (!createdSessionId || !pages || !Array.isArray(pages)) {
-        throw new Error(language === 'ko' ? '구조 추출 결과가 유효하지 않습니다.' : 'Invalid extract result.');
+      if (!createdSessionId) {
+        throw new Error(language === 'ko' ? '세션 생성 실패' : 'Session creation failed');
       }
 
-      console.log(`[Phase 1] Extract done. Session: ${createdSessionId}, Pages: ${pages.length}`);
-
-      // ═══════════════════════════════════════════════════════
-      // PHASE 1.5: Client-Side Canvas Crop
-      // ═══════════════════════════════════════════════════════
-      console.log(`[Phase 1.5] Starting client-side canvas crop...`);
-
-      const { cropAllRegions } = await import('./utils/canvasCropper');
-
-      const pagesWithCrops: any[] = [];
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        const imageData = imagesArray[i];
-
-        if (!page.bboxes || page.bboxes.length === 0) {
-          console.warn(`[Phase 1.5] Page ${page.pageNum}: No bboxes, skipping crop`);
-          pagesWithCrops.push({
-            ...page,
-            answerAreaCrops: [],
-            fullCrops: [],
-          });
-          continue;
-        }
-
-        try {
-          const dataUri = `data:${imageData.mimeType};base64,${imageData.imageBase64}`;
-          const { answerAreaCrops, fullCrops } = await cropAllRegions(dataUri, page.bboxes);
-
-          console.log(`[Phase 1.5] Page ${page.pageNum}: ${answerAreaCrops.length} answer + ${fullCrops.length} full crops`);
-
-          pagesWithCrops.push({
-            ...page,
-            answerAreaCrops,
-            fullCrops,
-          });
-        } catch (cropError) {
-          console.error(`[Phase 1.5] Page ${page.pageNum}: Crop failed`, cropError);
-          pagesWithCrops.push({
-            ...page,
-            answerAreaCrops: [],
-            fullCrops: [],
-          });
-        }
-      }
-
-      console.log(`[Phase 1.5] Client-side crop completed for ${pagesWithCrops.length} pages`);
-
-      // ═══════════════════════════════════════════════════════
-      // PHASE 2: Detect (크롭된 이미지로 필기 인식 — analyze-detect)
-      // ═══════════════════════════════════════════════════════
-      console.log(`[Phase 2] Sending detect request to analyze-detect...`);
-
-      const detectUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-detect`;
-      const detectResponse = await fetch(detectUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          sessionId: createdSessionId,
-          pages: pagesWithCrops.map(p => ({
-            answerAreaCrops: p.answerAreaCrops,
-            fullCrops: p.fullCrops,
-          })),
-        }),
-      });
-
-      if (!detectResponse.ok) {
-        const errorText = await detectResponse.text();
-        throw new Error(`Detect failed: ${detectResponse.status} - ${errorText}`);
-      }
-
-      const detectResult = await detectResponse.json();
-      console.log(`[Phase 2] Detect done. Merging marks into pageItems...`);
-
-      // marks를 pageItems에 병합
-      const pagesWithMarks = pagesWithCrops.map((page, i) => {
-        const detectedMarks = detectResult.pages?.[i]?.marks || [];
-        const mergedItems = (page.pageItems || []).map((item: any) => {
-          const mark = detectedMarks.find((m: any) => m.problem_number === item.problem_number);
-          return {
-            ...item,
-            user_answer: mark?.user_answer ?? null,
-            correct_answer: mark?.correct_answer ?? null,
-          };
-        });
-        return {
-          pageItems: mergedItems,
-          pageModel: page.pageModel || '',
-        };
-      });
-
-      // ═══════════════════════════════════════════════════════
-      // PHASE 3: Classify (분류 + DB 저장 — analyze-classify, 백그라운드)
-      // ═══════════════════════════════════════════════════════
-      console.log(`[Phase 3] Sending classify request to analyze-classify...`);
-
-      const classifyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-classify`;
-      const classifyResponse = await fetch(classifyUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          sessionId: createdSessionId,
-          userId: userData.user.id,
-          language: currentLanguage,
-          pages: pagesWithMarks,
-        }),
-      });
-
-      if (!classifyResponse.ok) {
-        const errorText = await classifyResponse.text();
-        throw new Error(`Classify failed: ${classifyResponse.status} - ${errorText}`);
-      }
-
-      const classifyResult = await classifyResponse.json();
-      console.log(`[Phase 3] Classify request accepted. Session: ${classifyResult?.sessionId}`);
+      console.log(`[GCF] Analysis completed: ${createdSessionId}`);
 
       setIsLoading(false);
       setStatus('done');
       setImageFiles([]);
-
-      const uploadMessage =
-        language === 'ko'
-          ? `${imagesArray.length}개 이미지 업로드 완료. AI 분석이 진행중입니다. (세션: ${createdSessionId}) 앱에서 나가도 좋습니다.`
-          : `${imagesArray.length} image(s) uploaded. AI analysis is in progress. (Session: ${createdSessionId}) You can leave the app.`;
-      alert(uploadMessage);
 
       navigate('/stats');
     } catch (err) {
@@ -843,7 +712,7 @@ const App: React.FC = () => {
 
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const MAX_IMAGES = 3; // wall time 제한 내에서 안정적으로 처리 가능한 수
+    const MAX_IMAGES = 10; // Cloud Function 타임아웃 60분으로 충분히 처리 가능
     const files = event.target.files;
     if (!files || files.length === 0) return;
 

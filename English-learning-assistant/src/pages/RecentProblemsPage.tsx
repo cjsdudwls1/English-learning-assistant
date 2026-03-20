@@ -223,13 +223,13 @@ export const RecentProblemsPage: React.FC = () => {
                     className="w-5 h-5"
                   />
                   {/* 다중 이미지 썸네일 */}
-                  <div className="flex gap-1.5 flex-shrink-0">
+                  <div className="flex flex-wrap gap-1.5 flex-shrink-0 max-w-[50%]">
                     {sessionImageUrls.map((url, idx) => (
                       <img
                         key={`${idx}-${url}`}
                         src={url}
                         alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
-                        className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all"
+                        className={`${sessionImageUrls.length > 4 ? 'w-14 h-14' : 'w-20 h-20'} object-cover rounded border cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
                         onClick={() => setLightboxImageUrl(url)}
                       />
                     ))}
