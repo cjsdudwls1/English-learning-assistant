@@ -143,12 +143,22 @@ functions.http('analyzeImage', async (req, res) => {
 
     const { images, userId, language } = validation;
     const userLanguage = language === 'en' ? 'en' : 'ko';
-    // Vertex AI 모드: Cloud Function 서비스 계정(ADC)으로 자동 인증
-    const ai = new GoogleGenAI({
+    // Vertex AI 모드: 서비스계정 JSON 키로 인증
+    const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    const aiOptions = {
       vertexai: true,
       project: VERTEX_PROJECT_ID,
       location: VERTEX_LOCATION,
-    });
+    };
+    if (serviceAccountJson) {
+      try {
+        aiOptions.googleAuthOptions = { credentials: JSON.parse(serviceAccountJson) };
+        console.log('[handler] Vertex AI: 서비스계정 JSON 키 인증 사용');
+      } catch (e) {
+        console.error('[handler] GOOGLE_SERVICE_ACCOUNT_JSON 파싱 실패, ADC 폴백:', e.message);
+      }
+    }
+    const ai = new GoogleGenAI(aiOptions);
 
     console.log(`[handler] ${images.length}개 이미지 분석 시작 (userId: ${userId})`);
 

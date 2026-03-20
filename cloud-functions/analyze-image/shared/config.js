@@ -6,9 +6,9 @@
  * - 타임아웃 설정
  */
 
-// Vertex AI 설정 (Cloud Functions는 ADC로 자동 인증)
+// Vertex AI 설정 (서비스계정 JSON 키 인증)
 export const VERTEX_PROJECT_ID = process.env.VERTEX_PROJECT_ID || 'gen-lang-client-0516945872';
-export const VERTEX_LOCATION = process.env.VERTEX_LOCATION || 'asia-northeast3';
+export const VERTEX_LOCATION = process.env.VERTEX_LOCATION || 'global';
 
 /** 구조 추출(Pass A)용 모델 시퀀스 */
 export const MODEL_SEQUENCE = [
