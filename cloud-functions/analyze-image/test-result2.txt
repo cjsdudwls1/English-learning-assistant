@@ -1,0 +1,96 @@
+﻿
+════════════════════════════════════════════════════════════
+  이미지 분석 파이프라인 테스트
+════════════════════════════════════════════════════════════
+  이미지: C:\cheon\cheon_wokespace\edu\test_image\이어지는 지문\이어지는 지문\KakaoTalk_20251202_101043325_07.jpg
+  기대 사용자답안: [4, 5, 2]
+  기대 실제답안:   [5, 3, 5]
+  인증: Vertex AI 서비스계정 JSON 키
+The user provided Google Cloud credentials will take precedence over the API key from the environment variable.
+
+════════════════════════════════════════════════════════════
+  1단계: 이미지 로드 및 전처리
+════════════════════════════════════════════════════════════
+  원본: 393.7KB, MIME: image/jpeg
+[imagePreprocessor] 리사이즈: 968x1368 → 849x1200, 394KB → 161KB
+  전처리 완료: 161.3KB, MIME: image/jpeg
+
+════════════════════════════════════════════════════════════
+  2단계: Pass A (구조 추출)
+════════════════════════════════════════════════════════════
+[aiClient] 모델 호출 attempt 1/1 (model=gemini-3-flash-preview) { sessionId: 'test-1773993186467' }
+[aiClient] 토큰 사용량 (model=gemini-3-flash-preview): {
+  sessionId: 'test-1773993186467',
+  promptTokenCount: 1480,
+  candidatesTokenCount: 1442,
+  totalTokenCount: 5806
+}
+  추출된 문제 수: 3
+  사용 모델: gemini-3-flash-preview
+  - Q25: 다음 도표의 내용과 일치하지 않는 것은?...
+  - Q26: Lithops에 관한 다음 글의 내용과 일치하지 않는 것은?...
+  - Q27: "Go Green" Writing Contest에 관한 다음 안내문의 내용과 일치하지 않는 것은?...
+
+════════════════════════════════════════════════════════════
+  3단계: Pass 0 (바운딩 박스 좌표)
+════════════════════════════════════════════════════════════
+[aiClient] 모델 호출 attempt 1/1 (model=gemini-3-flash-preview) { sessionId: 'test-1773993186467' }
+[aiClient] 토큰 사용량 (model=gemini-3-flash-preview): {
+  sessionId: 'test-1773993186467',
+  promptTokenCount: 1371,
+  candidatesTokenCount: 391,
+  totalTokenCount: 5577
+}
+  감지된 bbox 수: 3
+  - Q25: full={"x1":125,"y1":70,"x2":545,"y2":580}, answer={"x1":125,"y1":355,"x2":545,"y2":580}
+  - Q26: full={"x1":115,"y1":55,"x2":975,"y2":920}, answer={"x1":575,"y1":180,"x2":865,"y2":285}
+  - Q27: full={"x1":575,"y1":375,"x2":975,"y2":920}, answer={"x1":575,"y1":820,"x2":840,"y2":920}
+
+════════════════════════════════════════════════════════════
+  4단계: 이미지 크롭
+════════════════════════════════════════════════════════════
+  답안영역 크롭: 3개
+  전체영역 크롭: 3개
+
+════════════════════════════════════════════════════════════
+  5단계: Pass B (필기 인식 → user_answer, correct_answer)
+════════════════════════════════════════════════════════════
+[aiClient] 모델 호출 attempt 1/1 (model=gemini-3-flash-preview) { sessionId: 'test-1773993186467' }
+[aiClient] 모델 호출 attempt 1/1 (model=gemini-3-flash-preview) { sessionId: 'test-1773993186467' }
+[aiClient] 토큰 사용량 (model=gemini-3-flash-preview): {
+  sessionId: 'test-1773993186467',
+  promptTokenCount: 3400,
+  candidatesTokenCount: 84,
+  totalTokenCount: 4125
+}
+[aiClient] 토큰 사용량 (model=gemini-3-flash-preview): {
+  sessionId: 'test-1773993186467',
+  promptTokenCount: 3400,
+  candidatesTokenCount: 24,
+  totalTokenCount: 15562
+}
+  인식된 marks: 3개
+  - Q25: user_answer=4, correct_answer=null
+  - Q26: user_answer=5, correct_answer=null
+  - Q27: user_answer=2, correct_answer=null
+
+════════════════════════════════════════════════════════════
+  결과 요약
+════════════════════════════════════════════════════════════
+┌──────┬───────┬──────┐
+│ 문제번호 │ 사용자답안 │ 실제답안 │
+├──────┼───────┼──────┤
+│ 25   │ 4     │ -    │
+│ 26   │ 5     │ -    │
+│ 27   │ 2     │ -    │
+└──────┴───────┴──────┘
+
+════════════════════════════════════════════════════════════
+  검증
+════════════════════════════════════════════════════════════
+  [FAIL] Q25: user_answer(기대=4, 실제=4) OK | correct_answer(기대=5, 실제=?) FAIL
+  [FAIL] Q26: user_answer(기대=5, 실제=5) OK | correct_answer(기대=3, 실제=?) FAIL
+  [FAIL] Q27: user_answer(기대=2, 실제=2) OK | correct_answer(기대=5, 실제=?) FAIL
+
+  ====> 전체 결과: FAIL (불일치 항목 있음)
+

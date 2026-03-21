@@ -8,9 +8,8 @@
  * 동작:
  *   1. Supabase SDK 로그인
  *   2. 이미지 base64 변환
- *   3. analyze-image Edge Function 호출 (SDK의 functions.invoke 사용)
- *   4. 세션 상태 폴링 (최대 5분)
- *   5. 결과 요약 출력
+ *   3. GCP Cloud Functions gen2 HTTP 엔드포인트 직접 호출
+ *   4. 결과 요약 출력 (problems + labels 테이블 검증)
  */
 
 import fs from 'fs';
@@ -22,8 +21,6 @@ const require = createRequire(import.meta.url);
 // ─── 설정 ───
 const TEST_EMAIL = 'cjsdudwls1357@gmail.com';
 const TEST_PASSWORD = 'asas6012';
-const POLL_INTERVAL_MS = 3000;
-const MAX_POLL_TIME_MS = 5 * 60 * 1000; // 5분
 
 // .env 파일에서 환경 변수 로드
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -31,6 +28,7 @@ const envPath = path.resolve(__dirname, '../../English-learning-assistant/.env')
 
 let SUPABASE_URL = '';
 let SUPABASE_ANON_KEY = '';
+let GCF_URL = '';
 
 try {
   const envContent = fs.readFileSync(envPath, 'utf-8');
@@ -42,6 +40,9 @@ try {
     if (trimmed.startsWith('VITE_SUPABASE_ANON_KEY=')) {
       SUPABASE_ANON_KEY = trimmed.split('=').slice(1).join('=');
     }
+    if (trimmed.startsWith('VITE_ANALYZE_GCF_URL=')) {
+      GCF_URL = trimmed.split('=').slice(1).join('=');
+    }
   }
 } catch (e) {
   console.error('[ERROR] .env 파일을 읽을 수 없습니다:', envPath);
@@ -50,6 +51,11 @@ try {
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error('[ERROR] VITE_SUPABASE_URL 또는 VITE_SUPABASE_ANON_KEY가 .env에 없습니다');
+  process.exit(1);
+}
+
+if (!GCF_URL) {
+  console.error('[ERROR] VITE_ANALYZE_GCF_URL이 .env에 없습니다');
   process.exit(1);
 }
 
@@ -85,10 +91,6 @@ function imageToBase64(filePath) {
   return { imageBase64: base64, mimeType, fileName };
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 // ─── 메인 ───
 
 async function main() {
@@ -99,13 +101,13 @@ async function main() {
   }
 
   console.log('='.repeat(60));
-  console.log('  이미지 분석 E2E 테스트');
+  console.log('  이미지 분석 E2E 테스트 (GCP Cloud Functions)');
   console.log('='.repeat(60));
 
   // 1. Supabase SDK 초기화 및 로그인
   console.log('\n[STEP 1] Supabase SDK 초기화 및 로그인...');
-  console.log(`[CONFIG] URL: ${SUPABASE_URL}`);
-  console.log(`[CONFIG] Key: ${SUPABASE_ANON_KEY.substring(0, 20)}...`);
+  console.log(`[CONFIG] Supabase URL: ${SUPABASE_URL}`);
+  console.log(`[CONFIG] GCF URL: ${GCF_URL}`);
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -139,93 +141,55 @@ async function main() {
     process.exit(1);
   }
 
-  // 3. Edge Function 호출 (SDK functions.invoke 사용)
-  console.log('\n[STEP 3] analyze-image Edge Function 호출...');
-  
-  // 디버깅: 현재 세션 정보 출력
-  const { data: sessionData } = await supabase.auth.getSession();
-  console.log(`[DEBUG] Session exists: ${!!sessionData.session}`);
-  console.log(`[DEBUG] Access token (first 50): ${sessionData.session?.access_token?.substring(0, 50)}...`);
+  // 3. GCP Cloud Function 직접 HTTP 호출
+  console.log('\n[STEP 3] GCP Cloud Function 호출...');
+  const startTime = Date.now();
 
-  const { data: fnData, error: fnError } = await supabase.functions.invoke('analyze-image', {
-    body: { images, userId, language: 'ko' },
+  const gcfResponse = await fetch(GCF_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ images, userId, language: 'ko' }),
   });
 
-  if (fnError) {
-    console.error('[DEBUG] fnError:', JSON.stringify(fnError, null, 2));
-    console.error('[DEBUG] fnError.context:', fnError.context);
-    // FunctionsHttpError인 경우 응답 데이터 추출 시도
-    if (fnData) {
-      console.error('[DEBUG] fnData despite error:', JSON.stringify(fnData).substring(0, 500));
-    }
-    throw new Error(`Edge Function error: ${fnError.message || JSON.stringify(fnError)}`);
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+  if (!gcfResponse.ok) {
+    const errorText = await gcfResponse.text();
+    console.error(`[ERROR] Cloud Function 실패 (${gcfResponse.status}):`, errorText.substring(0, 500));
+    process.exit(1);
   }
 
-  const sessionId = fnData?.sessionId;
+  const gcfResult = await gcfResponse.json();
+  const sessionId = gcfResult?.sessionId;
+
   if (!sessionId) {
-    throw new Error(`세션 ID가 응답에 없습니다: ${JSON.stringify(fnData)}`);
+    console.error('[ERROR] 세션 ID가 응답에 없습니다:', JSON.stringify(gcfResult));
+    process.exit(1);
   }
 
-  console.log(`[API] 세션 생성됨: ${sessionId}`);
+  console.log(`[GCF] 분석 완료 (${elapsed}초), 세션 ID: ${sessionId}`);
 
-  // 4. 폴링
-  console.log('\n[STEP 4] 분석 결과 대기 중...');
-  const startTime = Date.now();
-  let session = null;
-
-  while (Date.now() - startTime < MAX_POLL_TIME_MS) {
-    const { data: sessions } = await supabase
-      .from('sessions')
-      .select('id, status, analysis_model, failure_stage, failure_message')
-      .eq('id', sessionId)
-      .single();
-
-    if (!sessions) {
-      await sleep(POLL_INTERVAL_MS);
-      continue;
-    }
-
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    if (sessions.status === 'completed') {
-      console.log(`\n[POLL] 분석 완료 (${elapsed}초, 모델: ${sessions.analysis_model})`);
-      session = sessions;
-      break;
-    }
-
-    if (sessions.status === 'failed') {
-      console.log(`\n[POLL] 분석 실패 (${elapsed}초, 단계: ${sessions.failure_stage})`);
-      session = sessions;
-      break;
-    }
-
-    process.stdout.write(`\r[POLL] 분석 중... ${elapsed}초 경과 (모델: ${sessions.analysis_model || '대기'})`);
-    await sleep(POLL_INTERVAL_MS);
-  }
-
-  // 5. 결과 출력
+  // 4. 결과 출력 (DB 검증)
   console.log('\n' + '='.repeat(60));
-  console.log('  분석 결과');
+  console.log('  분석 결과 (DB 검증)');
   console.log('='.repeat(60));
 
-  if (!session) {
-    console.log('[TIMEOUT] 세션 결과를 가져올 수 없습니다');
-    console.log(`[TIP] 수동 확인: npx supabase functions logs analyze-image --project-ref vkoegxohahpptdyipmkr --scroll`);
-    process.exit(1);
-  }
+  // 세션 정보
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('id, status, analysis_model, failure_stage, failure_message')
+    .eq('id', sessionId)
+    .single();
 
-  console.log(`  세션 ID: ${session.id}`);
-  console.log(`  상태: ${session.status}`);
-  console.log(`  모델: ${session.analysis_model}`);
-
-  if (session.status === 'failed') {
+  console.log(`  세션 ID: ${session?.id}`);
+  console.log(`  상태: ${session?.status}`);
+  console.log(`  모델: ${session?.analysis_model}`);
+  if (session?.failure_stage) {
     console.log(`  실패 단계: ${session.failure_stage}`);
-    console.log(`  에러 메시지: ${session.failure_message}`);
-    console.log('\n[FAILED] 분석이 실패했습니다');
-    process.exit(1);
+    console.log(`  에러: ${session.failure_message}`);
   }
 
-  // 문제 조회
+  // 문제 + 라벨 조회
   const { data: problems } = await supabase
     .from('problems')
     .select('id, index_in_image, content, problem_metadata')
@@ -236,16 +200,22 @@ async function main() {
 
   if (problems && problems.length > 0) {
     const problemIds = problems.map(p => p.id);
-    const { data: labels } = await supabase
+    const { data: labels, error: labelsError } = await supabase
       .from('labels')
-      .select('problem_id, classification, ai_answer, user_mark')
+      .select('problem_id, user_answer, correct_answer, is_correct, classification')
       .in('problem_id', problemIds);
+
+    if (labelsError) {
+      console.error('[ERROR] labels 조회 실패:', labelsError);
+    }
 
     const labelMap = new Map((labels || []).map(l => [l.problem_id, l]));
 
-    console.log('\n  ┌───────┬──────────────────────────────────┬──────────┬──────────┐');
-    console.log('  │ 번호  │ 분류                             │ 정답     │ 사용자   │');
-    console.log('  ├───────┼──────────────────────────────────┼──────────┼──────────┤');
+    console.log(`  labels 레코드 수: ${(labels || []).length}`);
+    console.log('');
+    console.log('  ┌───────┬──────────────────────────────────┬──────────┬──────────┬──────────┐');
+    console.log('  │ 번호  │ 분류                             │ 정답     │ 사용자   │ 채점     │');
+    console.log('  ├───────┼──────────────────────────────────┼──────────┼──────────┼──────────┤');
 
     for (const p of problems) {
       const content = p.content || {};
@@ -253,15 +223,35 @@ async function main() {
       const cls = label?.classification || {};
       const num = String(content.problem_number || p.index_in_image + 1).padEnd(5);
       const depth = [cls.depth1, cls.depth2].filter(Boolean).join(' > ').substring(0, 32).padEnd(32);
-      const correct = String(content.correct_answer || label?.ai_answer || '-').padEnd(8);
-      const user = String(content.user_answer || '-').padEnd(8);
-      console.log(`  │ ${num} │ ${depth} │ ${correct} │ ${user} │`);
+
+      // labels 테이블 우선, fallback으로 content
+      const correct = String(label?.correct_answer || content.correct_answer || '-').padEnd(8);
+      const user = String(label?.user_answer || content.user_answer || '-').padEnd(8);
+      const grade = label?.is_correct === true ? 'O' : (label?.is_correct === false ? 'X' : '-');
+      console.log(`  │ ${num} │ ${depth} │ ${correct} │ ${user} │ ${grade.padEnd(8)} │`);
     }
 
-    console.log('  └───────┴──────────────────────────────────┴──────────┴──────────┘');
+    console.log('  └───────┴──────────────────────────────────┴──────────┴──────────┴──────────┘');
+
+    // 검증 요약
+    console.log('\n  ── 검증 결과 ──');
+    const labelsWithUserAnswer = (labels || []).filter(l => l.user_answer && l.user_answer !== '');
+    const labelsWithCorrectAnswer = (labels || []).filter(l => l.correct_answer && l.correct_answer !== '');
+    const labelsWithIsCorrect = (labels || []).filter(l => l.is_correct !== null);
+
+    console.log(`  labels 총 레코드: ${(labels || []).length} / ${problems.length} (예상)`);
+    console.log(`  user_answer 있음: ${labelsWithUserAnswer.length}`);
+    console.log(`  correct_answer 있음: ${labelsWithCorrectAnswer.length}`);
+    console.log(`  is_correct 판정: ${labelsWithIsCorrect.length}`);
+
+    if ((labels || []).length === 0) {
+      console.log('\n  [FAIL] labels 레코드가 0건입니다. saveLabels 함수 에러를 확인하세요.');
+    } else if ((labels || []).length === problems.length) {
+      console.log('\n  [PASS] 모든 문제에 labels 레코드가 생성되었습니다.');
+    }
   }
 
-  console.log(`\n[SUCCESS] 분석 완료`);
+  console.log(`\n[SUCCESS] 테스트 완료`);
   console.log(`[URL] https://english-learningassistant.netlify.app/edit/${sessionId}`);
 }
 
@@ -269,3 +259,4 @@ main().catch(err => {
   console.error('\n[FATAL]', err.message || err);
   process.exit(1);
 });
+

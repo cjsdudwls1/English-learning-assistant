@@ -45,7 +45,7 @@ export async function executePass0({ ai, sessionId, imageBase64, mimeType }) {
       const { response, usageMetadata } = await generateWithRetry({
         ai, model,
         contents: [{ role: 'user', parts }],
-        sessionId, maxRetries: 1, baseDelayMs: 3000, temperature: 0.0,
+        sessionId, maxRetries: 2, baseDelayMs: 2000, temperature: 1.0,
       });
       const text = extractTextFromResponse(response, model);
       const parsed = parseJsonResponse(text, model);
@@ -60,35 +60,60 @@ export async function executePass0({ ai, sessionId, imageBase64, mimeType }) {
 }
 
 /**
- * 크롭된 이미지 배열에 대해 모델 호출
+ * 크롭된 이미지 배열에 대해 개별 모델 호출
+ * 원본: analysisProcessor.ts#detectHandwritingFromCroppedImages
+ * - 각 크롭 이미지를 개별 API 호출로 처리 (배치 3개씩 병렬)
+ * - buildPromptFn에 problem_number를 전달하여 문제별 프롬프트 생성
  */
 async function detectFromCrops({ ai, sessionId, crops, buildPromptFn }) {
   if (crops.length === 0) return { marks: [], usageMetadata: null };
 
-  const parts = [{ text: buildPromptFn(crops.length) }];
-  for (const crop of crops) {
-    parts.push({ text: `Problem ${crop.problem_number}:` });
-    parts.push({ inlineData: { data: crop.croppedBase64, mimeType: crop.mimeType } });
-  }
+  const model = LIGHTWEIGHT_MODEL_SEQUENCE[0];
+  const marks = [];
+  let lastUsageMetadata = null;
 
-  for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
-    try {
-      const { response, usageMetadata } = await generateWithRetry({
-        ai, model,
-        contents: [{ role: 'user', parts }],
-        sessionId, maxRetries: 1, baseDelayMs: 3000, temperature: 0.0,
-      });
-      const text = extractTextFromResponse(response, model);
-      const parsed = parseJsonResponse(text, model);
-      const marks = Array.isArray(parsed) ? parsed : (parsed.marks || parsed.problems || []);
-      return { marks, usageMetadata };
-    } catch (modelError) {
-      console.warn(`[passes] Pass B 모델 ${model} 실패:`, modelError?.message);
-      continue;
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < crops.length; i += BATCH_SIZE) {
+    const batch = crops.slice(i, i + BATCH_SIZE);
+
+    const batchResults = await Promise.allSettled(
+      batch.map(async (crop) => {
+        const prompt = buildPromptFn(crop.problem_number);
+        const parts = [
+          { text: prompt },
+          { inlineData: { data: crop.croppedBase64, mimeType: crop.mimeType } },
+        ];
+
+        try {
+          const { response, usageMetadata } = await generateWithRetry({
+            ai, model,
+            contents: [{ role: 'user', parts }],
+            sessionId, maxRetries: 1, baseDelayMs: 1000, temperature: 1.0,
+          });
+          lastUsageMetadata = usageMetadata;
+          const text = extractTextFromResponse(response, model);
+          const parsed = parseJsonResponse(text, model);
+          return {
+            problem_number: parsed.problem_number || crop.problem_number,
+            user_answer: parsed.user_answer ?? null,
+            correct_answer: parsed.correct_answer ?? null,
+          };
+        } catch (err) {
+          console.error(`[passes:detectFromCrops] Q${crop.problem_number} 실패:`, err?.message);
+          return null;
+        }
+      })
+    );
+
+    for (const result of batchResults) {
+      if (result.status === 'fulfilled' && result.value) {
+        marks.push(result.value);
+      }
     }
   }
 
-  return { marks: [], usageMetadata: null };
+  console.log(`[passes:detectFromCrops] 완료: ${marks.length}/${crops.length}개 감지`, { sessionId });
+  return { marks, usageMetadata: lastUsageMetadata };
 }
 
 /**
@@ -140,9 +165,80 @@ export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops }
 }
 
 /**
- * Pass C: 분류 - 추출된 문제에 classification과 metadata 할당
+ * Pass B (Full Image Fallback): bbox 감지 실패 또는 크롭 실패 시
+ * 전체 이미지 기반으로 user_answer + correct_answer를 감지
+ * 원본: analysisProcessor.ts#detectHandwritingMarks + pageAnalyzer.ts fallback
  */
-export async function executePassC({ ai, sessionId, taxonomyData, pageItems, userLanguage }) {
+import { buildHandwritingDetectionPrompt } from './prompts.js';
+
+export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeType, totalPages }) {
+  const prompt = buildHandwritingDetectionPrompt(totalPages);
+  const imagePart = { inlineData: { data: imageBase64, mimeType } };
+
+  let allMarks = [];
+  let lastUsageMetadata = null;
+
+  for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
+    try {
+      console.log(`[passes:PassB-FullImage] ${model}로 전체 이미지 기반 필기 감지 시작...`, { sessionId });
+
+      const parts = [{ text: prompt }, imagePart];
+      const { response, usageMetadata } = await generateWithRetry({
+        ai, model,
+        contents: [{ role: 'user', parts }],
+        sessionId, maxRetries: 1, baseDelayMs: 2000, temperature: 1.0,
+      });
+      lastUsageMetadata = usageMetadata;
+      const text = extractTextFromResponse(response, model);
+      const parsed = parseJsonResponse(text, model);
+
+      let marks = [];
+      if (Array.isArray(parsed?.marks)) {
+        marks = parsed.marks;
+      } else if (Array.isArray(parsed)) {
+        marks = parsed;
+      }
+
+      if (marks.length === 0) {
+        console.warn(`[passes:PassB-FullImage] ${model}: 0개 marks 반환`, { sessionId });
+      } else {
+        console.log(`[passes:PassB-FullImage] ${model}: ${marks.length}개 marks 감지`, { sessionId });
+      }
+
+      // marks 누적 (problem_number 기준 중복 제거, 기존 null → 새 값으로 업데이트)
+      if (marks.length > 0) {
+        for (const mark of marks) {
+          const existing = allMarks.find(m => String(m.problem_number) === String(mark.problem_number));
+          if (!existing) {
+            allMarks.push(mark);
+          } else if (!existing.user_answer && mark.user_answer) {
+            const idx = allMarks.indexOf(existing);
+            allMarks[idx] = { ...existing, user_answer: mark.user_answer };
+          }
+        }
+
+        // 모든 marks에 user_answer가 있으면 조기 종료
+        const nullCount = allMarks.filter(m => !m.user_answer).length;
+        if (nullCount === 0) {
+          console.log(`[passes:PassB-FullImage] 모든 marks에 답안 있음, 조기 종료`, { sessionId });
+          break;
+        }
+      }
+    } catch (err) {
+      console.warn(`[passes:PassB-FullImage] ${model} 실패 (비치명적):`, err?.message, { sessionId });
+    }
+  }
+
+  console.log(`[passes:PassB-FullImage] 완료: ${allMarks.length}개 marks`, { sessionId });
+  return { marks: allMarks, usageMetadata: lastUsageMetadata };
+}
+
+/**
+ * Pass C: 분류 - 추출된 문제에 classification과 metadata 할당
+ * imageBase64, mimeType: visual_context가 있는 문제가 존재할 때 원본 이미지 전달용
+ * 원본: pageAnalyzer.ts#analyzeOnePage (Pass C 섹션)
+ */
+export async function executePassC({ ai, sessionId, taxonomyData, pageItems, userLanguage, imageBase64, mimeType }) {
   const MAX_PASSAGE_LENGTH = 1500;
   const MAX_CHOICE_LENGTH = 200;
 
@@ -152,11 +248,24 @@ export async function executePassC({ ai, sessionId, taxonomyData, pageItems, use
     const choicesText = (problem.choices || [])
       .map(choice => (typeof choice === 'string' ? choice : (choice?.text || '')).substring(0, MAX_CHOICE_LENGTH))
       .join(' / ');
-    return `### Problem ${problem.problem_number}\nInstruction: ${instruction}\nPassage: ${passage}\nChoices: ${choicesText}`;
+    // visual_context 정보도 포함 (그래프/도표/안내문 등)
+    let visualInfo = '';
+    if (problem.visual_context) {
+      const vc = problem.visual_context;
+      visualInfo = `\nVisual context [${vc.type || 'visual'}]: ${vc.title || ''}\n${(vc.content || '').substring(0, 500)}`;
+    }
+    return `### Problem ${problem.problem_number}\nInstruction: ${instruction}\nPassage: ${passage}${visualInfo}\nChoices: ${choicesText}`;
   }).join('\n\n');
 
   const prompt = buildClassificationPrompt(taxonomyData, itemsSummary, userLanguage);
   const parts = [{ text: prompt }];
+
+  // visual_context가 있는 문제가 존재하면 원본 이미지를 함께 전달
+  const hasVisualItems = pageItems.some(it => it.visual_context);
+  if (hasVisualItems && imageBase64) {
+    parts.push({ inlineData: { data: imageBase64, mimeType } });
+  }
+
 
   for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
     try {

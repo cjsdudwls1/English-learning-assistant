@@ -8,6 +8,7 @@ import sharp from 'sharp';
 
 const MIN_CROP_DIMENSION = 10;
 const CROP_JPEG_QUALITY = 85;
+const CROP_ZOOM_FACTOR = 2; // 크롭 후 2배 확대 (작은 필기 감지 향상, 원래 Edge Function 사양 복원)
 
 /**
  * 정규화된 bbox를 픽셀 좌표로 변환
@@ -29,6 +30,7 @@ async function cropSingleRegion(imageBuffer, bbox, imgWidth, imgHeight) {
 
   const croppedBuffer = await sharp(imageBuffer)
     .extract({ left, top, width, height })
+    .resize(width * CROP_ZOOM_FACTOR, height * CROP_ZOOM_FACTOR) // 크롭 후 2배 확대 (작은 필기 감지 향상)
     .jpeg({ quality: CROP_JPEG_QUALITY })
     .toBuffer();
 
