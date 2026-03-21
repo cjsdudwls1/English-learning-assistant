@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ImageLightbox } from './ImageLightbox';
 import { useNavigate } from 'react-router-dom';
-import { fetchSessionProblems, updateProblemLabels } from '../services/db';
+import { fetchSessionProblems, updateProblemLabels, deleteProblems } from '../services/db';
 import type { ProblemItem, QuestionType } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
@@ -121,6 +121,21 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
     const result = autoJudge(userAnswer, value);
     if (result !== null) {
       setLabels(prev => ({ ...prev, [`${index}`]: result }));
+    }
+  };
+
+  const handleDeleteProblem = async (problem: ProblemItem) => {
+    if (!problem.id) return;
+    try {
+      await deleteProblems([problem.id]);
+      const key = `${problem.index}`;
+      setProblems(prev => prev.filter(p => p.index !== problem.index));
+      setLabels(prev => { const next = { ...prev }; delete next[key]; return next; });
+      setEditableAnswers(prev => { const next = { ...prev }; delete next[key]; return next; });
+      setEditableCorrectAnswers(prev => { const next = { ...prev }; delete next[key]; return next; });
+    } catch (err) {
+      console.error('Failed to delete problem:', err);
+      alert(language === 'ko' ? '문제 삭제 중 오류가 발생했습니다.' : 'Error deleting problem.');
     }
   };
 
@@ -263,10 +278,10 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           const qType = inferQuestionType(problem);
 
           return (
-            <div key={problem.index} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+            <div key={problem.index} className="relative border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
+              <div className="flex flex-col xl:flex-row items-start justify-between gap-4">
+                <div className="flex-1 w-full">
+                  <div className="flex flex-wrap items-center gap-3 mb-2">
                     <span className="font-bold text-lg text-slate-700 dark:text-slate-300">Q{problem.index + 1}</span>
                     <span className="text-xs px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700">
                       {getTypeLabel(qType)}
@@ -276,6 +291,15 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                         AI: {aiMark}
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProblem(problem)}
+                      aria-label={language === 'ko' ? '문제 삭제' : 'Delete problem'}
+                      title={language === 'ko' ? '이 문제 삭제' : 'Delete this problem'}
+                      className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-red-100 hover:text-red-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-red-900/40 dark:hover:text-red-400 transition-colors shadow-sm"
+                    >
+                      <span className="text-lg leading-none">&times;</span>
+                    </button>
                   </div>
 
                   {/* 문제 내용 */}

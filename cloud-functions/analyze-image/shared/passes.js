@@ -65,7 +65,7 @@ export async function executePass0({ ai, sessionId, imageBase64, mimeType }) {
  * - 각 크롭 이미지를 개별 API 호출로 처리 (배치 3개씩 병렬)
  * - buildPromptFn에 problem_number를 전달하여 문제별 프롬프트 생성
  */
-async function detectFromCrops({ ai, sessionId, crops, buildPromptFn }) {
+async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, temperature = 1.0 }) {
   if (crops.length === 0) return { marks: [], usageMetadata: null };
 
   const model = LIGHTWEIGHT_MODEL_SEQUENCE[0];
@@ -88,7 +88,7 @@ async function detectFromCrops({ ai, sessionId, crops, buildPromptFn }) {
           const { response, usageMetadata } = await generateWithRetry({
             ai, model,
             contents: [{ role: 'user', parts }],
-            sessionId, maxRetries: 1, baseDelayMs: 1000, temperature: 1.0,
+            sessionId, maxRetries: 2, baseDelayMs: 1500, temperature,
           });
           lastUsageMetadata = usageMetadata;
           const text = extractTextFromResponse(response, model);

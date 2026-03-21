@@ -65,6 +65,7 @@ export interface AnalysisResult {
 export type QuestionType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox' | 'unknown';
 
 export interface ProblemItem {
+  id?: string;
   index: number;
   사용자가_직접_채점한_정오답: 'O' | 'X' | '△' | '✓' | string;
   AI가_판단한_정오답?: '정답' | '오답' | string;

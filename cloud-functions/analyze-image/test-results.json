@@ -1,0 +1,339 @@
+{
+  "timestamp": "2026-03-21T08:55:08.530Z",
+  "allPass": false,
+  "total": 14,
+  "passed": 13,
+  "failed": 1,
+  "regressions": [],
+  "images": [
+    {
+      "id": "img06",
+      "allPass": true,
+      "error": null,
+      "safetyChecks": {
+        "problemCountMatch": true,
+        "passagePresent": true,
+        "choicesPresent": true,
+        "bboxValid": true
+      },
+      "problems": [
+        {
+          "num": "28",
+          "userAnswer": {
+            "expected": "1",
+            "actual": "1",
+            "pass": true,
+            "flexible": true
+          },
+          "correctAnswer": {
+            "expected": "4",
+            "actual": "4",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": false,
+            "hasChoices": true,
+            "instruction": "Virtual Idea Exchange에 관한 다음 안내문의 내용과 일치하는 것은?"
+          }
+        },
+        {
+          "num": "29",
+          "userAnswer": {
+            "expected": "4",
+            "actual": "4",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "5",
+            "actual": "5",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 글의 밑줄 친 부분 중, 어법상 틀린 것은? [3점]"
+          }
+        },
+        {
+          "num": "30",
+          "userAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 글의 밑줄 친 부분 중, 문맥상 낱말의 쓰임이 적절하지 않은 것은? [3점]"
+          }
+        },
+        {
+          "num": "31",
+          "userAnswer": {
+            "expected": "4",
+            "actual": "4",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "1",
+            "actual": "1",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "[31~34] 다음 빈칸에 들어갈 말로 가장 적절한 것을 고르시오."
+          }
+        }
+      ]
+    },
+    {
+      "id": "img07",
+      "allPass": false,
+      "error": null,
+      "safetyChecks": {
+        "problemCountMatch": true,
+        "passagePresent": true,
+        "choicesPresent": true,
+        "bboxValid": true
+      },
+      "problems": [
+        {
+          "num": "25",
+          "userAnswer": {
+            "expected": "4",
+            "actual": "4",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "5",
+            "actual": "3",
+            "pass": false
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 도표의 내용과 일치하지 않는 것은?"
+          }
+        },
+        {
+          "num": "26",
+          "userAnswer": {
+            "expected": "5",
+            "actual": "5",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "Lithops에 관한 다음 글의 내용과 일치하지 않는 것은?"
+          }
+        },
+        {
+          "num": "27",
+          "userAnswer": {
+            "expected": "2",
+            "actual": "2",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "5",
+            "actual": "5",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": false,
+            "hasChoices": true,
+            "instruction": "\"Go Green\" Writing Contest에 관한 다음 안내문의 내용과 일치하지 않는 것은?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "img08",
+      "allPass": true,
+      "error": null,
+      "safetyChecks": {
+        "problemCountMatch": true,
+        "passagePresent": true,
+        "choicesPresent": true,
+        "bboxValid": true
+      },
+      "problems": [
+        {
+          "num": "22",
+          "userAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "5",
+            "actual": "5",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 글의 요지로 가장 적절한 것은?"
+          }
+        },
+        {
+          "num": "23",
+          "userAnswer": {
+            "expected": "4",
+            "actual": "4",
+            "pass": true,
+            "flexible": true
+          },
+          "correctAnswer": {
+            "expected": "2",
+            "actual": "2",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 글의 주제로 가장 적절한 것은?"
+          }
+        },
+        {
+          "num": "24",
+          "userAnswer": {
+            "expected": "5",
+            "actual": "5",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "1",
+            "actual": "1",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 글의 제목으로 가장 적절한 것은?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "img09",
+      "allPass": true,
+      "error": null,
+      "safetyChecks": {
+        "problemCountMatch": true,
+        "passagePresent": true,
+        "choicesPresent": true,
+        "bboxValid": true
+      },
+      "problems": [
+        {
+          "num": "18",
+          "userAnswer": {
+            "expected": "2",
+            "actual": "2",
+            "pass": true,
+            "flexible": true
+          },
+          "correctAnswer": {
+            "expected": "1",
+            "actual": "1",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 글의 목적으로 가장 적절한 것은?"
+          }
+        },
+        {
+          "num": "19",
+          "userAnswer": {
+            "expected": "2",
+            "actual": "2",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 글에 드러난 Cindy의 심경 변화로 가장 적절한 것은?"
+          }
+        },
+        {
+          "num": "20",
+          "userAnswer": {
+            "expected": "4",
+            "actual": "4",
+            "pass": true,
+            "flexible": true
+          },
+          "correctAnswer": {
+            "expected": "1",
+            "actual": "1",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "다음 글에서 필자가 주장하는 바로 가장 적절한 것은?"
+          }
+        },
+        {
+          "num": "21",
+          "userAnswer": {
+            "expected": "1",
+            "actual": "1",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "밑줄 친 want to use a hammer가 다음 글에서 의미하는 바로 가장 적절한 것은? [3점]"
+          }
+        }
+      ]
+    }
+  ],
+  "failedProblems": [
+    {
+      "imageId": "img07",
+      "num": "25",
+      "userFail": null,
+      "correctFail": {
+        "expected": "5",
+        "actual": "3"
+      }
+    }
+  ]
+}

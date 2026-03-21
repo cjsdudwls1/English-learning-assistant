@@ -21,6 +21,7 @@ export function transformToProblemItem(
     : undefined;
 
   return {
+    id: p.id,
     index: p.index_in_image,
     사용자가_직접_채점한_정오답: userMark,
     AI가_판단한_정오답: aiJudgment,
@@ -55,6 +56,7 @@ export function transformToProblemItem(
 export function transformFromLabelJoin(row: any): ProblemItem {
   const classification = row.classification || {};
   return {
+    id: row.problems.id,
     index: row.problems.index_in_image,
     사용자가_직접_채점한_정오답: normalizeMark(row.user_mark),
     AI가_판단한_정오답: row.is_correct !== undefined && row.is_correct !== null

@@ -23,6 +23,7 @@ export {
   fetchProblemsByClassification,
   fetchProblemsForLabeling,
   updateProblemLabels,
+  deleteProblems,
 } from './db/problems';
 
 // Labels
