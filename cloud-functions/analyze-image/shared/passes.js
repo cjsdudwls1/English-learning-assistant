@@ -65,7 +65,7 @@ export async function executePass0({ ai, sessionId, imageBase64, mimeType }) {
  * - 각 크롭 이미지를 개별 API 호출로 처리 (배치 3개씩 병렬)
  * - buildPromptFn에 problem_number를 전달하여 문제별 프롬프트 생성
  */
-async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, temperature = 1.0 }) {
+async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionContextMap, temperature = 1.0 }) {
   if (crops.length === 0) return { marks: [], usageMetadata: null };
 
   const model = LIGHTWEIGHT_MODEL_SEQUENCE[0];
@@ -78,7 +78,8 @@ async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, temperatur
 
     const batchResults = await Promise.allSettled(
       batch.map(async (crop) => {
-        const prompt = buildPromptFn(crop.problem_number);
+        const questionContext = questionContextMap?.get(String(crop.problem_number));
+        const prompt = buildPromptFn(crop.problem_number, questionContext);
         const parts = [
           { text: prompt },
           { inlineData: { data: crop.croppedBase64, mimeType: crop.mimeType } },
@@ -151,10 +152,10 @@ function mergeUserAndCorrectMarks(userMarks, correctMarks) {
 /**
  * Pass B: 필기 인식 - 크롭된 답안/문제 영역에서 user_answer, correct_answer 추출
  */
-export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops }) {
+export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap }) {
   const [userResult, correctResult] = await Promise.all([
-    detectFromCrops({ ai, sessionId, crops: answerAreaCrops, buildPromptFn: buildCroppedUserAnswerPrompt }),
-    detectFromCrops({ ai, sessionId, crops: fullCrops, buildPromptFn: buildCroppedCorrectAnswerPrompt }),
+    detectFromCrops({ ai, sessionId, crops: answerAreaCrops, buildPromptFn: buildCroppedUserAnswerPrompt, questionContextMap }),
+    detectFromCrops({ ai, sessionId, crops: fullCrops, buildPromptFn: buildCroppedCorrectAnswerPrompt, questionContextMap }),
   ]);
 
   const mergedMarks = mergeUserAndCorrectMarks(userResult.marks, correctResult.marks);
@@ -162,6 +163,62 @@ export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops }
     marks: mergedMarks,
     usageMetadata: userResult.usageMetadata || correctResult.usageMetadata,
   };
+}
+
+/**
+ * Subjective questions: full-image based user_answer detection
+ * Cropped images are unreliable for subjective answers (handwriting spans margins/wide areas),
+ * so we use the full page image and ask the model to read specific problems' handwritten answers.
+ */
+export async function detectSubjectiveUserAnswers({ ai, sessionId, imageBase64, mimeType, subjectiveProblems }) {
+  if (subjectiveProblems.length === 0) return { marks: [], usageMetadata: null };
+
+  const problemList = subjectiveProblems
+    .map(p => `- Q${p.problem_number}: ${p.instruction || ''} / ${p.questionBody || ''}`)
+    .join('\n');
+
+  const prompt = `You are looking at an exam page image. Read the student's HANDWRITTEN answers for the following SHORT ANSWER questions.
+
+Questions:
+${problemList}
+
+Rules:
+- Transcribe the student's handwritten text EXACTLY as written, including spelling mistakes
+- Do NOT correct the student's answer — report what they physically wrote
+- If you see a correction with an arrow (→), report ONLY the text after the arrow
+- If no handwritten answer is found for a question, return null for that question
+
+Output JSON only:
+{
+  "marks": [
+    { "problem_number": "6", "user_answer": "cutting" },
+    { "problem_number": "7", "user_answer": "Are" }
+  ]
+}`;
+
+  const parts = [
+    { text: prompt },
+    { inlineData: { data: imageBase64, mimeType } },
+  ];
+
+  for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
+    try {
+      const { response, usageMetadata } = await generateWithRetry({
+        ai, model,
+        contents: [{ role: 'user', parts }],
+        sessionId, maxRetries: 2, baseDelayMs: 2000, temperature: 0.0,
+      });
+      const text = extractTextFromResponse(response, model);
+      const parsed = parseJsonResponse(text, model);
+      const marks = Array.isArray(parsed?.marks) ? parsed.marks : (Array.isArray(parsed) ? parsed : []);
+      console.log(`[passes:SubjectiveUserAnswers] ${model}: ${marks.length}개 주관식 user_answer 감지`, { sessionId });
+      return { marks, usageMetadata };
+    } catch (err) {
+      console.warn(`[passes:SubjectiveUserAnswers] ${model} 실패:`, err?.message, { sessionId });
+      continue;
+    }
+  }
+  return { marks: [], usageMetadata: null };
 }
 
 /**

@@ -21,8 +21,8 @@ import { GoogleGenAI } from '@google/genai';
 import { VERTEX_PROJECT_ID, VERTEX_LOCATION } from './shared/config.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { cropRegions } from './shared/imageCropper.js';
-import { executePassA, executePass0, executePassB, executePassBFullImage } from './shared/passes.js';
-import { TEST_CASES, checkUserAnswer } from './test-config.js';
+import { executePassA, executePass0, executePassB, executePassBFullImage, detectSubjectiveUserAnswers } from './shared/passes.js';
+import { TEST_CASES, checkUserAnswer, checkCorrectAnswer } from './test-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,13 +117,26 @@ async function runSingleImage(ai, testCase) {
     console.log(`    크롭: 답안영역 ${answerAreaCrops.length}개, 전체영역 ${fullCrops.length}개`);
   }
 
+  // 문제 유형 판별 (객관식 vs 주관식)
+  const questionContextMap = new Map();
+  for (const item of pageItems) {
+    const hasChoices = Array.isArray(item.choices) && item.choices.length > 0;
+    const instructionText = item.instruction || '';
+    const isSubjective = !hasChoices || instructionText.includes('서술형') || instructionText.includes('고쳐 쓰') || instructionText.includes('바꿔 쓰');
+    questionContextMap.set(String(item.problem_number), {
+      isSubjective,
+      instruction: instructionText,
+      questionBody: item.question_body || '',
+    });
+  }
+
   // Pass B: 필기 인식 (프로덕션 index.js processPage와 동일한 로직)
   console.log(`  [Pass B] 필기 인식...`);
   let passBResult;
 
   if (answerAreaCrops.length > 0) {
     // 1차: 크롭 기반 분석
-    passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops });
+    passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap });
     console.log(`    크롭 기반 marks: ${passBResult.marks.length}개 (기대: ${pageItems.length}개)`);
 
     // marks 부족 시 전체 이미지 fallback 보충 (프로덕션 index.js processPage와 동일)
@@ -175,6 +188,28 @@ async function runSingleImage(ai, testCase) {
     }
   }
 
+  // 주관식 문제: 전체 이미지 기반 user_answer 감지 (크롭 결과 오버라이드)
+  const subjectiveProblems = [];
+  for (const [pNum, ctx] of questionContextMap) {
+    if (ctx.isSubjective) {
+      subjectiveProblems.push({ problem_number: pNum, instruction: ctx.instruction, questionBody: ctx.questionBody });
+    }
+  }
+  if (subjectiveProblems.length > 0) {
+    console.log(`    주관식 ${subjectiveProblems.length}개 → 전체 이미지 기반 user_answer 감지`);
+    const subjectiveResult = await detectSubjectiveUserAnswers({
+      ai, sessionId,
+      imageBase64: resizedBase64, mimeType: resizedMimeType,
+      subjectiveProblems,
+    });
+    for (const mark of subjectiveResult.marks) {
+      const item = pageItems.find(it => String(it.problem_number) === String(mark.problem_number));
+      if (item && mark.user_answer != null) {
+        item.user_answer = mark.user_answer;
+      }
+    }
+  }
+
   // ─── 안전성 체크 ───
   const safetyChecks = {
     problemCountMatch: pageItems.length === expectedUser.length,
@@ -198,7 +233,7 @@ async function runSingleImage(ai, testCase) {
     const expC = expectedCorrect[i] || '?';
 
     const userPass = checkUserAnswer(testCase, i, actU);
-    const correctPass = expC === actC;
+    const correctPass = checkCorrectAnswer(testCase, i, actC);
 
     problems.push({
       num: pNum,

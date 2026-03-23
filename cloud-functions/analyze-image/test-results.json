@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-03-21T08:55:08.530Z",
-  "allPass": false,
-  "total": 14,
-  "passed": 13,
-  "failed": 1,
+  "timestamp": "2026-03-23T06:21:08.356Z",
+  "allPass": true,
+  "total": 23,
+  "passed": 23,
+  "failed": 0,
   "regressions": [],
   "images": [
     {
@@ -97,7 +97,7 @@
     },
     {
       "id": "img07",
-      "allPass": false,
+      "allPass": true,
       "error": null,
       "safetyChecks": {
         "problemCountMatch": true,
@@ -116,8 +116,8 @@
           },
           "correctAnswer": {
             "expected": "5",
-            "actual": "3",
-            "pass": false
+            "actual": "5",
+            "pass": true
           },
           "passAData": {
             "hasPassage": true,
@@ -323,17 +323,191 @@
           }
         }
       ]
+    },
+    {
+      "id": "img-subjective",
+      "allPass": true,
+      "error": null,
+      "safetyChecks": {
+        "problemCountMatch": true,
+        "passagePresent": false,
+        "choicesPresent": false,
+        "bboxValid": true
+      },
+      "problems": [
+        {
+          "num": "1",
+          "userAnswer": {
+            "expected": "4",
+            "actual": "4",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "4",
+            "actual": "4",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "[1-3] 다음 중 어법상 알맞지 않은 문장을 고르세요."
+          }
+        },
+        {
+          "num": "2",
+          "userAnswer": {
+            "expected": "2",
+            "actual": "2",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "2",
+            "actual": "2",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": false,
+            "hasChoices": true,
+            "instruction": "[1-3] 다음 중 어법상 알맞지 않은 문장을 고르세요."
+          }
+        },
+        {
+          "num": "3",
+          "userAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": false,
+            "hasChoices": true,
+            "instruction": "[1-3] 다음 중 어법상 알맞지 않은 문장을 고르세요."
+          }
+        },
+        {
+          "num": "4",
+          "userAnswer": {
+            "expected": "2",
+            "actual": "2",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "2",
+            "actual": "2",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "[4-5] 다음 중 밑줄 친 (A), (B)를 바르게 고쳐 쓴 것끼리 짝지어 진 것을 고르세요."
+          }
+        },
+        {
+          "num": "5",
+          "userAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true,
+            "flexible": true
+          },
+          "correctAnswer": {
+            "expected": "3",
+            "actual": "3",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": true,
+            "hasChoices": true,
+            "instruction": "[4-5] 다음 중 밑줄 친 (A), (B)를 바르게 고쳐 쓴 것끼리 짝지어 진 것을 고르세요."
+          }
+        },
+        {
+          "num": "6",
+          "userAnswer": {
+            "expected": "cutting",
+            "actual": "cutting",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "cutting",
+            "actual": "cutting",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": false,
+            "hasChoices": false,
+            "instruction": "서술형 [6-7] 다음 문장에서 어법상 알맞지 않은 부분을 찾아 바르게 고쳐 쓰세요."
+          }
+        },
+        {
+          "num": "7",
+          "userAnswer": {
+            "expected": "Are",
+            "actual": "Are",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "Are",
+            "actual": "Are",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": false,
+            "hasChoices": false,
+            "instruction": "서술형 [6-7] 다음 문장에서 어법상 알맞지 않은 부분을 찾아 바르게 고쳐 쓰세요."
+          }
+        },
+        {
+          "num": "8",
+          "userAnswer": {
+            "expected": "They aren't going to clear the streets after school",
+            "actual": "They aren't going to clear the streets after school.",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "They are not going to clean the streets after school",
+            "actual": "They are not going to clean the streets after school.",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": false,
+            "hasChoices": false,
+            "instruction": "서술형 [8-9] 다음 문장을 괄호 안의 지시대로 바꿔 쓰세요."
+          }
+        },
+        {
+          "num": "9",
+          "userAnswer": {
+            "expected": "We planning lot of events for children",
+            "actual": "We planning a lot of events for children.",
+            "pass": true,
+            "flexible": false
+          },
+          "correctAnswer": {
+            "expected": "We are planning a lot of events for children",
+            "actual": "We are planning a lot of events for children.",
+            "pass": true
+          },
+          "passAData": {
+            "hasPassage": false,
+            "hasChoices": false,
+            "instruction": "서술형 [8-9] 다음 문장을 괄호 안의 지시대로 바꿔 쓰세요."
+          }
+        }
+      ]
     }
   ],
-  "failedProblems": [
-    {
-      "imageId": "img07",
-      "num": "25",
-      "userFail": null,
-      "correctFail": {
-        "expected": "5",
-        "actual": "3"
-      }
-    }
-  ]
+  "failedProblems": []
 }

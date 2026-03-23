@@ -21,7 +21,7 @@ import { VERTEX_PROJECT_ID, VERTEX_LOCATION } from './shared/config.js';
 import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js';
 import { cropRegions } from './shared/imageCropper.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
-import { executePassA, executePass0, executePassB, executePassBFullImage, executePassC } from './shared/passes.js';
+import { executePassA, executePass0, executePassB, executePassBFullImage, executePassC, detectSubjectiveUserAnswers } from './shared/passes.js';
 import { uploadImages, createSession, saveProblems, saveLabels, updateProblemMetadata, completeSession } from './shared/dbOperations.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -159,6 +159,19 @@ async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxo
   const pageItems = passAResult.parsed?.items || passAResult.parsed?.problems || passAResult.parsed?.pages?.[0]?.problems || [];
   console.log(`[handler] Pass A: ${pageItems.length}개 문제 (${passAResult.model}), Pass 0: ${pass0Result.bboxes.length}개 bbox`, { sessionId });
 
+  // Pass A 결과에서 문제 유형 판별 (객관식 vs 주관식)
+  const questionContextMap = new Map();
+  for (const item of pageItems) {
+    const hasChoices = Array.isArray(item.choices) && item.choices.length > 0;
+    const instructionText = item.instruction || '';
+    const isSubjective = !hasChoices || instructionText.includes('서술형') || instructionText.includes('고쳐 쓰') || instructionText.includes('바꿔 쓰');
+    questionContextMap.set(String(item.problem_number), {
+      isSubjective,
+      instruction: instructionText,
+      questionBody: item.question_body || '',
+    });
+  }
+
   // Pass B: 크롭 기반 필기 인식 또는 전체 이미지 fallback
   let passBResult;
 
@@ -170,7 +183,7 @@ async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxo
       const fullCrops = cropResult.fullCrops;
       console.log(`[handler] 크롭: ${answerAreaCrops.length} answer + ${fullCrops.length} full`, { sessionId });
 
-      passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops });
+      passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap });
       console.log(`[handler] Pass B (크롭): ${passBResult.marks.length}개 marks (기대: ${pageItems.length}개)`, { sessionId });
 
       // 크롭 기반 marks가 부족하면 (fetch failed 등) 전체 이미지 fallback으로 보충
@@ -232,6 +245,28 @@ async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxo
     item.correct_answer = null;
   }
   mergeHandwritingMarks(pageItems, passBResult.marks, sessionId);
+
+  // Subjective questions: full-image based user_answer detection (overrides crop-based results)
+  const subjectiveProblems = [];
+  for (const [pNum, ctx] of questionContextMap) {
+    if (ctx.isSubjective) {
+      subjectiveProblems.push({ problem_number: pNum, instruction: ctx.instruction, questionBody: ctx.questionBody });
+    }
+  }
+  if (subjectiveProblems.length > 0) {
+    console.log(`[handler] 주관식 ${subjectiveProblems.length}개 문제 → 전체 이미지 기반 user_answer 감지`, { sessionId });
+    const subjectiveResult = await detectSubjectiveUserAnswers({
+      ai, sessionId,
+      imageBase64: imageData.imageBase64, mimeType: imageData.mimeType,
+      subjectiveProblems,
+    });
+    for (const mark of subjectiveResult.marks) {
+      const item = pageItems.find(it => String(it.problem_number) === String(mark.problem_number));
+      if (item && mark.user_answer != null) {
+        item.user_answer = mark.user_answer;
+      }
+    }
+  }
 
   // Pass C: 분류 (visual_context가 있으면 이미지도 전달)
   const passCResult = await executePassC({

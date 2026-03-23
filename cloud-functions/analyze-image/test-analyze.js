@@ -24,7 +24,7 @@ import { GoogleGenAI } from '@google/genai';
 import { VERTEX_PROJECT_ID, VERTEX_LOCATION } from './shared/config.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { cropRegions } from './shared/imageCropper.js';
-import { executePassA, executePass0, executePassB, executePassC } from './shared/passes.js';
+import { executePassA, executePass0, executePassB, executePassC, detectSubjectiveUserAnswers } from './shared/passes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -166,9 +166,23 @@ async function main() {
     console.log('  bbox가 없어 크롭을 건너뜁니다.');
   }
 
+  // 문제 유형 판별 (객관식 vs 주관식)
+  const questionContextMap = new Map();
+  for (const item of pageItems) {
+    const hasChoices = Array.isArray(item.choices) && item.choices.length > 0;
+    const instructionText = item.instruction || '';
+    const isSubjective = !hasChoices || instructionText.includes('서술형') || instructionText.includes('고쳐 쓰') || instructionText.includes('바꿔 쓰');
+    questionContextMap.set(String(item.problem_number), {
+      isSubjective,
+      instruction: instructionText,
+      questionBody: item.question_body || '',
+    });
+    if (isSubjective) console.log(`  [유형] Q${item.problem_number}: 주관식`);
+  }
+
   // Pass B: 필기 인식
   sep('5단계: Pass B (필기 인식 → user_answer, correct_answer)');
-  const passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops });
+  const passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap });
   console.log(`  인식된 marks: ${passBResult.marks.length}개`);
   for (const mark of passBResult.marks) {
     console.log(`  - Q${mark.problem_number}: user_answer=${mark.user_answer}, correct_answer=${mark.correct_answer}`);
@@ -176,6 +190,29 @@ async function main() {
     if (matchedItem) {
       matchedItem.user_answer = mark.user_answer;
       matchedItem.correct_answer = mark.correct_answer;
+    }
+  }
+
+  // 주관식 문제: 전체 이미지 기반 user_answer 감지 (크롭 결과 오버라이드)
+  const subjectiveProblems = [];
+  for (const [pNum, ctx] of questionContextMap) {
+    if (ctx.isSubjective) {
+      subjectiveProblems.push({ problem_number: pNum, instruction: ctx.instruction, questionBody: ctx.questionBody });
+    }
+  }
+  if (subjectiveProblems.length > 0) {
+    sep('5-1단계: 주관식 user_answer (전체 이미지 기반)');
+    const subjectiveResult = await detectSubjectiveUserAnswers({
+      ai, sessionId,
+      imageBase64: resizedBase64, mimeType: resizedMimeType,
+      subjectiveProblems,
+    });
+    for (const mark of subjectiveResult.marks) {
+      console.log(`  - Q${mark.problem_number}: user_answer=${mark.user_answer}`);
+      const item = pageItems.find(it => String(it.problem_number) === String(mark.problem_number));
+      if (item && mark.user_answer != null) {
+        item.user_answer = mark.user_answer;
+      }
     }
   }
 

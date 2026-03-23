@@ -58,7 +58,24 @@ Output JSON only:
 }`;
 }
 
-export function buildCroppedUserAnswerPrompt(problemNumber) {
+export function buildCroppedUserAnswerPrompt(problemNumber, questionContext) {
+  if (questionContext?.isSubjective) {
+    return `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.
+This is a SHORT ANSWER / ESSAY type question (not multiple choice).
+
+Your task: Read the HANDWRITTEN answer text exactly as the student wrote it.
+
+Rules:
+- Transcribe the handwritten text VERBATIM, including any spelling mistakes or grammatical errors the student made
+- Do NOT correct the student's answer — report exactly what they wrote
+- If the student crossed out text and rewrote it, report only the final version
+- If you see an arrow (→) indicating a correction (e.g., "cuting → cutting"), report ONLY the corrected word/phrase after the arrow
+- If no handwritten answer is found, return null
+
+Output JSON only:
+{ "problem_number": "${problemNumber}", "user_answer": "the student's handwritten answer" }`;
+  }
+
   return `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.
 This image is zoomed into ONLY the answer marking region. Look very carefully for any handwritten marks.
 
@@ -72,7 +89,27 @@ Output JSON only:
 { "problem_number": "${problemNumber}", "user_answer": "4" }`;
 }
 
-export function buildCroppedCorrectAnswerPrompt(problemNumber) {
+export function buildCroppedCorrectAnswerPrompt(problemNumber, questionContext) {
+  if (questionContext?.isSubjective) {
+    const instruction = questionContext.instruction || '';
+    const questionBody = questionContext.questionBody || '';
+
+    return `You are analyzing a CROPPED image of exam question Q${problemNumber}.
+This is a SHORT ANSWER / ESSAY type question (not multiple choice).
+${instruction ? `\nInstruction: ${instruction}` : ''}
+${questionBody ? `\nQuestion: ${questionBody}` : ''}
+
+Your task: Read the question from the image and solve it to determine the correct answer.
+
+Rules:
+- For grammar correction questions (find and fix errors): provide ONLY the corrected word or phrase, not the full sentence
+- For sentence transformation questions (rewrite in a given form): provide the COMPLETE transformed sentence
+- You MUST provide a correct_answer. Never return null.
+
+Output JSON only:
+{ "problem_number": "${problemNumber}", "correct_answer": "the correct answer text" }`;
+  }
+
   return `You are analyzing a CROPPED image of exam question Q${problemNumber}.
 This image shows the FULL problem: question text, passage, and answer choices.
 
@@ -92,17 +129,21 @@ export function buildHandwritingDetectionPrompt(imageCount = 1) {
 
 <task>
 For each problem number visible on the page(s):
-1. Detect user_answer (handwritten marks: circled numbers, checkmarks, underlines)
+1. Detect user_answer (what the student physically wrote/marked on paper)
 2. Solve for correct_answer independently
-
-For multiple choice (①②③④⑤): return "1"-"5"
-For short answer: return text verbatim
-If no mark found: return null for user_answer
 </task>
 
+<answer_format>
+- Multiple choice (①②③④⑤): return the marked/correct choice number as "1"-"5"
+- Short answer / essay (서술형):
+  - user_answer: transcribe the student's handwritten text VERBATIM, including spelling errors. If you see a correction arrow (→), report only the text after the arrow.
+  - correct_answer: solve the question and return the correct text answer
+- If no mark found: return null for user_answer
+</answer_format>
+
 <constraints>
-- user_answer = physical marks on paper
-- correct_answer = your independent solution
+- user_answer = physical marks/writing on paper (do NOT correct spelling or grammar)
+- correct_answer = your independent solution (the actually correct answer)
 - Do NOT copy user_answer into correct_answer
 - Report ALL problems visible
 ${imageCount > 1 ? `- You have ${imageCount} pages. Report each problem ONCE.` : ''}
@@ -111,8 +152,8 @@ ${imageCount > 1 ? `- You have ${imageCount} pages. Report each problem ONCE.` :
 Output JSON only:
 {
   "marks": [
-    { "problem_number": "25", "user_answer": "4", "correct_answer": "3" },
-    { "problem_number": "26", "user_answer": null, "correct_answer": "2" }
+    { "problem_number": "1", "user_answer": "4", "correct_answer": "3" },
+    { "problem_number": "6", "user_answer": "cutting", "correct_answer": "cutting" }
   ]
 }
 `;
