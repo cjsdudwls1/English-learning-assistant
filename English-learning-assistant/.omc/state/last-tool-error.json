@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"ls \\\"C:/cheon/cheon_wokespace/edu/English-learning-assistant/English-learning-assistant/src/services/db/index.ts\\\" 2>/dev/null && wc -l \\\"C:/cheon/cheon_wokespace/edu/English-learning-assi...",
+  "error": "Exit code 2",
+  "timestamp": "2026-03-29T10:51:26.771Z",
+  "retry_count": 1
+}

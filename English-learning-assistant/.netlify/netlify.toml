@@ -1,18 +1,20 @@
+headersOrigin = "config"
 redirectsOrigin = "config"
 plugins = []
-headers = []
 
 [functions]
 
 [functions."*"]
 
 [build]
-publish = "C:\\cheon\\cheon_wokespace\\edu\\English-learning-assistant\\dist"
+publish = "C:\\cheon\\cheon_wokespace\\edu\\English-learning-assistant\\English-learning-assistant\\English-learning-assistant\\dist"
 publishOrigin = "config"
 commandOrigin = "config"
-command = "npm run build"
+base = "C:\\cheon\\cheon_wokespace\\edu\\English-learning-assistant\\English-learning-assistant"
+command = "cd English-learning-assistant && npm install && npm run build"
 
 [build.environment]
+NODE_VERSION = "18"
 
 [build.processing]
 
@@ -25,6 +27,37 @@ command = "npm run build"
 [build.processing.js]
 
 [build.services]
+
+[[headers]]
+for = "/sw.js"
+
+[headers.values]
+Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+for = "/manifest.webmanifest"
+
+[headers.values]
+Content-Type = "application/manifest+json"
+Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+for = "/*.js"
+
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+for = "/*.css"
+
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+for = "/assets/*"
+
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"
 
 [[redirects]]
 from = "/*"

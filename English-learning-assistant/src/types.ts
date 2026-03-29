@@ -126,3 +126,84 @@ export interface ProblemGenerationState {
   expectedProblemCounts: { [key: string]: number };
   receivedProblems: GeneratedProblem[];
 }
+
+// =====================
+// 역할 기반 학급 관리 시스템 타입
+// =====================
+
+export type UserRole = 'student' | 'teacher' | 'parent' | 'director';
+
+export interface ClassInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  member_count?: number;
+  student_count?: number;
+}
+
+export interface ClassMember {
+  id: string;
+  class_id: string;
+  user_id: string;
+  role: 'teacher' | 'student';
+  joined_at: string;
+  email?: string;
+}
+
+export interface SharedAssignment {
+  id: string;
+  title: string;
+  description: string | null;
+  created_by: string;
+  class_id: string | null;
+  due_date: string | null;
+  created_at: string;
+  problem_count?: number;
+  completed_count?: number;
+}
+
+export interface AssignmentProblem {
+  id: string;
+  assignment_id: string;
+  problem_id: string;
+  order_index: number;
+  problem?: GeneratedProblem;
+}
+
+export interface AssignmentResponse {
+  id: string;
+  assignment_id: string;
+  problem_id: string;
+  student_id: string;
+  answer: string | null;
+  is_correct: boolean | null;
+  time_spent_seconds: number | null;
+  submitted_at: string;
+}
+
+export interface MonthlyStats {
+  month: number;
+  total_count: number;
+  correct_count: number;
+  incorrect_count: number;
+  avg_time_seconds: number;
+}
+
+export interface DailyStats {
+  date: string;
+  total_count: number;
+  correct_count: number;
+  incorrect_count: number;
+  avg_time_seconds: number;
+}
+
+export interface CreateAssignmentParams {
+  title: string;
+  description: string | null;
+  classId: string | null;
+  problemIds: string[];
+  studentIds: string[];
+  dueDate?: string | null;
+}

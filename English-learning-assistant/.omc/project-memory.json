@@ -1,0 +1,172 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1774783462425,
+  "projectRoot": "C:\\cheon\\cheon_wokespace\\edu\\English-learning-assistant\\English-learning-assistant",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "@playwright/test",
+        "version": "1.56.1",
+        "category": "testing"
+      },
+      {
+        "name": "react",
+        "version": "19.1.1",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.1.1",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "5.4.20",
+        "category": "build"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite",
+      "build": "vite build",
+      "preview": "vite preview",
+      "pwa": "vite build"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "public",
+      "src"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 5,
+      "lastAccessed": 1774783462400,
+      "keyFiles": [
+        "index.html",
+        "manifest.webmanifest",
+        "registerSW.js",
+        "sw.js",
+        "workbox-5ffe50d4.js"
+      ]
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 1,
+      "lastAccessed": 1774783462401,
+      "keyFiles": [
+        "manifest.webmanifest"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 4,
+      "lastAccessed": 1774783462410,
+      "keyFiles": [
+        "App.tsx",
+        "index.tsx",
+        "types.ts",
+        "vite-env.d.ts"
+      ]
+    },
+    "dist\\assets": {
+      "path": "dist\\assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1774783462410,
+      "keyFiles": [
+        "index-BUkGuHON.css",
+        "index-DetSssr_.js"
+      ]
+    },
+    "src\\components": {
+      "path": "src\\components",
+      "purpose": "UI components",
+      "fileCount": 30,
+      "lastAccessed": 1774783462410,
+      "keyFiles": [
+        "AnalyzingCard.tsx",
+        "AuthGate.tsx",
+        "FailedAnalysisCard.tsx"
+      ]
+    },
+    "src\\pages": {
+      "path": "src\\pages",
+      "purpose": "Page components",
+      "fileCount": 13,
+      "lastAccessed": 1774783462411,
+      "keyFiles": [
+        "AllProblemsPage.tsx",
+        "AnalyzingPage.tsx",
+        "AssignmentSolvePage.tsx"
+      ]
+    },
+    "src\\services": {
+      "path": "src\\services",
+      "purpose": "Business logic services",
+      "fileCount": 5,
+      "lastAccessed": 1774783462411,
+      "keyFiles": [
+        "db.ts",
+        "marks.ts",
+        "problemLoader.ts"
+      ]
+    },
+    "src\\utils": {
+      "path": "src\\utils",
+      "purpose": "Utility functions",
+      "fileCount": 5,
+      "lastAccessed": 1774783462411,
+      "keyFiles": [
+        "canvasCropper.ts",
+        "problemTransform.ts",
+        "sessionStats.ts"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

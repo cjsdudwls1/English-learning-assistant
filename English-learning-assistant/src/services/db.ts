@@ -50,4 +50,47 @@ export {
   type ProblemMetadataItem,
 } from './db/metadata';
 
+// Classes
+export {
+  createClass,
+  fetchMyClasses,
+  fetchClassMembers,
+  addClassMember,
+  removeClassMember,
+  deleteClass,
+} from './db/classes';
 
+// Assignments
+export {
+  createAssignment,
+  fetchMyAssignments,
+  fetchAssignedToMe,
+  fetchChildAssignments,
+  submitAssignmentResponse,
+  fetchAssignmentResponses,
+  fetchAssignmentProblems,
+  deleteAssignment,
+} from './db/assignments';
+
+// Parent-Children
+export {
+  linkChild,
+  fetchMyChildren,
+  unlinkChild,
+  type ChildInfo,
+} from './db/parentChildren';
+
+// Role Stats
+export {
+  fetchMonthlySolvingStats,
+  fetchDailySolvingStats,
+  fetchClassAssignmentStats,
+  fetchDirectorOverview,
+  type DirectorOverview,
+} from './db/roleStats';
+
+// Teacher Stats
+export {
+  fetchTeacherPerformances,
+  type TeacherPerformance,
+} from './db/teacherStats';

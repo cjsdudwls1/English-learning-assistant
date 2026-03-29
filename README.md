@@ -10,6 +10,7 @@ React + Vite + PWA 기반의 영어 학습 지원 애플리케이션입니다.
 ## 로컬 개발
 ```bash
 cd English-learning-assistant
+cd English-learning-assistant
 npm run dev
 ```
 

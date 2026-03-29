@@ -11,6 +11,7 @@ import { StatsDateFilter } from '../components/StatsDateFilter';
 import { StatsActionButtons } from '../components/StatsActionButtons';
 import { StatsExampleModal } from '../components/StatsExampleModal';
 import { StatsGeneratedProblems } from '../components/StatsGeneratedProblems';
+import { SolvingStatsCard } from '../components/stats/SolvingStatsCard';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getTranslation } from '../utils/translations';
@@ -254,6 +255,8 @@ export const StatsPage: React.FC = () => {
           onDelete={handleDeleteSession}
         />
       ))}
+
+      <SolvingStatsCard />
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 w-full max-w-full min-w-0">
         <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-200">{t.stats.statsByType}</h2>

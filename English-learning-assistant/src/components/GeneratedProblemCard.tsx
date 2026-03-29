@@ -5,7 +5,7 @@ import { startProblemSolving, completeProblemSolving } from '../services/db';
 
 interface Choice {
   text: string;
-  is_correct: boolean;
+  is_correct?: boolean;
 }
 
 interface GeneratedProblem {

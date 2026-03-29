@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { getCurrentUserId } from '../services/db';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useUserRole } from '../contexts/UserRoleContext';
 import { getTranslation } from '../utils/translations';
 
 export const ProfilePage: React.FC = () => {
   const { language } = useLanguage();
   const t = getTranslation(language);
+  const { refreshRole } = useUserRole();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,10 +92,20 @@ export const ProfilePage: React.FC = () => {
 
       if (updateError) throw updateError;
 
+      await refreshRole();
       setMessage(t.profile.saved);
+
+      // 역할에 맞는 대시보드로 이동
+      const savedRole = role || 'student';
+      const dashboardPaths: Record<string, string> = {
+        teacher: '/teacher/dashboard',
+        parent: '/parent/dashboard',
+        director: '/director/dashboard',
+        student: '/upload',
+      };
       setTimeout(() => {
-        setMessage(null);
-      }, 3000);
+        navigate(dashboardPaths[savedRole] || '/upload');
+      }, 1000);
     } catch (e) {
       setError(e instanceof Error ? e.message : t.profile.saveError);
     } finally {
@@ -168,6 +180,16 @@ export const ProfilePage: React.FC = () => {
                 }`}
             >
               {language === 'ko' ? '선생님' : 'Teacher'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole('director')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${role === 'director'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                }`}
+            >
+              {language === 'ko' ? '학원장' : 'Director'}
             </button>
           </div>
         </div>

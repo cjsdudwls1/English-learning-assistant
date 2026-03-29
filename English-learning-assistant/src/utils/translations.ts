@@ -23,6 +23,15 @@ export interface Translations {
     uploadButton: string;
     uploading: string;
     uploadCount: string;
+    sectionTitle: string;
+    selectFile: string;
+    noFileSelected: string;
+    filesSelected: string;
+    multipleImages: string;
+    selectedImages: string;
+    clearAll: string;
+    delete: string;
+    rotateHint: string;
   };
   
   // 통계 페이지
@@ -86,6 +95,7 @@ export interface Translations {
     noExplanation: string;
     timeSpent: string;
     summaryTitle: string;
+    answerLocked: string;
   };
   
   // 세션 상세
@@ -99,14 +109,26 @@ export interface Translations {
   // 프로필
   profile: {
     title: string;
+    myProfile: string;
+    back: string;
     name: string;
+    email: string;
+    gender: string;
+    male: string;
+    female: string;
     age: string;
+    agePlaceholder: string;
     grade: string;
+    selectGrade: string;
     language: string;
     korean: string;
     english: string;
     save: string;
     saving: string;
+    cancel: string;
+    saved: string;
+    loadError: string;
+    saveError: string;
   };
   
   // 로그인
@@ -259,6 +281,7 @@ export const translations: Record<Language, Translations> = {
       noExplanation: '이 선택지가 왜 오답인지에 대한 설명이 없습니다.',
       timeSpent: '소요 시간',
       summaryTitle: '유사 문제 풀이 결과',
+      answerLocked: '이미 답을 선택했습니다.',
     },
     session: {
       title: '세션 상세',
@@ -426,6 +449,7 @@ export const translations: Record<Language, Translations> = {
       noExplanation: 'No explanation available for why this choice is incorrect.',
       timeSpent: 'Time Spent',
       summaryTitle: 'Practice Summary',
+      answerLocked: 'You have already selected an answer.',
     },
     session: {
       title: 'Session Details',

@@ -4,6 +4,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { LogoutButton } from './LoginButton';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useUserRole } from '../contexts/UserRoleContext';
 
 export type Status = 'idle' | 'loading' | 'done' | 'error';
 
@@ -13,6 +14,7 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ status = 'idle' }) => {
   const { language } = useLanguage();
+  const { role } = useUserRole();
 
   return (
     <header className="topbar">
@@ -20,9 +22,33 @@ export const TopBar: React.FC<TopBarProps> = ({ status = 'idle' }) => {
         AI<span>영어</span><span>문제</span><span>분석기</span>
       </div>
       <nav>
-        <Link to="/upload" data-discover="true">업로드</Link>
-        <Link to="/stats" data-discover="true">통계</Link>
-        <Link to="/problems" data-discover="true">문제 관리</Link>
+        {role === 'student' && (
+          <>
+            <Link to="/upload" data-discover="true">업로드</Link>
+            <Link to="/stats" data-discover="true">통계</Link>
+            <Link to="/problems" data-discover="true">문제 관리</Link>
+            <Link to="/assignments" data-discover="true">과제</Link>
+          </>
+        )}
+        {role === 'teacher' && (
+          <>
+            <Link to="/upload" data-discover="true">업로드</Link>
+            <Link to="/teacher/dashboard" data-discover="true">학급 관리</Link>
+            <Link to="/teacher/assignments/create" data-discover="true">과제 만들기</Link>
+            <Link to="/stats" data-discover="true">통계</Link>
+          </>
+        )}
+        {role === 'parent' && (
+          <>
+            <Link to="/parent/dashboard" data-discover="true">자녀 현황</Link>
+          </>
+        )}
+        {role === 'director' && (
+          <>
+            <Link to="/director/dashboard" data-discover="true">전체 통계</Link>
+            <Link to="/teacher/dashboard" data-discover="true">학급 관리</Link>
+          </>
+        )}
         <Link to="/profile" data-discover="true">프로필</Link>
       </nav>
       <div className="top-actions">
@@ -39,4 +65,3 @@ export const TopBar: React.FC<TopBarProps> = ({ status = 'idle' }) => {
     </header>
   );
 };
-

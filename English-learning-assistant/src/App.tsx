@@ -15,6 +15,16 @@ import { SessionDetailPage } from './pages/SessionDetailPage';
 import { RetryProblemsPage } from './pages/RetryProblemsPage';
 import { AllProblemsPage } from './pages/AllProblemsPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { TeacherDashboardPage } from './pages/TeacherDashboardPage';
+import { AssignmentsPage } from './pages/AssignmentsPage';
+import { AssignmentSolvePage } from './pages/AssignmentSolvePage';
+import { ParentDashboardPage } from './pages/ParentDashboardPage';
+import { DirectorDashboardPage } from './pages/DirectorDashboardPage';
+import { ClassDetailPage } from './components/teacher/ClassDetailPage';
+import { AssignmentCreatePage } from './components/teacher/AssignmentCreatePage';
+import { AssignmentDetailPage } from './components/teacher/AssignmentDetailPage';
+import { RoleGate } from './components/RoleGate';
+import { UserRoleProvider } from './contexts/UserRoleContext';
 import { useLanguage } from './contexts/LanguageContext';
 import { useTheme } from './contexts/ThemeContext';
 import { getTranslation } from './utils/translations';
@@ -812,6 +822,7 @@ const App: React.FC = () => {
   };
 
   return (
+    <UserRoleProvider>
     <Routes>
       <Route path="/upload" element={
         <AuthGate>
@@ -849,8 +860,26 @@ const App: React.FC = () => {
       <Route path="/stats" element={<AuthGate><PageLayout><StatsPage /></PageLayout></AuthGate>} />
       <Route path="/problems" element={<AuthGate><PageLayout><AllProblemsPage /></PageLayout></AuthGate>} />
       <Route path="/profile" element={<AuthGate><PageLayout><ProfilePage /></PageLayout></AuthGate>} />
+
+      {/* 학생 - 과제 */}
+      <Route path="/assignments" element={<AuthGate><PageLayout><RoleGate allowedRoles={['student']}><AssignmentsPage /></RoleGate></PageLayout></AuthGate>} />
+      <Route path="/assignments/:assignmentId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['student']}><AssignmentSolvePage /></RoleGate></PageLayout></AuthGate>} />
+
+      {/* 선생님 */}
+      <Route path="/teacher/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><TeacherDashboardPage /></RoleGate></PageLayout></AuthGate>} />
+      <Route path="/teacher/classes/:classId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><ClassDetailPage /></RoleGate></PageLayout></AuthGate>} />
+      <Route path="/teacher/assignments/create" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><AssignmentCreatePage /></RoleGate></PageLayout></AuthGate>} />
+      <Route path="/teacher/assignments/:assignmentId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><AssignmentDetailPage /></RoleGate></PageLayout></AuthGate>} />
+
+      {/* 학부모 */}
+      <Route path="/parent/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['parent']}><ParentDashboardPage /></RoleGate></PageLayout></AuthGate>} />
+
+      {/* 학원장 */}
+      <Route path="/director/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><DirectorDashboardPage /></RoleGate></PageLayout></AuthGate>} />
+
       <Route path="*" element={<AuthGate><PageLayout><div className="text-center py-10"><a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">{language === 'ko' ? '문제 업로드하러 가기' : 'Go to Upload'}</a></div></PageLayout></AuthGate>} />
     </Routes>
+    </UserRoleProvider>
   );
 };
 
