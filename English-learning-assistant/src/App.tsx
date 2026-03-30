@@ -866,7 +866,7 @@ const App: React.FC = () => {
       <Route path="/assignments/:assignmentId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['student']}><AssignmentSolvePage /></RoleGate></PageLayout></AuthGate>} />
 
       {/* 선생님 */}
-      <Route path="/teacher/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><TeacherDashboardPage /></RoleGate></PageLayout></AuthGate>} />
+      <Route path="/teacher/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher']}><TeacherDashboardPage /></RoleGate></PageLayout></AuthGate>} />
       <Route path="/teacher/classes/:classId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><ClassDetailPage /></RoleGate></PageLayout></AuthGate>} />
       <Route path="/teacher/assignments/create" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><AssignmentCreatePage /></RoleGate></PageLayout></AuthGate>} />
       <Route path="/teacher/assignments/:assignmentId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><AssignmentDetailPage /></RoleGate></PageLayout></AuthGate>} />

@@ -111,6 +111,7 @@ export interface GeneratedProblem {
   is_correct?: boolean | null;
   explanation?: string | null;
   is_editable?: boolean;
+  passage?: string | null;
   created_at: string;
 }
 

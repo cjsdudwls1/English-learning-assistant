@@ -21,6 +21,7 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
   const { language } = useLanguage();
   const t = getTranslation(language);
   const [stem, setStem] = useState(problem.stem || '');
+  const [passage, setPassage] = useState(problem.passage || '');
   const [choices, setChoices] = useState(problem.choices || []);
   const [correctAnswerIndex, setCorrectAnswerIndex] = useState(problem.correct_answer_index ?? null);
   const [correctAnswer, setCorrectAnswer] = useState(problem.correct_answer || '');
@@ -42,6 +43,7 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
     try {
       const updateData: any = {
         stem,
+        passage: problem.passage !== undefined ? passage : undefined,
         explanation: explanation || null,
       };
 
@@ -113,6 +115,20 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
           rows={3}
         />
       </div>
+
+      {problem.passage !== undefined && (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            {language === 'ko' ? '지문' : 'Passage'}
+          </label>
+          <textarea
+            value={passage}
+            onChange={(e) => setPassage(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
+            rows={5}
+          />
+        </div>
+      )}
 
       {/* 문제 유형별 입력 필드 */}
       {problemType === 'multiple_choice' && (

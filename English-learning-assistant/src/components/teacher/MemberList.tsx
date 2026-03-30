@@ -6,9 +6,11 @@ interface Props {
   classId: string;
   members: ClassMember[];
   onUpdate: (members: ClassMember[]) => void;
+  selectedStudentId?: string | null;
+  onSelectStudent?: (userId: string, email?: string) => void;
 }
 
-export const MemberList: React.FC<Props> = ({ classId, members, onUpdate }) => {
+export const MemberList: React.FC<Props> = ({ classId, members, onUpdate, selectedStudentId, onSelectStudent }) => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'teacher' | 'student'>('student');
   const [adding, setAdding] = useState(false);
@@ -62,7 +64,7 @@ export const MemberList: React.FC<Props> = ({ classId, members, onUpdate }) => {
         <div>
           <p className="text-xs font-semibold text-slate-500 mb-2">선생님 ({teachers.length})</p>
           {teachers.map((m) => (
-            <MemberRow key={m.id} member={m} onRemove={handleRemove} />
+            <MemberRow key={m.id} member={m} onRemove={handleRemove} isSelected={false} />
           ))}
         </div>
       )}
@@ -71,16 +73,48 @@ export const MemberList: React.FC<Props> = ({ classId, members, onUpdate }) => {
         {students.length === 0 ? (
           <p className="text-slate-400 text-xs py-2">학생이 없습니다.</p>
         ) : (
-          students.map((m) => <MemberRow key={m.id} member={m} onRemove={handleRemove} />)
+          students.map((m) => (
+            <MemberRow
+              key={m.id}
+              member={m}
+              onRemove={handleRemove}
+              isSelected={selectedStudentId === m.user_id}
+              onSelect={onSelectStudent ? () => onSelectStudent(m.user_id, m.email) : undefined}
+            />
+          ))
         )}
       </div>
     </div>
   );
 };
 
-const MemberRow: React.FC<{ member: ClassMember; onRemove: (userId: string) => void }> = ({ member, onRemove }) => (
-  <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50">
-    <span className="text-sm text-slate-700 dark:text-slate-300">{member.email || member.user_id.slice(0, 8)}</span>
-    <button onClick={() => onRemove(member.user_id)} className="text-xs text-red-500 hover:underline">삭제</button>
+const MemberRow: React.FC<{
+  member: ClassMember;
+  onRemove: (userId: string) => void;
+  isSelected?: boolean;
+  onSelect?: () => void;
+}> = ({ member, onRemove, isSelected, onSelect }) => (
+  <div
+    className={`flex items-center justify-between py-2 px-3 rounded-lg transition-colors ${
+      isSelected
+        ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700'
+        : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+    } ${onSelect ? 'cursor-pointer' : ''}`}
+    onClick={onSelect}
+  >
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-slate-700 dark:text-slate-300">{member.email || member.user_id.slice(0, 8)}</span>
+      {onSelect && (
+        <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
+          {isSelected ? '(통계 보기 중)' : '클릭하여 통계 보기'}
+        </span>
+      )}
+    </div>
+    <button
+      onClick={(e) => { e.stopPropagation(); onRemove(member.user_id); }}
+      className="text-xs text-red-500 hover:underline"
+    >
+      삭제
+    </button>
   </div>
 );

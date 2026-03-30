@@ -99,8 +99,9 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date, languag
 }
 
 // 계층 구조 통계 집계 (모든 depth 레벨)
-export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, language: 'ko' | 'en' = 'ko'): Promise<StatsNode[]> {
-  const userId = await getCurrentUserId();
+// studentId를 전달하면 해당 학생의 통계를 조회 (선생님/학부모/학원장용)
+export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, language: 'ko' | 'en' = 'ko', studentId?: string): Promise<StatsNode[]> {
+  const userId = studentId ?? await getCurrentUserId();
   
   // taxonomy 매핑 맵 생성
   const maps = await buildTaxonomyMaps();
@@ -305,4 +306,91 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
   return rootNodes;
 }
 
+// 학급 전체 학생 대상 택사노미 계층 통계
+export async function fetchClassHierarchicalStats(classId: string, language: 'ko' | 'en' = 'ko'): Promise<StatsNode[]> {
+  // 학급 학생 ID 조회
+  const { data: members, error: mErr } = await supabase
+    .from('class_members')
+    .select('user_id')
+    .eq('class_id', classId)
+    .eq('role', 'student');
+  if (mErr) throw mErr;
 
+  const studentIds = (members || []).map((m) => m.user_id);
+  if (studentIds.length === 0) return [];
+
+  const maps = await buildTaxonomyMaps();
+
+  const { data, error } = await supabase
+    .from('labels')
+    .select(`
+      classification,
+      is_correct,
+      user_mark,
+      problems!inner (
+        session_id,
+        sessions!inner (
+          user_id,
+          created_at
+        )
+      )
+    `)
+    .in('problems.sessions.user_id', studentIds)
+    .not('user_mark', 'is', null);
+
+  if (error) throw error;
+
+  // 집계 로직은 fetchHierarchicalStats와 동일
+  const statsMap = new Map<string, StatsNode>();
+
+  for (const row of data || []) {
+    const classification = (row as any).classification || {};
+    const { koDepth1, koDepth2, koDepth3, koDepth4, depth1, depth2, depth3, depth4 } = validateAndTranslateDepths(classification, maps, language);
+
+    const key1 = koDepth1;
+    const key2 = koDepth1 && koDepth2 ? `${koDepth1}_${koDepth2}` : '';
+    const key3 = koDepth1 && koDepth2 && koDepth3 ? `${koDepth1}_${koDepth2}_${koDepth3}` : '';
+    const key4 = koDepth1 && koDepth2 && koDepth3 && koDepth4 ? `${koDepth1}_${koDepth2}_${koDepth3}_${koDepth4}` : '';
+
+    const addToMap = (key: string, d1: string, d2?: string, d3?: string, d4?: string) => {
+      if (!key || !d1) return;
+      if (!statsMap.has(key)) {
+        statsMap.set(key, { depth1: d1, ...(d2 && { depth2: d2 }), ...(d3 && { depth3: d3 }), ...(d4 && { depth4: d4 }), correct_count: 0, incorrect_count: 0, total_count: 0, children: [], sessionIds: [] });
+      }
+      const s = statsMap.get(key)!;
+      if (row.user_mark !== null && row.user_mark !== undefined) {
+        s.total_count++;
+        if (row.is_correct) s.correct_count++; else s.incorrect_count++;
+        const p = Array.isArray((row as any).problems) ? (row as any).problems?.[0] : (row as any).problems;
+        const sid = p?.session_id;
+        if (sid && !s.sessionIds?.includes(sid)) s.sessionIds?.push(sid);
+      }
+    };
+
+    addToMap(key1, depth1!);
+    addToMap(key2, depth1!, depth2!);
+    addToMap(key3, depth1!, depth2!, depth3!);
+    addToMap(key4, depth1!, depth2!, depth3!, depth4!);
+  }
+
+  // 계층 구조로 변환
+  const rootNodes: StatsNode[] = [];
+  const nodeMap = new Map<string, StatsNode>();
+  for (const [key, node] of statsMap) nodeMap.set(key, node);
+
+  for (const [key, node] of statsMap) {
+    if (key.includes('_')) {
+      const parts = key.split('_');
+      const parentKey = parts.slice(0, parts.length - 1).join('_') || parts[0];
+      const parent = nodeMap.get(parentKey);
+      if (parent) {
+        if (!parent.children) parent.children = [];
+        parent.children.push(node);
+      }
+    } else {
+      rootNodes.push(node);
+    }
+  }
+
+  return rootNodes;
+}

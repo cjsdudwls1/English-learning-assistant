@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchMyClasses, fetchMyAssignments } from '../services/db';
+import { fetchMyClasses, fetchMyAssignments, deleteClass } from '../services/db';
 import type { ClassInfo, SharedAssignment } from '../types';
 import { ClassListCard } from '../components/teacher/ClassListCard';
 
@@ -17,7 +17,9 @@ export const TeacherDashboardPage: React.FC = () => {
         setClasses(c);
         setAssignments(a);
       } catch (e) {
-        setError(e instanceof Error ? e.message : '데이터를 불러오는 중 오류가 발생했습니다.');
+        console.error("Dashboard Load Error:", e);
+        const errMsg = e instanceof Error ? e.message : (e as any)?.message || JSON.stringify(e);
+        setError(`데이터를 불러오는 중 오류가 발생했습니다: ${errMsg}`);
       } finally {
         setLoading(false);
       }
@@ -29,6 +31,16 @@ export const TeacherDashboardPage: React.FC = () => {
     return <div className="text-center py-20 text-slate-500">불러오는 중...</div>;
   }
 
+  const handleDeleteClass = async (classId: string) => {
+    if (!window.confirm("정말로 이 학급을 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.")) return;
+    try {
+      await deleteClass(classId);
+      setClasses(prev => prev.filter(c => c.id !== classId));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '학급 삭제에 실패했습니다.');
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -39,7 +51,7 @@ export const TeacherDashboardPage: React.FC = () => {
       </div>
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
-      <ClassListCard classes={classes} />
+      <ClassListCard classes={classes} onDeleteClass={handleDeleteClass} />
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
         <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">최근 과제</h2>

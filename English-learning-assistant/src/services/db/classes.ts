@@ -19,11 +19,47 @@ export async function createClass(name: string, description: string | null): Pro
   return data.id;
 }
 
-export async function fetchMyClasses(): Promise<ClassInfo[]> {
+export async function fetchAllClasses(): Promise<ClassInfo[]> {
   const { data, error } = await supabase
     .from('classes')
     .select('id, name, description, created_by, created_at')
     .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  if (!data || data.length === 0) return [];
+
+  const ids = data.map(c => c.id);
+  const { data: members, error: mErr } = await supabase
+    .from('class_members')
+    .select('class_id, role')
+    .in('class_id', ids);
+  if (mErr) throw mErr;
+
+  return data.map(cls => ({
+    ...cls,
+    member_count: (members || []).filter(m => m.class_id === cls.id).length,
+    student_count: (members || []).filter(m => m.class_id === cls.id && m.role === 'student').length,
+  }));
+}
+
+export async function fetchMyClasses(): Promise<ClassInfo[]> {
+  const userId = await getCurrentUserId();
+  
+  const { data: myMembers } = await supabase
+    .from('class_members')
+    .select('class_id')
+    .eq('user_id', userId);
+    
+  const joinedClassIds = myMembers?.map(m => m.class_id) || [];
+  
+  let query = supabase.from('classes').select('id, name, description, created_by, created_at');
+  if (joinedClassIds.length > 0) {
+    query = query.or(`created_by.eq.${userId},id.in.(${joinedClassIds.join(',')})`);
+  } else {
+    query = query.eq('created_by', userId);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
   if (error) throw error;
 
   if (!data || data.length === 0) return [];

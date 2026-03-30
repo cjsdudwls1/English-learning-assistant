@@ -89,6 +89,16 @@ export const AssignmentSolvePage: React.FC = () => {
       ) : currentProblem ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
           <p className="text-lg font-medium text-slate-800 dark:text-slate-200">{currentProblem.stem}</p>
+          {currentProblem.passage && (
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
+              <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+                지문 (Passage)
+              </div>
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                {currentProblem.passage}
+              </p>
+            </div>
+          )}
           {isAnswered(currentProblem.id) ? (
             <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm">이미 답변한 문제입니다.</div>
           ) : (

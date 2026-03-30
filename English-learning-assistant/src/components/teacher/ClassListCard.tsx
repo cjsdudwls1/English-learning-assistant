@@ -5,10 +5,15 @@ import type { ClassInfo } from '../../types';
 
 interface Props {
   classes: ClassInfo[];
+  onDeleteClass?: (classId: string) => void;
 }
 
-export const ClassListCard: React.FC<Props> = ({ classes: initialClasses }) => {
+export const ClassListCard: React.FC<Props> = ({ classes: initialClasses, onDeleteClass }) => {
   const [classes, setClasses] = useState(initialClasses);
+  
+  React.useEffect(() => {
+    setClasses(initialClasses);
+  }, [initialClasses]);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
@@ -55,8 +60,26 @@ export const ClassListCard: React.FC<Props> = ({ classes: initialClasses }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {classes.map((cls) => (
             <Link key={cls.id} to={`/teacher/classes/${cls.id}`} className="block p-4 rounded-xl bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-              <p className="font-semibold text-slate-800 dark:text-slate-200">{cls.name}</p>
-              {cls.description && <p className="text-xs text-slate-500 mt-1">{cls.description}</p>}
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">{cls.name}</p>
+                  {cls.description && <p className="text-xs text-slate-500 mt-1">{cls.description}</p>}
+                </div>
+                {onDeleteClass && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onDeleteClass(cls.id);
+                    }}
+                    className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                    title="학급 삭제"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               <div className="flex gap-3 mt-2 text-xs text-slate-500">
                 <span>학생 {cls.student_count ?? 0}명</span>
                 <span>전체 {cls.member_count ?? 0}명</span>

@@ -53,6 +53,7 @@ export {
 // Classes
 export {
   createClass,
+  fetchAllClasses,
   fetchMyClasses,
   fetchClassMembers,
   addClassMember,

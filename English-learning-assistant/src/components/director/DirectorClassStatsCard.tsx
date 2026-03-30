@@ -10,9 +10,10 @@ interface Props {
   year: number;
   onSelectClass: (id: string) => void;
   onYearChange: (year: number) => void;
+  onDeleteClass?: (id: string) => void;
 }
 
-export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClassId, classStats, year, onSelectClass, onYearChange }) => {
+export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClassId, classStats, year, onSelectClass, onYearChange, onDeleteClass }) => {
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
 
   const selectedMonthStats = selectedMonth
@@ -47,6 +48,21 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
 
       {selectedClassId && (
         <>
+          <div className="flex justify-end mb-2">
+            {onDeleteClass && (
+              <button
+                onClick={() => {
+                  if (window.confirm('정말로 이 학급을 삭제하시겠습니까? 학급에 포함된 모든 과제 및 기록이 함께 삭제됩니다.')) {
+                    onDeleteClass(selectedClassId);
+                  }
+                }}
+                className="px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800/50 rounded-lg text-sm font-medium transition-colors"
+              >
+                현재 학급 삭제
+              </button>
+            )}
+          </div>
+
           <AssignmentStatsDisplay
             totalCount={totals.total}
             correctCount={totals.correct}

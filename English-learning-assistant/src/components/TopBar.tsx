@@ -45,8 +45,7 @@ export const TopBar: React.FC<TopBarProps> = ({ status = 'idle' }) => {
         )}
         {role === 'director' && (
           <>
-            <Link to="/director/dashboard" data-discover="true">전체 통계</Link>
-            <Link to="/teacher/dashboard" data-discover="true">학급 관리</Link>
+            <Link to="/director/dashboard" data-discover="true">학원 관리</Link>
           </>
         )}
         <Link to="/profile" data-discover="true">프로필</Link>

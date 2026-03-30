@@ -21,6 +21,7 @@ interface GeneratedProblem {
     depth3?: string;
     depth4?: string;
   };
+  passage?: string | null;
 }
 
 export interface GeneratedProblemResult {
@@ -320,6 +321,17 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
 
       <div className="text-slate-700 dark:text-slate-300 mb-4">
         <p className="font-medium mb-3 text-lg">{problem.stem}</p>
+
+        {problem.passage && (
+          <div className="mb-4 p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
+            <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+              {language === 'ko' ? '지문' : 'Passage'}
+            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+              {problem.passage}
+            </p>
+          </div>
+        )}
 
         {/* 선택지 */}
         {problem.choices && problem.choices.length > 0 && (
