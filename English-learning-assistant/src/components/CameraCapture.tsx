@@ -22,11 +22,12 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
   const startCamera = useCallback(async () => {
     try {
       setError(null);
+      // 모바일에서 세로 방향 우선 요청
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 1080 },
+          height: { ideal: 1920 },
         },
         audio: false,
       };
@@ -59,17 +60,32 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
     setIsCameraReady(false);
   }, []);
 
+  // 카메라 열릴 때 body 스크롤 차단
   useEffect(() => {
     if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.body.style.height = '100%';
       startCamera();
     } else {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
       stopCamera();
       setCapturedPhotos(prev => {
         prev.forEach(p => URL.revokeObjectURL(p.url));
         return [];
       });
     }
-    return () => stopCamera();
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
+      stopCamera();
+    };
   }, [isOpen, startCamera, stopCamera]);
 
   const takePhoto = useCallback(() => {
@@ -89,7 +105,6 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
 
-    // 셔터 효과
     setFlashEffect(true);
     setTimeout(() => setFlashEffect(false), 150);
 
@@ -120,7 +135,6 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
         lastModified: Date.now(),
       });
     });
-    // URL 해제
     capturedPhotos.forEach(p => URL.revokeObjectURL(p.url));
     setCapturedPhotos([]);
     onCapture(files);
@@ -131,34 +145,49 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
-      background: '#000', display: 'flex', flexDirection: 'column',
+      position: 'fixed',
+      top: 0, left: 0, right: 0, bottom: 0,
+      zIndex: 9999,
+      background: '#000',
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100dvh',
+      maxHeight: '100dvh',
+      overflow: 'hidden',
+      touchAction: 'none',
     }}>
-      {/* 카메라 뷰 */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      {/* 카메라 뷰 - 절대 위치로 화면에 맞춤 */}
+      <div style={{
+        flex: 1,
+        position: 'relative',
+        overflow: 'hidden',
+        minHeight: 0,
+      }}>
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
           style={{
-            width: '100%', height: '100%',
+            position: 'absolute',
+            top: 0, left: 0,
+            width: '100%',
+            height: '100%',
             objectFit: 'cover',
           }}
         />
         <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-        {/* 셔터 플래시 효과 */}
+        {/* 셔터 플래시 */}
         {flashEffect && (
           <div style={{
             position: 'absolute', inset: 0,
             background: 'white', opacity: 0.7,
             pointerEvents: 'none',
-            transition: 'opacity 0.15s',
           }} />
         )}
 
-        {/* 에러 메시지 */}
+        {/* 에러 */}
         {error && (
           <div style={{
             position: 'absolute', inset: 0,
@@ -181,12 +210,13 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
           </div>
         )}
 
-        {/* 상단 바: 닫기 + 촬영 수 */}
+        {/* 상단 바 */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0,
-          padding: 'max(1rem, env(safe-area-inset-top)) 1rem 0.5rem',
+          padding: 'max(0.75rem, env(safe-area-inset-top)) 1rem 0.5rem',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           background: 'linear-gradient(to bottom, rgba(0,0,0,0.6), transparent)',
+          zIndex: 2,
         }}>
           <button
             onClick={onClose}
@@ -209,17 +239,21 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
         </div>
       </div>
 
-      {/* 촬영된 사진 미리보기 스트립 */}
+      {/* 촬영 미리보기 스트립 */}
       {capturedPhotos.length > 0 && (
         <div style={{
-          background: '#111', padding: '0.5rem',
-          display: 'flex', gap: '0.5rem', overflowX: 'auto',
-          minHeight: '80px',
+          background: '#111',
+          padding: '0.5rem',
+          display: 'flex',
+          gap: '0.5rem',
+          overflowX: 'auto',
+          flexShrink: 0,
+          height: '72px',
         }}>
           {capturedPhotos.map((photo, idx) => (
             <div key={idx} style={{
               position: 'relative', flexShrink: 0,
-              width: '60px', height: '60px', borderRadius: '0.25rem', overflow: 'hidden',
+              width: '56px', height: '56px', borderRadius: '0.25rem', overflow: 'hidden',
             }}>
               <img
                 src={photo.url}
@@ -243,45 +277,47 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
         </div>
       )}
 
-      {/* 하단 컨트롤 바 */}
+      {/* 하단 컨트롤 */}
       <div style={{
         background: '#111',
-        padding: '1rem',
-        paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
-        display: 'flex', justifyContent: 'space-around', alignItems: 'center',
+        padding: '0.75rem 1rem',
+        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+        display: 'flex',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        flexShrink: 0,
       }}>
-        {/* 갤러리 버튼 (빈 공간 유지) */}
         <div style={{ width: '60px' }} />
 
-        {/* 셔터 버튼 */}
+        {/* 셔터 */}
         <button
           onClick={takePhoto}
           disabled={!isCameraReady || capturedPhotos.length >= remainingSlots}
           style={{
-            width: '72px', height: '72px', borderRadius: '50%',
-            border: '4px solid white', background: 'transparent',
+            width: '64px', height: '64px', borderRadius: '50%',
+            border: '3px solid white', background: 'transparent',
             cursor: isCameraReady ? 'pointer' : 'not-allowed',
-            padding: '4px', opacity: isCameraReady ? 1 : 0.5,
+            padding: '3px', opacity: isCameraReady ? 1 : 0.5,
+            flexShrink: 0,
           }}
         >
           <div style={{
             width: '100%', height: '100%', borderRadius: '50%',
             background: capturedPhotos.length >= remainingSlots ? '#666' : 'white',
-            transition: 'transform 0.1s',
           }} />
         </button>
 
-        {/* 완료 버튼 */}
+        {/* 완료 */}
         <button
           onClick={handleDone}
           disabled={capturedPhotos.length === 0}
           style={{
             background: capturedPhotos.length > 0 ? '#4f46e5' : '#333',
             color: 'white', border: 'none',
-            padding: '0.75rem 1.25rem', borderRadius: '0.5rem',
-            fontSize: '0.875rem', fontWeight: 700,
+            padding: '0.6rem 1rem', borderRadius: '0.5rem',
+            fontSize: '0.8rem', fontWeight: 700,
             cursor: capturedPhotos.length > 0 ? 'pointer' : 'not-allowed',
-            minWidth: '60px',
+            minWidth: '60px', flexShrink: 0,
           }}
         >
           완료 ({capturedPhotos.length})
