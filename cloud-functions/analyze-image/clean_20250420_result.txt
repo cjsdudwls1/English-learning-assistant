@@ -1,0 +1,19 @@
+  - Q5: user_answer=3, correct_answer=3
+  - Q7: user_answer=Are they planning a lot of children., correct_answer=Is → Are
+  - Q8: user_answer=are going to help, correct_answer=They are not going to clean the streets after school.
+  - Q9: user_answer=null, correct_answer=We are planning a lot of events for children.
+  - Q6: user_answer=null, correct_answer=cutting
+  - Q6: user_answer=cutting
+  - Q7: user_answer=Are
+  - Q8: user_answer=They aren't going to clear the streets after school
+  - Q9: user_answer=We panning a lot of events for children
+  [FAIL] Q1: user_answer(기대=4, 실제=?) FAIL | correct_answer(기대=4, 실제=?) FAIL
+  [FAIL] Q2: user_answer(기대=2, 실제=?) FAIL | correct_answer(기대=2, 실제=?) FAIL
+  [FAIL] Q3: user_answer(기대=3, 실제=?) FAIL | correct_answer(기대=3, 실제=?) FAIL
+  [FAIL] Q4: user_answer(기대=2, 실제=?) FAIL | correct_answer(기대=2, 실제=?) FAIL
+  [PASS] Q5: user_answer(기대=3, 실제=3) OK | correct_answer(기대=3, 실제=3) OK
+  [PASS] Q6: user_answer(기대=cutting, 실제=cutting) OK | correct_answer(기대=cutting, 실제=cutting) OK
+  [FAIL] Q7: user_answer(기대=Are, 실제=Are) OK | correct_answer(기대=Are, 실제=Is → Are) FAIL
+  [FAIL] Q8: user_answer(기대=aren't going to clear the streets after school, 실제=They aren't going to clear the streets after school) FAIL | correct_answer(기대=aren't going to clean the streets after school, 실제=They are not going to clean the streets after school.) FAIL
+  [FAIL] Q9: user_answer(기대=We planning lot of events for children, 실제=We panning a lot of events for children) FAIL | correct_answer(기대=We are planning a lot of events for children, 실제=We are planning a lot of events for children.) FAIL
+  ====> 전체 결과: FAIL (불일치 항목 있음)

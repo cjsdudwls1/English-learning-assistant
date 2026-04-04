@@ -150,7 +150,8 @@ const MainPage: React.FC<{
   onOpenCamera: () => void;
   onCloseCamera: () => void;
   onCameraCapture: (files: File[]) => void;
-}> = ({ imageFiles, isLoading, error, status, isCameraOpen, onFileChange, onAnalyzeClick, onRemove, onRotate, onOpenCamera, onCloseCamera, onCameraCapture }) => {
+  onClearAll: () => void;
+}> = ({ imageFiles, isLoading, error, status, isCameraOpen, onFileChange, onAnalyzeClick, onRemove, onRotate, onOpenCamera, onCloseCamera, onCameraCapture, onClearAll }) => {
   const { language } = useLanguage();
   const t = getTranslation(language);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,6 +201,7 @@ const MainPage: React.FC<{
               <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
                 <button
                   type="button"
+                  className="mobile-only-btn"
                   onClick={onOpenCamera}
                   style={{
                     flex: 1,
@@ -259,7 +261,22 @@ const MainPage: React.FC<{
               />
 
               {imageFiles.length > 0 && (
-                <div className="image-previews" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                      {language === 'ko' ? `${imageFiles.length}장 선택됨` : `${imageFiles.length} images`}
+                    </span>
+                    <button
+                      onClick={onClearAll}
+                      style={{
+                        background: 'transparent', border: '1px solid #ff4444', color: '#ff4444',
+                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer'
+                      }}
+                    >
+                      {language === 'ko' ? '초기화' : 'Clear All'}
+                    </button>
+                  </div>
+                  <div className="image-previews" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
                   {imageFiles.map((imageFile, index) => (
                     <div key={imageFile.id} style={{ position: 'relative', flexShrink: 0, width: '60px', height: '60px' }}>
                       <img
@@ -281,7 +298,8 @@ const MainPage: React.FC<{
                       </button>
                     </div>
                   ))}
-                </div>
+                  </div>
+                </>
               )}
 
               <button
@@ -891,6 +909,7 @@ const App: React.FC = () => {
                 if (valid.length > 0) setImageFiles(prev => [...prev, ...valid]);
               });
             }}
+            onClearAll={() => setImageFiles([])}
           />
         </AuthGate>
       } />
@@ -926,6 +945,7 @@ const App: React.FC = () => {
                 if (valid.length > 0) setImageFiles(prev => [...prev, ...valid]);
               });
             }}
+            onClearAll={() => setImageFiles([])}
           />
         </AuthGate>
       } />

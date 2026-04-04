@@ -10,6 +10,11 @@
 export const VERTEX_PROJECT_ID = process.env.VERTEX_PROJECT_ID || 'gen-lang-client-0516945872';
 export const VERTEX_LOCATION = process.env.VERTEX_LOCATION || 'global';
 
+// Document AI 설정
+export const DOCUMENT_AI_PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID;
+export const DOCUMENT_AI_LOCATION = process.env.DOCUMENT_AI_LOCATION || 'us';
+export const DOCUMENT_AI_ENABLED = Boolean(DOCUMENT_AI_PROCESSOR_ID);
+
 /** 구조 추출(Pass A)용 모델 시퀀스 */
 export const MODEL_SEQUENCE = [
   'gemini-3-flash-preview',

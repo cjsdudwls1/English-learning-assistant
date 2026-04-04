@@ -1608,13 +1608,22 @@ nav a:hover {
   }
 }
 
+/* 데스크탑 최적화 */
+@media (min-width: 769px) {
+  .mobile-only-btn {
+    display: none !important;
+  }
+}
+
 /* ═══════ 모바일 PWA 최적화 ═══════ */
 /* 모바일에서 마케팅 섹션 숨기고 업로드 영역만 표시 */
 @media (max-width: 768px) {
-  /* 마케팅 섹션 완전 숨김 */
+  /* 마케팅 섹션 및 부가 설명 섹션 완전 숨김 */
   .pipeline,
   .faq,
-  .cta {
+  .cta,
+  .metrics,
+  .solutions {
     display: none !important;
   }
 
@@ -1693,10 +1702,12 @@ nav a:hover {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 
-  /* 마케팅 섹션 완전 숨김 */
+  /* 마케팅 섹션 및 부가 기능 완전 숨김 */
   .pipeline,
   .faq,
-  .cta {
+  .cta,
+  .metrics,
+  .solutions {
     display: none !important;
   }
 

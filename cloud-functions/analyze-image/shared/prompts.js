@@ -17,6 +17,7 @@ If the image is unreadable/blank, return empty array. Do NOT hallucinate.
 4. No choices → choices: []. No fake choices.
 5. Choices may appear as ①②③④⑤ statements embedded in a paragraph → extract each as a separate choice in the choices array.
 6. For charts/notices/ads: use visual_context {type, title, content} to capture the visual element; put accompanying text in passage.
+7. **problem_number is MANDATORY.** Read the bold printed number at the start of each question (e.g., "28", "29"). Never leave it blank. If a range like "[31~34]" appears, each sub-question still gets its own number.
 
 ## Output (JSON only, no markdown)
 {
@@ -42,7 +43,10 @@ export function buildBoundingBoxPrompt() {
 Your task: For each problem (question) visible on this page, identify TWO regions:
 
 1. "full_bbox": The ENTIRE PROBLEM REGION - from the problem number down to just before the next problem. Includes passage, question text, and all choices.
-2. "answer_area_bbox": ONLY the answer marking area - where the choice numbers (①②③④⑤) are, or the blank where students write their answer.
+2. "answer_area_bbox": The ANSWER MARKING AREA where students mark their answers.
+   - Make the bbox 10-15% wider than the printed choice text. Handwritten marks often extend beyond text boundaries.
+   - Extend x1 leftward to include the problem number area. Students often write answers next to the problem number.
+   - For horizontally arranged choices: wide but short bbox. For vertically arranged choices: narrower but taller bbox.
 
 Coordinates should be in NORMALIZED format: values from 0 to 1000, where (0,0) is the top-left corner and (1000,1000) is the bottom-right corner.
 
@@ -52,7 +56,7 @@ Output JSON only:
     {
       "problem_number": "25",
       "full_bbox": { "x1": 50, "y1": 100, "x2": 500, "y2": 600 },
-      "answer_area_bbox": { "x1": 100, "y1": 400, "x2": 500, "y2": 500 }
+      "answer_area_bbox": { "x1": 30, "y1": 380, "x2": 520, "y2": 520 }
     }
   ]
 }`;
@@ -79,11 +83,22 @@ Output JSON only:
   return `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.
 This image is zoomed into ONLY the answer marking region. Look very carefully for any handwritten marks.
 
-Detect user_answer:
-- Look for handwritten marks: circled numbers, checkmarks, underlines, pen strokes, pencil marks
-- For multiple choice (①②③④⑤): return the MARKED choice number ("1"-"5")
-- Look carefully - marks may be faint pencil, small circles, or light check marks
-- If NO handwritten mark is found at all, return null
+## Primary Rule: Detect the MARKED answer number
+Your main goal is to find which choice number (1-5) the student marked/selected.
+- Look for: circled numbers, checkmarks, underlines, pen strokes, pencil marks on or near a choice number
+- Faint pencil marks, light circles, and small tick marks all count as valid marks
+- For multiple choice (①②③④⑤): return the choice number ("1"-"5")
+
+## Secondary Rule: Korean Exam Grading Marks (apply ONLY when clearly visible)
+After exams, students sometimes mark their papers during answer-checking:
+- If you see BOTH an X mark on one number AND an O/circle on a different number:
+  The X-marked number = user_answer (student's original wrong choice)
+  The O-marked number = the correct answer (marked later), NOT user_answer
+- If you see ONLY circles/marks on ONE number (no X anywhere): that number IS user_answer
+- Do NOT assume grading marks exist unless you clearly see both X and O on different numbers
+
+## Output
+If NO handwritten mark is found at all, return null.
 
 Output JSON only:
 { "problem_number": "${problemNumber}", "user_answer": "4" }`;
