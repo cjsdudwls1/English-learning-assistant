@@ -22,12 +22,13 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
   const startCamera = useCallback(async () => {
     try {
       setError(null);
-      // 모바일에서 세로 방향 우선 요청
+      // 구형/신형, 안드로이드/iOS 모두 대응하도록 유연한 제약 조건
+      // width/height를 특정 방향(1080x1920)으로 고정하면 일부 구형 또는 특정 iOS/Android 기기에서 렌더링에 실패할 수 있으므로, 보편적인 가로 비율(1920x1080)의 ideal 값을 넘겨 OS가 알아서 회전/조정하도록 위임.
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1080 },
-          height: { ideal: 1920 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
         audio: false,
       };
@@ -173,7 +174,7 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
             top: 0, left: 0,
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
+            objectFit: 'contain', /* cover로 인한 크롭(기본 확대되어 보이는 현상) 방지 */
           }}
         />
         <canvas ref={canvasRef} style={{ display: 'none' }} />
