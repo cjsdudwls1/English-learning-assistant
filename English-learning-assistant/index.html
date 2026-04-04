@@ -6,15 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#4f46e5" />
     <title>AI 영어 문제 분석기</title>
-    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192.png" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="영어분석기" />
+    <meta name="description" content="모바일에서 AI가 문제를 자동 분석하고 채점하는 앱입니다." />
     <script>
-      // Tailwind CDN에 dark mode 설정
-      tailwind.config = {
-        darkMode: 'class'
-      };
-      // 초기 로드 시 즉시 테마 적용 (React 마운트 전)
       (function() {
         const saved = localStorage.getItem('theme');
         if (saved === 'dark') {

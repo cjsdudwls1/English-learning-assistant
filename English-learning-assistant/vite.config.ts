@@ -16,18 +16,59 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: [],
+        includeAssets: ['favicon.ico', 'icons/*.png'],
         manifest: {
           name: 'AI 영어 문제 분석기',
           short_name: '영어분석기',
+          description: '모바일에서 AI가 문제를 자동 분석하고 채점하는 앱입니다.',
           start_url: '/',
           display: 'standalone',
-          background_color: '#ffffff',
+          orientation: 'portrait',
+          background_color: '#0f172a',
           theme_color: '#4f46e5',
+          scope: '/',
+          categories: ['education', 'productivity'],
+          lang: 'ko',
+          dir: 'ltr',
           icons: [
+            { src: '/icons/icon-72.png', sizes: '72x72', type: 'image/png' },
+            { src: '/icons/icon-96.png', sizes: '96x96', type: 'image/png' },
+            { src: '/icons/icon-128.png', sizes: '128x128', type: 'image/png' },
+            { src: '/icons/icon-144.png', sizes: '144x144', type: 'image/png' },
+            { src: '/icons/icon-152.png', sizes: '152x152', type: 'image/png' },
             { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }
+            { src: '/icons/icon-384.png', sizes: '384x384', type: 'image/png' },
+            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: '/icons/maskable-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
           ]
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true,
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+                cacheableResponse: { statuses: [0, 200] }
+              }
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-webfonts',
+                expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
+                cacheableResponse: { statuses: [0, 200] }
+              }
+            }
+          ],
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api/]
         }
       })
     ],

@@ -30,6 +30,7 @@ import { useTheme } from './contexts/ThemeContext';
 import { getTranslation } from './utils/translations';
 import { ImageRotator } from './components/ImageRotator';
 import { Loader } from './components/Loader';
+import { InstallBanner } from './components/InstallBanner';
 import './styles/app.css';
 
 // eduscope-ai에만 있는 기능 (UI만 유지)
@@ -140,11 +141,12 @@ const MainPage: React.FC<{
   isLoading: boolean;
   error: string | null;
   status: 'idle' | 'loading' | 'done' | 'error';
+  cameraInputRef?: React.RefObject<HTMLInputElement | null>;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onAnalyzeClick: () => void;
   onRemove: (index: number) => void;
   onRotate: (index: number, blob: Blob) => void;
-}> = ({ imageFiles, isLoading, error, status, onFileChange, onAnalyzeClick, onRemove, onRotate }) => {
+}> = ({ imageFiles, isLoading, error, status, cameraInputRef, onFileChange, onAnalyzeClick, onRemove, onRotate }) => {
   const { language } = useLanguage();
   const t = getTranslation(language);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -191,15 +193,43 @@ const MainPage: React.FC<{
             </div>
 
             <div className="upload-panel-moved" style={{ marginTop: '1.5rem' }}>
-              <div style={{ marginBottom: '1rem' }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
+                <label
+                  htmlFor="hero-camera-input"
+                  className="file-label"
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '1.5rem',
+                    border: '2px dashed rgba(255,255,255,0.2)',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    background: 'rgba(255,255,255,0.05)',
+                    color: 'var(--text-main)',
+                    fontWeight: 500
+                  }}
+                >
+                  {language === 'ko' ? '📸 사진 촬영' : '📸 Take Photo'}
+                </label>
+                <input
+                  id="hero-camera-input"
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={onFileChange}
+                  style={{ display: 'none' }}
+                />
                 <label
                   htmlFor="hero-image-input"
                   className="file-label"
                   style={{
+                    flex: 1,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: '100%',
                     padding: '1.5rem',
                     border: '2px dashed rgba(255,255,255,0.2)',
                     borderRadius: 'var(--radius-md)',
@@ -210,8 +240,8 @@ const MainPage: React.FC<{
                   }}
                 >
                   {imageFiles.length > 0
-                    ? (language === 'ko' ? `${imageFiles.length}장 선택됨 (클릭하여 추가)` : `${imageFiles.length} selected (Click to add more)`)
-                    : (language === 'ko' ? '+ 이미지 업로드 (최대 10장)' : '+ Upload Images (max 10)')}
+                    ? (language === 'ko' ? `${imageFiles.length}장 선택됨` : `${imageFiles.length} selected`)
+                    : (language === 'ko' ? '🖼️ 갤러리 선택' : '🖼️ Gallery')}
                 </label>
                 <input
                   id="hero-image-input"
@@ -545,6 +575,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
 
   // 이미지 압축: Canvas API를 사용하여 긴 변 1600px, JPEG 80% 품질로 리사이징
@@ -831,6 +862,7 @@ const App: React.FC = () => {
             isLoading={isLoading}
             error={error}
             status={status}
+            cameraInputRef={cameraInputRef}
             onFileChange={handleFileChange}
             onAnalyzeClick={handleAnalyzeClick}
             onRemove={handleRemove}
@@ -845,6 +877,7 @@ const App: React.FC = () => {
             isLoading={isLoading}
             error={error}
             status={status}
+            cameraInputRef={cameraInputRef}
             onFileChange={handleFileChange}
             onAnalyzeClick={handleAnalyzeClick}
             onRemove={handleRemove}
@@ -879,6 +912,7 @@ const App: React.FC = () => {
 
       <Route path="*" element={<AuthGate><PageLayout><div className="text-center py-10"><a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">{language === 'ko' ? '문제 업로드하러 가기' : 'Go to Upload'}</a></div></PageLayout></AuthGate>} />
     </Routes>
+    <InstallBanner />
     </UserRoleProvider>
   );
 };
