@@ -31,6 +31,7 @@ import { getTranslation } from './utils/translations';
 import { ImageRotator } from './components/ImageRotator';
 import { Loader } from './components/Loader';
 import { InstallBanner } from './components/InstallBanner';
+import { CameraCapture } from './components/CameraCapture';
 import './styles/app.css';
 
 // eduscope-ai에만 있는 기능 (UI만 유지)
@@ -141,12 +142,15 @@ const MainPage: React.FC<{
   isLoading: boolean;
   error: string | null;
   status: 'idle' | 'loading' | 'done' | 'error';
-  cameraInputRef?: React.RefObject<HTMLInputElement | null>;
+  isCameraOpen: boolean;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onAnalyzeClick: () => void;
   onRemove: (index: number) => void;
   onRotate: (index: number, blob: Blob) => void;
-}> = ({ imageFiles, isLoading, error, status, cameraInputRef, onFileChange, onAnalyzeClick, onRemove, onRotate }) => {
+  onOpenCamera: () => void;
+  onCloseCamera: () => void;
+  onCameraCapture: (files: File[]) => void;
+}> = ({ imageFiles, isLoading, error, status, isCameraOpen, onFileChange, onAnalyzeClick, onRemove, onRotate, onOpenCamera, onCloseCamera, onCameraCapture }) => {
   const { language } = useLanguage();
   const t = getTranslation(language);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -194,34 +198,26 @@ const MainPage: React.FC<{
 
             <div className="upload-panel-moved" style={{ marginTop: '1.5rem' }}>
               <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
-                <label
-                  htmlFor="hero-camera-input"
-                  className="file-label"
+                <button
+                  type="button"
+                  onClick={onOpenCamera}
                   style={{
                     flex: 1,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: '1.5rem',
-                    border: '2px dashed rgba(255,255,255,0.2)',
+                    border: '2px solid rgba(79,70,229,0.5)',
                     borderRadius: 'var(--radius-md)',
                     cursor: 'pointer',
-                    background: 'rgba(255,255,255,0.05)',
+                    background: 'rgba(79,70,229,0.15)',
                     color: 'var(--text-main)',
-                    fontWeight: 500
+                    fontWeight: 600,
+                    fontSize: '1rem',
                   }}
                 >
-                  {language === 'ko' ? '📸 사진 촬영' : '📸 Take Photo'}
-                </label>
-                <input
-                  id="hero-camera-input"
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={onFileChange}
-                  style={{ display: 'none' }}
-                />
+                  📸 {language === 'ko' ? '사진 촬영' : 'Take Photo'}
+                </button>
                 <label
                   htmlFor="hero-image-input"
                   className="file-label"
@@ -253,6 +249,14 @@ const MainPage: React.FC<{
                   style={{ display: 'none' }}
                 />
               </div>
+              {/* 카메라 오버레이 */}
+              <CameraCapture
+                isOpen={isCameraOpen}
+                maxImages={10}
+                currentImageCount={imageFiles.length}
+                onCapture={onCameraCapture}
+                onClose={onCloseCamera}
+              />
 
               {imageFiles.length > 0 && (
                 <div className="image-previews" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
@@ -575,7 +579,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
 
   // 이미지 압축: Canvas API를 사용하여 긴 변 1600px, JPEG 80% 품질로 리사이징
@@ -862,11 +866,31 @@ const App: React.FC = () => {
             isLoading={isLoading}
             error={error}
             status={status}
-            cameraInputRef={cameraInputRef}
+            isCameraOpen={isCameraOpen}
             onFileChange={handleFileChange}
             onAnalyzeClick={handleAnalyzeClick}
             onRemove={handleRemove}
             onRotate={handleRotate}
+            onOpenCamera={() => setIsCameraOpen(true)}
+            onCloseCamera={() => setIsCameraOpen(false)}
+            onCameraCapture={(files: File[]) => {
+              const MAX_IMAGES = 10;
+              const remainingSlots = MAX_IMAGES - imageFiles.length;
+              const filesToAdd = files.slice(0, remainingSlots);
+              const filePromises = filesToAdd.map((file) => {
+                return new Promise<ImageFile>((resolve) => {
+                  const id = `${Date.now()}_${Math.random()}_${file.name}`;
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve({ file, previewUrl: reader.result as string, id });
+                  reader.onerror = () => resolve({ file, previewUrl: '', id });
+                  reader.readAsDataURL(file);
+                });
+              });
+              Promise.all(filePromises).then((loaded) => {
+                const valid = loaded.filter(f => f.previewUrl);
+                if (valid.length > 0) setImageFiles(prev => [...prev, ...valid]);
+              });
+            }}
           />
         </AuthGate>
       } />
@@ -877,11 +901,31 @@ const App: React.FC = () => {
             isLoading={isLoading}
             error={error}
             status={status}
-            cameraInputRef={cameraInputRef}
+            isCameraOpen={isCameraOpen}
             onFileChange={handleFileChange}
             onAnalyzeClick={handleAnalyzeClick}
             onRemove={handleRemove}
             onRotate={handleRotate}
+            onOpenCamera={() => setIsCameraOpen(true)}
+            onCloseCamera={() => setIsCameraOpen(false)}
+            onCameraCapture={(files: File[]) => {
+              const MAX_IMAGES = 10;
+              const remainingSlots = MAX_IMAGES - imageFiles.length;
+              const filesToAdd = files.slice(0, remainingSlots);
+              const filePromises = filesToAdd.map((file) => {
+                return new Promise<ImageFile>((resolve) => {
+                  const id = `${Date.now()}_${Math.random()}_${file.name}`;
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve({ file, previewUrl: reader.result as string, id });
+                  reader.onerror = () => resolve({ file, previewUrl: '', id });
+                  reader.readAsDataURL(file);
+                });
+              });
+              Promise.all(filePromises).then((loaded) => {
+                const valid = loaded.filter(f => f.previewUrl);
+                if (valid.length > 0) setImageFiles(prev => [...prev, ...valid]);
+              });
+            }}
           />
         </AuthGate>
       } />
