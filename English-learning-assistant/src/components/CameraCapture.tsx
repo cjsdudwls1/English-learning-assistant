@@ -13,6 +13,7 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const imageCaptureRef = useRef<any>(null);
   const [capturedPhotos, setCapturedPhotos] = useState<{ blob: Blob; url: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
@@ -24,17 +25,28 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
     try {
       setError(null);
       // 구형/신형, 안드로이드/iOS 모두 대응하도록 유연한 제약 조건
-      // width/height를 특정 방향(1080x1920)으로 고정하면 일부 구형 또는 특정 iOS/Android 기기에서 렌더링에 실패할 수 있으므로, 보편적인 가로 비율(1920x1080)의 ideal 값을 넘겨 OS가 알아서 회전/조정하도록 위임.
+      // 최고 해상도(4K급)를 이상적(ideal)으로 요청하여 가능한 선명한 프리뷰와 캔버스 촬영 품질 확보.
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 4096 },
+          height: { ideal: 2160 },
+          // @ts-ignore - 초점 고정을 방지하고 지속적인 자동 초점 유지 (지원하는 기기 한정)
+          advanced: [{ focusMode: 'continuous' }]
         },
         audio: false,
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+
+      const track = stream.getVideoTracks()[0];
+      if (track && 'ImageCapture' in window) {
+        // @ts-ignore - ImageCapture API를 통한 원본 센서 해상도 캡처
+        imageCaptureRef.current = new window.ImageCapture(track);
+      } else {
+        imageCaptureRef.current = null;
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
@@ -90,8 +102,8 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
     };
   }, [isOpen, startCamera, stopCamera]);
 
-  const takePhoto = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || !isCameraReady) return;
+  const takePhoto = useCallback(async () => {
+    if (!videoRef.current || !isCameraReady) return;
 
     const totalPhotos = capturedPhotos.length;
     if (totalPhotos >= remainingSlots) {
@@ -99,23 +111,40 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
       return;
     }
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-
+    // 셔터 효과
     setFlashEffect(true);
     setTimeout(() => setFlashEffect(false), 150);
 
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        setCapturedPhotos(prev => [...prev, { blob, url }]);
+    try {
+      if (imageCaptureRef.current) {
+        // 최신 API: 브라우저가 지원하는 경우 하드웨어 카메라의 최고 해상도 스틸 컷 캡처
+        const blob = await imageCaptureRef.current.takePhoto();
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          setCapturedPhotos(prev => [...prev, { blob, url }]);
+        }
+      } else {
+        // Fallback: ImageCapture 미지원 기기 (예: 구형 iOS 등)는 비디오 스트림 캔버스 캡처
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(video, 0, 0);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            setCapturedPhotos(prev => [...prev, { blob, url }]);
+          }
+        }, 'image/jpeg', 0.95);
       }
-    }, 'image/jpeg', 0.9);
+    } catch (e: any) {
+      console.error("[CameraCapture] takePhoto failed:", e);
+      setError("사진을 저장하는 중 문제가 발생했습니다.");
+    }
   }, [isCameraReady, capturedPhotos.length, remainingSlots, maxImages]);
 
   const removePhoto = useCallback((index: number) => {
