@@ -22,20 +22,51 @@ import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js'
 import { cropRegions } from './shared/imageCropper.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { executePassA, executePass0, executePassB, executePassBFullImage, executePassC, detectSubjectiveUserAnswers } from './shared/passes.js';
-import { uploadImages, createSession, saveProblems, saveLabels, updateProblemMetadata, completeSession } from './shared/dbOperations.js';
+import { uploadImages, createSession, saveProblems, saveLabels, finalizeAnalysisSession } from './shared/dbOperations.js';
+import { generateAllProblemTypes } from './shared/generateProblems.js';
+import { verifySupabaseJWT } from './shared/jwtVerify.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 // ─── 배치 병렬 처리 상수 ────────────────────────────────────
-// 원본: index.ts ANALYSIS_BATCH_SIZE
-const ANALYSIS_BATCH_SIZE = 3;
+// 원본: index.ts ANALYSIS_BATCH_SIZE (3→5: 5장 업로드 시 단일 배치로 처리)
+const ANALYSIS_BATCH_SIZE = 5;
+
+// 워치독: GCF 540s 타임아웃 전 500s에 self-abort + markSessionFailed
+const PIPELINE_WATCHDOG_MS = 500_000;
+
+// in-flight 세션 추적: SIGTERM 시 일괄 markSessionFailed
+const inFlightSessions = new Map();
 
 // ─── 라이프사이클 이벤트 핸들러 ─────────────────────────────
 // 원본: index.ts (Edge Function의 addEventListener 대응)
 process.on('unhandledRejection', (reason) => {
   console.error('[Lifecycle] Unhandled promise rejection:', reason);
 });
+
+/**
+ * GCF Gen2 인스턴스 종료 시그널: timeout/scale-down 직전 in-flight 세션을 failed로 마킹.
+ * SIGTERM grace period(기본 10s) 내에 동기적으로 처리해야 좀비 세션 차단 가능.
+ */
+async function flushInFlightOnTerminate(reason) {
+  if (inFlightSessions.size === 0) return;
+  console.warn(`[Lifecycle] ${reason} 수신, in-flight ${inFlightSessions.size}개 세션 마킹 시작`);
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  await Promise.allSettled([...inFlightSessions.entries()].map(async ([sid, ctx]) => {
+    try {
+      ctx.abortCtrl?.abort();
+      await markSessionFailed(supabase, sid, 'sigterm', new Error(`GCF 인스턴스 ${reason}`));
+    } catch (e) {
+      console.error('[Lifecycle] SIGTERM 마킹 실패:', sid, e?.message);
+    }
+  }));
+  inFlightSessions.clear();
+}
+
+process.on('SIGTERM', () => { flushInFlightOnTerminate('SIGTERM').catch(() => {}); });
+process.on('SIGINT', () => { flushInFlightOnTerminate('SIGINT').catch(() => {}); });
 
 function setCorsHeaders(res) {
   res.set('Access-Control-Allow-Origin', '*');
@@ -49,6 +80,72 @@ function validateRequest(body) {
     return { isValid: false, error: 'images[]와 userId가 필요합니다.' };
   }
   return { isValid: true, images, userId, language: body.language };
+}
+
+function buildAIClient() {
+  const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const aiOptions = {
+    vertexai: true,
+    project: VERTEX_PROJECT_ID,
+    location: VERTEX_LOCATION,
+  };
+  if (serviceAccountJson) {
+    try {
+      aiOptions.googleAuthOptions = { credentials: JSON.parse(serviceAccountJson) };
+    } catch (e) {
+      console.error('[handler] GOOGLE_SERVICE_ACCOUNT_JSON 파싱 실패, ADC 폴백:', e.message);
+    }
+  }
+  return new GoogleGenAI(aiOptions);
+}
+
+async function handleGenerateAll(req, res) {
+  if (!SUPABASE_ANON_KEY) {
+    res.status(500).json({ error: 'SUPABASE_ANON_KEY 환경변수가 없습니다' });
+    return;
+  }
+
+  const jwtResult = await verifySupabaseJWT(req.get('authorization'), SUPABASE_URL, SUPABASE_ANON_KEY);
+  if (!jwtResult.valid) {
+    console.warn('[generate-all] JWT 검증 실패:', jwtResult.error);
+    res.status(401).json({ error: 'Unauthorized: ' + jwtResult.error });
+    return;
+  }
+
+  const body = req.body || {};
+  const { types, userId, language, classification, ...aiOptions } = body;
+
+  if (userId !== jwtResult.userId) {
+    console.warn(`[generate-all] userId 불일치: body=${userId}, jwt=${jwtResult.userId}`);
+    res.status(403).json({ error: 'Forbidden: userId does not match token' });
+    return;
+  }
+
+  if (!Array.isArray(types) || types.length === 0) {
+    res.status(400).json({ error: 'types[] 가 비어있거나 유효하지 않습니다' });
+    return;
+  }
+  for (const t of types) {
+    if (!t.problemType || typeof t.problemCount !== 'number' || t.problemCount <= 0 || t.problemCount > 50) {
+      res.status(400).json({ error: `유효하지 않은 type 항목: ${JSON.stringify(t)}` });
+      return;
+    }
+  }
+  if (!language || (language !== 'ko' && language !== 'en')) {
+    res.status(400).json({ error: 'language는 ko 또는 en 이어야 합니다' });
+    return;
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const ai = buildAIClient();
+  const sessionId = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  res.status(200).json({ success: true, sessionId, message: '백그라운드 생성 시작' });
+
+  generateAllProblemTypes(supabase, ai, { userId, language, classification, types, ...aiOptions }, sessionId)
+    .catch((err) => {
+      console.error('[generate-all] 백그라운드 오류:', err?.message, { sessionId, userId });
+    });
 }
 
 // ─── Vertex AI 인증 사전 검증 ───────────────────────────────
@@ -160,15 +257,52 @@ async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxo
   console.log(`[handler] Pass A: ${pageItems.length}개 문제 (${passAResult.model}), Pass 0: ${pass0Result.bboxes.length}개 bbox`, { sessionId });
 
   // Pass A 결과에서 문제 유형 판별 (객관식 vs 주관식)
+  // 우선순위: 명시적 키워드 > choices 유무
+  // - 객관식 키워드가 있으면 무조건 객관식 (choices 추출 실패해도)
+  // - 주관식 키워드가 있으면 무조건 주관식
+  // - 키워드 없으면 choices 유무로 판단
+  const OBJECTIVE_KEYWORDS = [
+    '고르시오', '고른 것은', '고를 것은', '다음 중', '다음 글의 밑줄', '밑줄 친',
+    '적절한 것은', '적절하지 않은 것은', '적절하지 않은', '옳은 것은', '옳지 않은',
+    '알맞은 것은', '알맞지 않은', '가장 적절', '가장 알맞은', '바른 것은', '틀린 것은',
+    '5지선다', '4지선다', '①', '②', '③', '④', '⑤',
+  ];
+  const SUBJECTIVE_KEYWORDS = [
+    '서술형', '고쳐 쓰', '바꿔 쓰', '영작', '쓰시오', '쓰세요',
+    '빈칸을 채우', '빈 칸을 채우', '문장을 완성', '단어를 쓰', '단어를 적', '답을 적',
+    '서술하시오', '논술', '단답형',
+  ];
   const questionContextMap = new Map();
   for (const item of pageItems) {
     const hasChoices = Array.isArray(item.choices) && item.choices.length > 0;
     const instructionText = item.instruction || '';
-    const isSubjective = !hasChoices || instructionText.includes('서술형') || instructionText.includes('고쳐 쓰') || instructionText.includes('바꿔 쓰');
+    const questionBodyText = item.question_body || '';
+    const combinedText = `${instructionText}\n${questionBodyText}`;
+
+    const hasObjectiveKw = OBJECTIVE_KEYWORDS.some(kw => combinedText.includes(kw));
+    const hasSubjectiveKw = SUBJECTIVE_KEYWORDS.some(kw => combinedText.includes(kw));
+
+    let isSubjective;
+    if (hasObjectiveKw && !hasSubjectiveKw) {
+      isSubjective = false; // 명시적 객관식 (choices 추출 실패해도 객관식)
+    } else if (hasSubjectiveKw && !hasObjectiveKw) {
+      isSubjective = true; // 명시적 주관식
+    } else if (hasObjectiveKw && hasSubjectiveKw) {
+      // 양쪽 키워드 모두 있으면 choices 유무로 결정
+      isSubjective = !hasChoices;
+    } else {
+      // 키워드 없으면 choices 유무
+      isSubjective = !hasChoices;
+    }
+
+    console.log(`[handler] Q${item.problem_number} 유형 판별: isSubjective=${isSubjective}, hasChoices=${hasChoices}, hasObjKw=${hasObjectiveKw}, hasSubjKw=${hasSubjectiveKw}`, { sessionId });
+
     questionContextMap.set(String(item.problem_number), {
       isSubjective,
       instruction: instructionText,
-      questionBody: item.question_body || '',
+      questionBody: questionBodyText,
+      hasChoices,
+      choices: item.choices || [],
     });
   }
 
@@ -368,11 +502,8 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
   // Labels 저장 (taxonomy 보강 포함) — 실패 시 StageError throw
   await saveLabels(supabase, sessionId, savedProblems, allValidatedItems, taxonomyByDepthKey, taxonomyByCode);
 
-  // 메타데이터 업데이트
-  await updateProblemMetadata(supabase, savedProblems, allValidatedItems, userLanguage);
-
-  // 세션 완료 (labeled 상태 가드 포함)
-  await completeSession(supabase, sessionId, finalUsedModel);
+  // 메타데이터 + 세션 완료를 단일 트랜잭션 RPC로 atomic 처리 (25P02 cascade 차단)
+  await finalizeAnalysisSession(supabase, sessionId, finalUsedModel, savedProblems, allValidatedItems, userLanguage);
 
   console.log(`[handler] 분석 완료: ${sessionId}`);
 }
@@ -382,6 +513,16 @@ functions.http('analyzeImage', async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+
+  if (req.query?.warmup === '1') {
+    res.status(200).json({ ok: true, warmup: true });
+    return;
+  }
+
+  if (req.body?.mode === 'generate-all') {
+    await handleGenerateAll(req, res);
+    return;
+  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   let sessionId;
@@ -412,43 +553,60 @@ functions.http('analyzeImage', async (req, res) => {
       }
     }
 
-    // Vertex AI 모드: 서비스계정 JSON 키로 인증
-    const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-    const aiOptions = {
-      vertexai: true,
-      project: VERTEX_PROJECT_ID,
-      location: VERTEX_LOCATION,
-    };
-    if (serviceAccountJson) {
-      try {
-        aiOptions.googleAuthOptions = { credentials: JSON.parse(serviceAccountJson) };
-        console.log('[handler] Vertex AI: 서비스계정 JSON 키 인증 사용');
-      } catch (e) {
-        console.error('[handler] GOOGLE_SERVICE_ACCOUNT_JSON 파싱 실패, ADC 폴백:', e.message);
-      }
-    }
-    const ai = new GoogleGenAI(aiOptions);
+    const ai = buildAIClient();
 
     console.log(`[handler] ${images.length}개 이미지 분석 시작 (userId: ${userId}, language: ${userLanguage})`);
 
-    const imageUrls = await uploadImages(supabase, images, userId);
-    sessionId = await createSession(supabase, userId, imageUrls);
-    console.log(`[handler] 세션 생성: ${sessionId}`);
+    // 즉시 sessionId 발급 (image_urls는 빈 배열로 — 백그라운드에서 채움)
+    // 30+ 동시 요청 시 uploadImages를 응답 전에 동기 실행하면 5분+ 지연되어 client fetch가 끊김
+    sessionId = await createSession(supabase, userId, []);
+    console.log(`[handler] 세션 생성 (즉시 응답용): ${sessionId}`);
 
-    // 파이프라인을 응답 전에 완료하지 않고, 세션 생성 후 즉시 응답 반환
-    // Cloud Functions gen2는 응답 후에도 인스턴스가 바로 종료되지 않으므로 파이프라인 계속 실행됨
+    // 즉시 응답 반환 — 업로드/분석은 백그라운드로
     res.status(200).json({ success: true, sessionId });
 
-    // fire-and-forget: 에러 발생 시 DB에 기록
-    runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage).catch(async (pipelineError) => {
-      console.error('[handler] 백그라운드 파이프라인 오류:', pipelineError?.message, { sessionId });
+    // 백그라운드 파이프라인: try/catch/finally + 워치독 + SIGTERM 추적으로 좀비 세션 차단
+    const abortCtrl = new AbortController();
+    const watchdog = setTimeout(async () => {
+      console.error(`[handler] 워치독 타임아웃 (${PIPELINE_WATCHDOG_MS}ms): self-abort + markSessionFailed`, { sessionId });
+      abortCtrl.abort();
       try {
-        const stage = pipelineError instanceof StageError ? pipelineError.stage : 'unknown';
-        await markSessionFailed(supabase, sessionId, stage, pipelineError);
-      } catch (failError) {
-        console.error('[handler] markSessionFailed 실패:', failError?.message, { sessionId });
+        await markSessionFailed(supabase, sessionId, 'watchdog_timeout', new Error('파이프라인 워치독 초과'));
+      } catch (e) {
+        console.error('[handler] 워치독 markSessionFailed 실패:', e?.message, { sessionId });
       }
-    });
+    }, PIPELINE_WATCHDOG_MS);
+
+    inFlightSessions.set(sessionId, { abortCtrl, startedAt: Date.now() });
+
+    (async () => {
+      try {
+        const imageUrls = await uploadImages(supabase, images, userId);
+        const { error: updateError } = await supabase
+          .from('sessions')
+          .update({ image_urls: imageUrls })
+          .eq('id', sessionId);
+        if (updateError) {
+          console.warn('[handler] image_urls 업데이트 실패 (분석은 계속):', updateError?.message, { sessionId });
+        }
+        await runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage);
+      } catch (pipelineError) {
+        if (abortCtrl.signal.aborted) {
+          console.warn('[handler] 파이프라인 abort됨 (워치독/SIGTERM):', pipelineError?.message, { sessionId });
+        } else {
+          console.error('[handler] 백그라운드 파이프라인 오류:', pipelineError?.message, { sessionId });
+          try {
+            const stage = pipelineError instanceof StageError ? pipelineError.stage : 'unknown';
+            await markSessionFailed(supabase, sessionId, stage, pipelineError);
+          } catch (failError) {
+            console.error('[handler] markSessionFailed 실패:', failError?.message, { sessionId });
+          }
+        }
+      } finally {
+        clearTimeout(watchdog);
+        inFlightSessions.delete(sessionId);
+      }
+    })();
 
   } catch (error) {
     console.error('[handler] 치명적 오류:', error?.message, error?.stack);

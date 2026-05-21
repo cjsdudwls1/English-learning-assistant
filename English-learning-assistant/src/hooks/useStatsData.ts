@@ -3,6 +3,24 @@ import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } fro
 import { fetchAnalyzingSessions, fetchPendingLabelingSessions, fetchFailedSessions } from '../services/db';
 import type { SessionWithProblems } from '../types';
 
+// Supabase Auth SDK의 navigator.locks 충돌 에러는 무시
+// (여러 탭에서 동시 세션 갱신 시 발생하는 일시적 에러)
+// PostgrestError 등 plain object는 Error 인스턴스가 아니므로
+// message 프로퍼티를 우선 확인하고, 없으면 JSON.stringify fallback
+function normalizeError(e: unknown, language: 'ko' | 'en'): string {
+  let msg: string;
+  if (e instanceof Error) {
+    msg = e.message;
+  } else if (e && typeof e === 'object' && 'message' in e) {
+    msg = String((e as { message: unknown }).message);
+  } else if (e && typeof e === 'object') {
+    try { msg = JSON.stringify(e); } catch { msg = String(e); }
+  } else {
+    msg = String(e);
+  }
+  return msg || (language === 'ko' ? '통계 조회 실패' : 'Failed to load stats');
+}
+
 interface UseStatsDataParams {
   startDate: Date | null;
   endDate: Date | null;
@@ -69,25 +87,12 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
       const recentlyHadAnalyzing = lastAnalyzingSeenAtRef.current > 0 && now - lastAnalyzingSeenAtRef.current < 60_000;
       setPollingActive(analyzing.length > 0 || pendingSessions.length > 0 || recentlyHadAnalyzing);
     } catch (e) {
-      // Supabase Auth SDK의 navigator.locks 충돌 에러는 무시
-      // (여러 탭에서 동시 세션 갱신 시 발생하는 일시적 에러)
-      // PostgrestError 등 plain object는 Error 인스턴스가 아니므로
-      // message 프로퍼티를 우선 확인하고, 없으면 JSON.stringify fallback
-      let msg: string;
-      if (e instanceof Error) {
-        msg = e.message;
-      } else if (e && typeof e === 'object' && 'message' in e) {
-        msg = String((e as any).message);
-      } else if (e && typeof e === 'object') {
-        try { msg = JSON.stringify(e); } catch { msg = String(e); }
-      } else {
-        msg = String(e);
-      }
+      const msg = normalizeError(e, language);
       if (msg.includes('Lock broken') || msg.includes('steal')) {
         console.warn('[Stats] Auth lock conflict, retrying on next poll:', msg);
         return;
       }
-      setError(msg || '통계 조회 실패');
+      setError(msg);
     } finally {
       if (showLoading) {
         setLoading(false);

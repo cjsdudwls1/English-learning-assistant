@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 다크 모드: 시스템 prefers-color-scheme 무시, html.dark 클래스 기반으로만 동작 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Global Styles - 벤치마킹: eduscope-ai */
 
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');

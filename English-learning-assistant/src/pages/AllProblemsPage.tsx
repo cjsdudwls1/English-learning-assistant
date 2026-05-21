@@ -52,45 +52,54 @@ export const AllProblemsPage: React.FC = () => {
       setError(null);
       const userId = await getCurrentUserId();
 
-      // problems + labels + sessions 조인
-      const { data, error: fetchError } = await supabase
-        .from('problems')
-        .select(`
-          id,
-          index_in_image,
-          content,
-          session_id,
-          created_at,
-          sessions!inner (
-            user_id,
-            created_at,
-            image_urls
-          ),
-          labels (
-            user_answer,
-            correct_answer,
-            user_mark,
-            is_correct,
-            classification
-          )
-        `)
-        .eq('sessions.user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(500);
+      // 1) sessions(user_id) — 최신순으로 미리 가져오고 매핑
+      const { data: sessions, error: sErr } = await supabase
+        .from('sessions')
+        .select('id, created_at, image_urls')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      if (sErr) throw sErr;
 
-      if (fetchError) throw fetchError;
+      if (!sessions || sessions.length === 0) {
+        setProblems([]);
+        setHasMore(false);
+        return;
+      }
+      const sessionMap = new Map<string, { id: string; created_at: string; image_urls: string[] | null }>();
+      for (const s of sessions) sessionMap.set(s.id, s);
 
-      const rows: ProblemRow[] = (data || []).map((p: any) => {
+      // 2) problems(session_id IN) + labels 임베드 — 청크 단위, 최신 500개로 절단
+      const CHUNK = 500;
+      const sessionIds = sessions.map((s) => s.id);
+      const problemsRows: any[] = [];
+      for (let i = 0; i < sessionIds.length; i += CHUNK) {
+        const chunk = sessionIds.slice(i, i + CHUNK);
+        const { data, error: pErr } = await supabase
+          .from('problems')
+          .select(`
+            id, index_in_image, content, session_id, created_at,
+            labels ( user_answer, correct_answer, user_mark, is_correct, classification )
+          `)
+          .in('session_id', chunk)
+          .order('created_at', { ascending: false })
+          .limit(500);
+        if (pErr) throw pErr;
+        problemsRows.push(...(data || []));
+      }
+      problemsRows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const limited = problemsRows.slice(0, 500);
+
+      const rows: ProblemRow[] = limited.map((p: any) => {
         const label = p.labels?.[0] || {};
-        const session = p.sessions || {};
+        const session = sessionMap.get(p.session_id);
         return {
           id: p.id,
           index_in_image: p.index_in_image,
           content: p.content || {},
           session_id: p.session_id,
           created_at: p.created_at,
-          session_created_at: session.created_at,
-          image_url: session.image_urls?.[0] || '',
+          session_created_at: session?.created_at,
+          image_url: session?.image_urls?.[0] || '',
           user_answer: label.user_answer || '',
           correct_answer: label.correct_answer || '',
           user_mark: label.user_mark || '',

@@ -64,6 +64,12 @@ export interface AnalysisResult {
 // 멀티 문항 결과 타입 (신규)
 export type QuestionType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox' | 'unknown';
 
+export interface VisualContext {
+  type?: string | null;
+  title?: string | null;
+  content?: string | null;
+}
+
 export interface ProblemItem {
   id?: string;
   index: number;
@@ -76,6 +82,11 @@ export interface ProblemItem {
   question_type?: QuestionType;
   문제_유형_분류: ProblemClassification;
   분류_근거: string;
+  // 상세 표시용 분리 필드 (검수 카드 풍부 표시)
+  passage?: string | null;
+  instruction?: string | null;
+  question_body?: string | null;
+  visual_context?: VisualContext | null;
 }
 
 export interface AnalysisResults {
@@ -140,6 +151,7 @@ export interface ClassInfo {
   description: string | null;
   created_by: string;
   created_at: string;
+  academy_id?: string | null;
   member_count?: number;
   student_count?: number;
 }
@@ -207,4 +219,37 @@ export interface CreateAssignmentParams {
   problemIds: string[];
   studentIds: string[];
   dueDate?: string | null;
+}
+
+export interface ParentSummary {
+  user_id: string;
+  email: string;
+}
+
+export interface StudentDetail {
+  user_id: string;
+  email: string;
+  grade: string | null;
+  class_ids: string[];
+  parents: ParentSummary[];
+  total_count: number;
+  correct_count: number;
+  correct_rate: number;
+}
+
+export interface TeacherDetail {
+  user_id: string;
+  email: string;
+  classes: Array<{ id: string; name: string; student_count: number }>;
+  student_ids: string[];
+  total_count: number;
+  correct_count: number;
+  correct_rate: number;
+}
+
+export interface AcademyHierarchy {
+  academy_id: string;
+  teachers: TeacherDetail[];
+  students: StudentDetail[];
+  unassigned_students: StudentDetail[];
 }

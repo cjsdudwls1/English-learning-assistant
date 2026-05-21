@@ -15,28 +15,30 @@ export const DOCUMENT_AI_PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID;
 export const DOCUMENT_AI_LOCATION = process.env.DOCUMENT_AI_LOCATION || 'us';
 export const DOCUMENT_AI_ENABLED = Boolean(DOCUMENT_AI_PROCESSOR_ID);
 
-/** 구조 추출(Pass A)용 모델 시퀀스 */
+/** 구조 추출(Pass A)용 모델 시퀀스
+ *  - 30명 동시 부하 대응: GA 모델 우선 (preview는 250 RPM 한도로 burst 시 fetch failed 발생)
+ *  - gemini-flash-latest(별칭)/preview 모델은 마지막 폴백으로만 사용
+ */
 export const MODEL_SEQUENCE = [
-  'gemini-3-flash-preview',
-  'gemini-3.1-flash-lite-preview',
   'gemini-2.5-flash',
-  'gemini-2.5-pro',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
 ];
 
 export const MODEL_RETRY_POLICY = {
-  'gemini-3-flash-preview': { maxRetries: 1, baseDelayMs: 3000 },
-  'gemini-3.1-flash-lite-preview': { maxRetries: 1, baseDelayMs: 3000 },
-  'gemini-2.5-flash': { maxRetries: 2, baseDelayMs: 3000 },
-  'gemini-2.5-pro': { maxRetries: 1, baseDelayMs: 4000 },
+  'gemini-2.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
+  'gemini-3.1-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },
+  'gemini-3-flash-preview': { maxRetries: 0, baseDelayMs: 1500 },
+  'gemini-flash-latest': { maxRetries: 1, baseDelayMs: 2000 },
 };
 
 export const EXTRACTION_TEMPERATURE = 0.0;
 
-/** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 */
+/** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 (GA 우선) */
 export const LIGHTWEIGHT_MODEL_SEQUENCE = [
-  'gemini-3-flash-preview',
-  'gemini-3.1-flash-lite-preview',
   'gemini-2.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
 ];
 
 // API 호출 타임아웃 (밀리초)

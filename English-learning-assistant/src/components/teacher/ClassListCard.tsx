@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createClass } from '../../services/db';
+import { useUserRole } from '../../contexts/UserRoleContext';
 import type { ClassInfo } from '../../types';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const ClassListCard: React.FC<Props> = ({ classes: initialClasses, onDeleteClass }) => {
+  const { activeAcademyId } = useUserRole();
   const [classes, setClasses] = useState(initialClasses);
   
   React.useEffect(() => {
@@ -23,7 +25,7 @@ export const ClassListCard: React.FC<Props> = ({ classes: initialClasses, onDele
     if (!name.trim()) return;
     setCreating(true);
     try {
-      const id = await createClass(name.trim(), desc.trim() || null);
+      const id = await createClass(name.trim(), desc.trim() || null, activeAcademyId);
       setClasses((prev) => [{ id, name: name.trim(), description: desc.trim() || null, created_by: '', created_at: new Date().toISOString(), member_count: 0, student_count: 0 }, ...prev]);
       setName('');
       setDesc('');

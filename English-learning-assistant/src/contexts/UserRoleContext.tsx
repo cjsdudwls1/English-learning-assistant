@@ -1,22 +1,36 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { fetchMyAcademies, type AcademyMembership } from '../services/db/academies';
 import type { UserRole } from '../types';
 
 interface UserRoleState {
   role: UserRole;
   loading: boolean;
   refreshRole: () => Promise<void>;
+  activeAcademyId: string | null;
+  availableAcademies: AcademyMembership[];
+  setActiveAcademy: (academyId: string | null) => void;
 }
 
 const UserRoleContext = createContext<UserRoleState>({
   role: 'student',
   loading: true,
   refreshRole: async () => {},
+  activeAcademyId: null,
+  availableAcademies: [],
+  setActiveAcademy: () => {},
 });
+
+function getStorageKey(userId: string) {
+  return `edu-active-academy-${userId}`;
+}
 
 export const UserRoleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [role, setRole] = useState<UserRole>('student');
   const [loading, setLoading] = useState(true);
+  const [activeAcademyId, setActiveAcademyIdState] = useState<string | null>(null);
+  const [availableAcademies, setAvailableAcademies] = useState<AcademyMembership[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const loadRole = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -33,11 +47,32 @@ export const UserRoleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLoading(false);
   };
 
+  const loadAcademies = async (userId: string) => {
+    try {
+      const academies = await fetchMyAcademies(userId);
+      setAvailableAcademies(academies);
+
+      const stored = localStorage.getItem(getStorageKey(userId));
+      if (stored && academies.some(a => a.id === stored)) {
+        setActiveAcademyIdState(stored);
+      } else if (academies.length > 0) {
+        setActiveAcademyIdState(academies[0].id);
+        localStorage.setItem(getStorageKey(userId), academies[0].id);
+      } else {
+        setActiveAcademyIdState(null);
+      }
+    } catch {
+      setAvailableAcademies([]);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     const fetchRole = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !mounted) { setRole('student'); setLoading(false); return; }
+
+      setCurrentUserId(user.id);
 
       const { data } = await supabase
         .from('profiles')
@@ -50,18 +85,49 @@ export const UserRoleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setRole(r && ['student', 'teacher', 'parent', 'director'].includes(r) ? r : 'student');
         setLoading(false);
       }
+
+      if (mounted) {
+        await loadAcademies(user.id);
+      }
     };
     fetchRole();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      if (mounted) fetchRole();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        fetchRole();
+      } else {
+        setRole('student');
+        setAvailableAcademies([]);
+        setActiveAcademyIdState(null);
+        setCurrentUserId(null);
+        setLoading(false);
+      }
     });
 
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
+  const setActiveAcademy = (academyId: string | null) => {
+    setActiveAcademyIdState(academyId);
+    if (currentUserId) {
+      if (academyId) {
+        localStorage.setItem(getStorageKey(currentUserId), academyId);
+      } else {
+        localStorage.removeItem(getStorageKey(currentUserId));
+      }
+    }
+  };
+
   return (
-    <UserRoleContext.Provider value={{ role, loading, refreshRole: loadRole }}>
+    <UserRoleContext.Provider value={{
+      role,
+      loading,
+      refreshRole: loadRole,
+      activeAcademyId,
+      availableAcademies,
+      setActiveAcademy,
+    }}>
       {children}
     </UserRoleContext.Provider>
   );

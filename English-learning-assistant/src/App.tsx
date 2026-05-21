@@ -20,6 +20,9 @@ import { AssignmentsPage } from './pages/AssignmentsPage';
 import { AssignmentSolvePage } from './pages/AssignmentSolvePage';
 import { ParentDashboardPage } from './pages/ParentDashboardPage';
 import { DirectorDashboardPage } from './pages/DirectorDashboardPage';
+import { AcademyListPage } from './pages/AcademyListPage';
+import { AcademyCreatePage } from './pages/AcademyCreatePage';
+import { AcademyMembersPage } from './pages/AcademyMembersPage';
 import { ClassDetailPage } from './components/teacher/ClassDetailPage';
 import { AssignmentCreatePage } from './components/teacher/AssignmentCreatePage';
 import { AssignmentDetailPage } from './components/teacher/AssignmentDetailPage';
@@ -387,141 +390,6 @@ const MainPage: React.FC<{
           </div>
         </section>
 
-        <section className="lab" id="lab">
-          {/*
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">{language === 'ko' ? '이미지 업로드 · AI 분석' : 'Image Upload · AI Analysis'}</p>
-              <h2>{language === 'ko' ? '영어 문제 이미지 분석' : 'English Problem Image Analysis'}</h2>
-            </div>
-            <p className="muted">
-              {language === 'ko' 
-                ? '문제 이미지를 업로드하면 AI가 자동으로 분석합니다. 분석은 백그라운드에서 진행되며, 통계 페이지에서 결과를 확인할 수 있습니다.'
-                : 'Upload problem images and AI will automatically analyze them. Analysis runs in the background, and you can check results on the statistics page.'}
-            </p>
-          </div>
-          */}
-          {error && <p className="error-text">{error}</p>}
-          {/*
-          <div className="lab-grid">
-            <div className="lab-left">
-              <div className="panel upload-panel">
-                <div>
-                  <label htmlFor="image-input" className="file-label">
-                    {t.upload.sectionTitle}
-                  </label>
-                  <input
-                    id="image-input"
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={onFileChange}
-                    className="file-input"
-                  />
-                  {imageFiles.length > 0 && (
-                    <p className="file-meta">
-                      {imageFiles.length} {language === 'ko' ? '개 파일 선택됨' : 'files selected'}
-                    </p>
-                  )}
-                </div>
-                <div className="action-stack">
-                  <button 
-                    className="primary" 
-                    onClick={onAnalyzeClick}
-                    disabled={imageFiles.length === 0 || isLoading}
-                  >
-                    {isLoading 
-                      ? (language === 'ko' ? '분석 중…' : 'Analyzing...')
-                      : `${t.upload.uploadButton} (${imageFiles.length}${t.upload.uploadCount})`
-                    }
-                  </button>
-                </div>
-              </div>
-
-              <div className="panel canvas-panel">
-                {imageFiles.length > 0 ? (
-                  <div className="image-grid">
-                    {imageFiles.map((imageFile, index) => (
-                      <div key={imageFile.id} className="image-item">
-                        <button
-                          onClick={() => onRemove(index)}
-                          className="image-item-remove"
-                          title={t.upload.delete}
-                        >
-                          ×
-                        </button>
-                        <div style={{ padding: '0.5rem' }}>
-                          <ImageRotator
-                            imageUrl={imageFile.previewUrl}
-                            onRotate={(blob) => onRotate(index, blob)}
-                            className="max-w-full max-h-[300px] object-contain"
-                          />
-                        </div>
-                        <div className="image-item-name">
-                          {imageFile.file.name}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="placeholder">
-                    {language === 'ko' 
-                      ? '이미지를 선택하면 여기에서 미리볼 수 있습니다.'
-                      : 'Select images to preview them here.'}
-                  </div>
-                )}
-                <p className="muted note">
-                  {language === 'ko' 
-                    ? '이미지를 클릭하여 회전시킬 수 있습니다. 삭제하려면 × 버튼을 클릭하세요.'
-                    : 'Click images to rotate them. Click × to delete.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="lab-right">
-              <section className="panel details-panel">
-                <div className="panel-head">
-                  <div>
-                    <p className="eyebrow">{language === 'ko' ? '업로드 정보' : 'Upload Info'}</p>
-                    <h3>{language === 'ko' ? '선택된 이미지' : 'Selected Images'}</h3>
-                  </div>
-                </div>
-                
-                {imageFiles.length > 0 ? (
-                  <div>
-                    <p className="muted">
-                      {language === 'ko' 
-                        ? `총 ${imageFiles.length}개의 이미지가 선택되었습니다.`
-                        : `${imageFiles.length} image(s) selected.`}
-                    </p>
-                    <div className="info-message" style={{ marginTop: '1rem' }}>
-                      <p>
-                        {language === 'ko' 
-                          ? '📸 이미지를 업로드하면 즉시 "업로드되었습니다!" 메시지가 표시됩니다. AI 분석은 백그라운드에서 진행되며, 통계 페이지에서 결과를 확인할 수 있습니다.'
-                          : '📸 When you upload an image, you will immediately see an "Uploaded!" message. AI analysis runs in the background, and you can check the results on the statistics page.'}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="muted">
-                    {language === 'ko' 
-                      ? '이미지를 선택하면 여기에 정보가 표시됩니다.'
-                      : 'Image information will appear here when you select images.'}
-                  </p>
-                )}
-
-                {isLoading && (
-                  <div className="loader-container">
-                    <Loader />
-                  </div>
-                )}
-              </section>
-            </div>
-          </div>
-          */}
-        </section>
-
         <section className="panel pipeline" id="pipeline">
           <div className="section-head">
             <div>
@@ -575,7 +443,7 @@ const MainPage: React.FC<{
             </p>
           </div>
           <div className="cta-actions">
-            <a className="primary" href="#lab">
+            <a className="primary" href="#top">
               {language === 'ko' ? '지금 시작하기' : 'Get Started'}
             </a>
             <Link className="ghost muted-text" to="/stats">
@@ -600,7 +468,6 @@ const App: React.FC = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
 
-  // 이미지 압축: Canvas API를 사용하여 긴 변 1600px, JPEG 80% 품질로 리사이징
   const compressImage = (file: File, maxDimension: number = 1200, quality: number = 0.8): Promise<{ base64: string; mimeType: string }> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -973,6 +840,11 @@ const App: React.FC = () => {
 
       {/* 학원장 */}
       <Route path="/director/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><DirectorDashboardPage /></RoleGate></PageLayout></AuthGate>} />
+
+      {/* 학원 관리 */}
+      <Route path="/academies" element={<AuthGate><PageLayout><AcademyListPage /></PageLayout></AuthGate>} />
+      <Route path="/academies/new" element={<AuthGate><PageLayout><AcademyCreatePage /></PageLayout></AuthGate>} />
+      <Route path="/academies/:id/members" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><AcademyMembersPage /></RoleGate></PageLayout></AuthGate>} />
 
       <Route path="*" element={<AuthGate><PageLayout><div className="text-center py-10"><a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">{language === 'ko' ? '문제 업로드하러 가기' : 'Go to Upload'}</a></div></PageLayout></AuthGate>} />
     </Routes>

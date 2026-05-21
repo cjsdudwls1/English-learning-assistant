@@ -1,6 +1,12 @@
 import { supabase } from '../supabaseClient';
 import { getCurrentUserId } from './auth';
 import type { MonthlyStats, DailyStats } from '../../types';
+import {
+  fetchSessionsForUser,
+  fetchSessionsForUsers,
+  fetchProblemsForSessions,
+  fetchLabelsForProblems,
+} from '../stats';
 
 interface StatsRow { date: string; is_correct: boolean; time: number }
 
@@ -42,27 +48,51 @@ function aggregateByDay(rows: StatsRow[]): DailyStats[] {
   })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function extractLabelRows(data: any[]): StatsRow[] {
+// labels를 단계별로 가져와 StatsRow[]로 변환 (1명 사용자)
+async function fetchLabelStatsRowsForUser(targetId: string, startDate: string, endDate: string): Promise<StatsRow[]> {
+  const sessions = await fetchSessionsForUser(targetId, new Date(startDate), new Date(endDate));
+  if (sessions.length === 0) return [];
+  const sessionDateMap = new Map<string, string>();
+  for (const s of sessions) sessionDateMap.set(s.id, s.created_at);
+  const problems = await fetchProblemsForSessions(sessions.map((s) => s.id));
+  if (problems.length === 0) return [];
+  const problemToSession = new Map<string, string>();
+  for (const p of problems) problemToSession.set(p.id, p.session_id);
+  const labels = await fetchLabelsForProblems(problems.map((p) => p.id));
+
   const rows: StatsRow[] = [];
-  for (const r of data) {
-    const problems = (r as any).problems;
-    const sessions = Array.isArray(problems) ? problems[0]?.sessions : problems?.sessions;
-    if (sessions?.created_at) {
-      rows.push({ date: sessions.created_at, is_correct: r.is_correct ?? false, time: 0 });
-    }
+  for (const l of labels) {
+    const sid = problemToSession.get(l.problem_id);
+    const created = sid ? sessionDateMap.get(sid) : undefined;
+    if (created) rows.push({ date: created, is_correct: l.is_correct ?? false, time: 0 });
+  }
+  return rows;
+}
+
+// labels를 단계별로 가져와 StatsRow[]로 변환 (학생 다수)
+async function fetchLabelStatsRowsForUsers(studentIds: string[], startDate: string, endDate: string): Promise<StatsRow[]> {
+  const sessions = await fetchSessionsForUsers(studentIds, startDate, endDate);
+  if (sessions.length === 0) return [];
+  const sessionDateMap = new Map<string, string>();
+  for (const s of sessions) sessionDateMap.set(s.id, s.created_at);
+  const problems = await fetchProblemsForSessions(sessions.map((s) => s.id));
+  if (problems.length === 0) return [];
+  const problemToSession = new Map<string, string>();
+  for (const p of problems) problemToSession.set(p.id, p.session_id);
+  const labels = await fetchLabelsForProblems(problems.map((p) => p.id));
+
+  const rows: StatsRow[] = [];
+  for (const l of labels) {
+    const sid = problemToSession.get(l.problem_id);
+    const created = sid ? sessionDateMap.get(sid) : undefined;
+    if (created) rows.push({ date: created, is_correct: l.is_correct ?? false, time: 0 });
   }
   return rows;
 }
 
 async function fetchAllStatsRows(targetId: string, startDate: string, endDate: string): Promise<StatsRow[]> {
-  const [labelsRes, solvingRes, assignmentRes] = await Promise.all([
-    supabase
-      .from('labels')
-      .select('is_correct, user_mark, problems!inner(sessions!inner(user_id, created_at))')
-      .eq('problems.sessions.user_id', targetId)
-      .not('user_mark', 'is', null)
-      .gte('problems.sessions.created_at', startDate)
-      .lte('problems.sessions.created_at', endDate),
+  const [labelRows, solvingRes, assignmentRes] = await Promise.all([
+    fetchLabelStatsRowsForUser(targetId, startDate, endDate),
     supabase
       .from('problem_solving_sessions')
       .select('is_correct, time_spent_seconds, completed_at')
@@ -77,11 +107,10 @@ async function fetchAllStatsRows(targetId: string, startDate: string, endDate: s
       .gte('submitted_at', startDate)
       .lte('submitted_at', endDate),
   ]);
-  if (labelsRes.error) throw labelsRes.error;
   if (solvingRes.error) throw solvingRes.error;
   if (assignmentRes.error) throw assignmentRes.error;
 
-  const rows: StatsRow[] = extractLabelRows(labelsRes.data || []);
+  const rows: StatsRow[] = [...labelRows];
   for (const r of solvingRes.data || []) {
     rows.push({ date: r.completed_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? 0 });
   }
@@ -123,14 +152,8 @@ export async function fetchClassAssignmentStats(classId: string, year: number, m
     ? `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}T23:59:59Z`
     : `${year}-12-31T23:59:59Z`;
 
-  const [labelsRes, assignRes, solvingRes] = await Promise.all([
-    supabase
-      .from('labels')
-      .select('is_correct, user_mark, problems!inner(sessions!inner(user_id, created_at))')
-      .in('problems.sessions.user_id', studentIds)
-      .not('user_mark', 'is', null)
-      .gte('problems.sessions.created_at', startDate)
-      .lte('problems.sessions.created_at', endDate),
+  const [labelRows, assignRes, solvingRes] = await Promise.all([
+    fetchLabelStatsRowsForUsers(studentIds, startDate, endDate),
     supabase
       .from('assignment_responses')
       .select('is_correct, time_spent_seconds, submitted_at')
@@ -145,11 +168,10 @@ export async function fetchClassAssignmentStats(classId: string, year: number, m
       .gte('completed_at', startDate)
       .lte('completed_at', endDate),
   ]);
-  if (labelsRes.error) throw labelsRes.error;
   if (assignRes.error) throw assignRes.error;
   if (solvingRes.error) throw solvingRes.error;
 
-  const rows: StatsRow[] = extractLabelRows(labelsRes.data || []);
+  const rows: StatsRow[] = [...labelRows];
   for (const r of assignRes.data || []) {
     rows.push({ date: r.submitted_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? 0 });
   }
@@ -167,19 +189,18 @@ export interface DirectorOverview {
   overallCorrectRate: number;
 }
 
-export async function fetchDirectorOverview(): Promise<DirectorOverview> {
-  const { count: totalClasses } = await supabase
-    .from('classes')
-    .select('*', { count: 'exact', head: true });
+export async function fetchDirectorOverview(academyId?: string | null): Promise<DirectorOverview> {
+  let classesQuery = supabase.from('classes').select('*', { count: 'exact', head: true });
+  if (academyId) classesQuery = classesQuery.eq('academy_id', academyId);
+  const { count: totalClasses } = await classesQuery;
 
-  const { count: totalStudents } = await supabase
-    .from('class_members')
-    .select('*', { count: 'exact', head: true })
-    .eq('role', 'student');
+  let studentsQuery = supabase.from('academy_students').select('*', { count: 'exact', head: true });
+  if (academyId) studentsQuery = studentsQuery.eq('academy_id', academyId);
+  const { count: totalStudents } = await studentsQuery;
 
-  const { count: totalAssignments } = await supabase
-    .from('shared_assignments')
-    .select('*', { count: 'exact', head: true });
+  let assignmentsQuery = supabase.from('shared_assignments').select('*', { count: 'exact', head: true });
+  if (academyId) assignmentsQuery = assignmentsQuery.eq('academy_id', academyId);
+  const { count: totalAssignments } = await assignmentsQuery;
 
   const { count: totalResponses, error: trErr } = await supabase
     .from('assignment_responses')

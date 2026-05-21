@@ -38,24 +38,26 @@ export async function fetchMyAssignments(): Promise<SharedAssignment[]> {
   const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from('shared_assignments')
-    .select('id, title, description, created_by, class_id, due_date, created_at')
+    .select(`
+      id, title, description, created_by, class_id, due_date, created_at,
+      assignment_problems(id),
+      assignment_responses(id)
+    `)
     .eq('created_by', userId)
     .order('created_at', { ascending: false });
   if (error) throw error;
 
-  const assignments: SharedAssignment[] = [];
-  for (const a of data || []) {
-    const { count: pCount } = await supabase
-      .from('assignment_problems')
-      .select('*', { count: 'exact', head: true })
-      .eq('assignment_id', a.id);
-    const { count: rCount } = await supabase
-      .from('assignment_responses')
-      .select('*', { count: 'exact', head: true })
-      .eq('assignment_id', a.id);
-    assignments.push({ ...a, problem_count: pCount ?? 0, completed_count: rCount ?? 0 });
-  }
-  return assignments;
+  return (data || []).map((a: any) => ({
+    id: a.id,
+    title: a.title,
+    description: a.description,
+    created_by: a.created_by,
+    class_id: a.class_id,
+    due_date: a.due_date,
+    created_at: a.created_at,
+    problem_count: (a.assignment_problems || []).length,
+    completed_count: (a.assignment_responses || []).length,
+  }));
 }
 
 export async function fetchAssignedToMe(): Promise<SharedAssignment[]> {
@@ -71,25 +73,26 @@ export async function fetchAssignedToMe(): Promise<SharedAssignment[]> {
 
   const { data: assignments, error: aError } = await supabase
     .from('shared_assignments')
-    .select('id, title, description, created_by, class_id, due_date, created_at')
+    .select(`
+      id, title, description, created_by, class_id, due_date, created_at,
+      assignment_problems(id),
+      assignment_responses(id, student_id)
+    `)
     .in('id', ids)
     .order('created_at', { ascending: false });
   if (aError) throw aError;
 
-  const result: SharedAssignment[] = [];
-  for (const a of assignments || []) {
-    const { count: pCount } = await supabase
-      .from('assignment_problems')
-      .select('*', { count: 'exact', head: true })
-      .eq('assignment_id', a.id);
-    const { count: rCount } = await supabase
-      .from('assignment_responses')
-      .select('*', { count: 'exact', head: true })
-      .eq('assignment_id', a.id)
-      .eq('student_id', userId);
-    result.push({ ...a, problem_count: pCount ?? 0, completed_count: rCount ?? 0 });
-  }
-  return result;
+  return (assignments || []).map((a: any) => ({
+    id: a.id,
+    title: a.title,
+    description: a.description,
+    created_by: a.created_by,
+    class_id: a.class_id,
+    due_date: a.due_date,
+    created_at: a.created_at,
+    problem_count: (a.assignment_problems || []).length,
+    completed_count: (a.assignment_responses || []).filter((r: any) => r.student_id === userId).length,
+  }));
 }
 
 interface SubmitResponseParams {
@@ -175,19 +178,16 @@ export async function fetchChildAssignments(childId: string): Promise<SharedAssi
 export async function fetchAssignmentProblems(assignmentId: string) {
   const { data, error } = await supabase
     .from('assignment_problems')
-    .select('id, assignment_id, problem_id, order_index')
+    .select('id, assignment_id, problem_id, order_index, generated_problems(*)')
     .eq('assignment_id', assignmentId)
     .order('order_index', { ascending: true });
   if (error) throw error;
 
-  const problems = [];
-  for (const ap of data || []) {
-    const { data: problem } = await supabase
-      .from('generated_problems')
-      .select('*')
-      .eq('id', ap.problem_id)
-      .maybeSingle();
-    problems.push({ ...ap, problem: problem ?? undefined });
-  }
-  return problems;
+  return (data || []).map((ap: any) => ({
+    id: ap.id,
+    assignment_id: ap.assignment_id,
+    problem_id: ap.problem_id,
+    order_index: ap.order_index,
+    problem: ap.generated_problems ?? undefined,
+  }));
 }

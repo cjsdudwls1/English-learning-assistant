@@ -6,7 +6,7 @@ interface UseStatsNodesReturn {
   handleNodeSelect: (node: StatsNode, selected: boolean) => void;
   getNodeKey: (node: StatsNode) => string;
   getLeafNodes: (nodes: StatsNode[]) => StatsNode[];
-  getLowAccuracyCategories: StatsNode[];
+  getLowAccuracyLeafNodes: StatsNode[];
   classifications: Array<{ depth1: string; depth2: string; depth3: string; depth4: string }>;
 }
 
@@ -34,8 +34,8 @@ export function useStatsNodes(hierarchicalData: StatsNode[]): UseStatsNodesRetur
     return leafNodes;
   }, []);
 
-  // 정답률 낮은 유형 찾기 (카테고리 선택 없을 때 사용)
-  const getLowAccuracyCategories = useMemo(() => {
+  // 정답률 낮은 leaf node 찾기 (카테고리 선택 없을 때 사용)
+  const getLowAccuracyLeafNodes = useMemo(() => {
     const allLeafNodes = getLeafNodes(hierarchicalData);
     const nodesWithAccuracy = allLeafNodes
       .map(node => {
@@ -65,14 +65,14 @@ export function useStatsNodes(hierarchicalData: StatsNode[]): UseStatsNodesRetur
         depth4: node.depth4 || '',
       }));
     } else {
-      return getLowAccuracyCategories.map(node => ({
+      return getLowAccuracyLeafNodes.map(node => ({
         depth1: node.depth1 || '',
         depth2: node.depth2 || '',
         depth3: node.depth3 || '',
         depth4: node.depth4 || '',
       }));
     }
-  }, [selectedNodes, hierarchicalData, getLowAccuracyCategories, getLeafNodes, getNodeKey]);
+  }, [selectedNodes, hierarchicalData, getLowAccuracyLeafNodes, getLeafNodes, getNodeKey]);
 
   // 노드 선택 핸들러
   const handleNodeSelect = useCallback((node: StatsNode, selected: boolean) => {
@@ -93,7 +93,7 @@ export function useStatsNodes(hierarchicalData: StatsNode[]): UseStatsNodesRetur
     handleNodeSelect,
     getNodeKey,
     getLeafNodes,
-    getLowAccuracyCategories,
+    getLowAccuracyLeafNodes,
     classifications,
   };
 }

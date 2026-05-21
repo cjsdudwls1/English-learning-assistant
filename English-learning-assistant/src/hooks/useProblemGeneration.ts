@@ -138,7 +138,7 @@ export function useProblemGeneration({
 
     // 10초 후 예상된 문제 수를 받지 못하면 폴링 시작 (Realtime 실패 시 폴백)
     const pollingTimeout = setTimeout(async () => {
-      if (receivedProblems.length >= totalExpected || !isGenerating) {
+      if (receivedProblemsCountRef.current >= totalExpected || !isGenerating) {
         console.log('[Polling] Skipping polling - problems already received or generation stopped');
         return;
       }
@@ -249,26 +249,6 @@ export function useProblemGeneration({
               console.error('[Polling] Error:', pollError);
             }
           }, 2000);
-
-          setTimeout(() => {
-            if (pollIntervalRef.current) {
-              pollingActiveRef.current = false;
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-            if (isGenerating) {
-              if (realtimeSubscription) {
-                supabase.removeChannel(realtimeSubscription);
-                setRealtimeSubscription(null);
-              }
-              setIsGenerating(false);
-              const timeoutMessage = language === 'ko'
-                ? '문제 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
-                : 'Problem generation timed out. Please try again later.';
-              setErrorAndNotify(timeoutMessage);
-              generationStartTimeRef.current = null;
-            }
-          }, 10 * 60 * 1000); // 10분으로 증가 (여러 문제 유형 순차 생성 + Edge Function 실행 시간 고려)
         };
 
         startPolling();
@@ -305,7 +285,7 @@ export function useProblemGeneration({
       clearTimeout(pollingTimeout);
       clearTimeout(finalTimeout);
     };
-  }, [isGenerating, realtimeSubscription, language, receivedProblems.length, expectedProblemCounts, userId, handleGenerationComplete, setErrorAndNotify]);
+  }, [isGenerating, realtimeSubscription, language, expectedProblemCounts, userId, handleGenerationComplete, setErrorAndNotify]);
 
   // 문제 생성 핸들러
   const handleGenerateProblems = useCallback(async () => {
@@ -325,7 +305,12 @@ export function useProblemGeneration({
     generationStartTimeRef.current = Date.now();
 
     try {
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-problems-by-type`;
+      const functionUrl = import.meta.env.VITE_ANALYZE_GCF_URL;
+      if (!functionUrl) {
+        throw new Error(language === 'ko'
+          ? 'VITE_ANALYZE_GCF_URL 환경변수가 설정되지 않았습니다.'
+          : 'VITE_ANALYZE_GCF_URL environment variable is not set.');
+      }
       const problemTypes: ProblemType[] = ['multiple_choice', 'short_answer', 'essay', 'ox'];
       const classificationToUse = classifications.length > 0 ? classifications[0] : null;
 
@@ -450,238 +435,77 @@ export function useProblemGeneration({
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Edge Function은 동기식으로 실행 - 응답에서 직접 문제 ID를 수집
-      const collectedProblemIds: string[] = [];
-      let hasError = false;
-
-      // 지문 포함 모드: 첫 번째 호출에서 생성된 passage를 이후 호출에 공유
+      // 통합 GCF 호출 (1번): fire-and-forget으로 즉시 sessionId 반환
+      // 백그라운드에서 1+3 패턴으로 모든 유형 생성 → Realtime/폴링으로 수신
       const currentAiOptions = aiOptionsRef.current;
-      let sharedPassage: string | null = null;
-      const isPassageMode = currentAiOptions?.includePassage === true;
+      const typesPayload = problemTypes
+        .filter((pt) => problemCounts[pt] > 0)
+        .map((pt) => ({ problemType: pt, problemCount: problemCounts[pt] }));
 
-      for (const problemType of problemTypes) {
-        const count = problemCounts[problemType];
-        if (count <= 0) continue;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
 
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
+        const requestBody: any = {
+          mode: 'generate-all',
+          types: typesPayload,
+          userId: userId,
+          language: language,
+          classification: classificationToUse,
+          ...(currentAiOptions || {}),
+        };
 
-          // 지문 모드에서 두 번째 이후 호출에는 sharedPassage 전달
-          const requestBody: any = {
-            problemType: problemType,
-            problemCount: count,
-            userId: userId,
-            language: language,
-            classification: classificationToUse,
-            ...(currentAiOptions || {}),
-          };
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify(requestBody),
+        });
 
-          if (isPassageMode && sharedPassage) {
-            requestBody.sharedPassage = sharedPassage;
-            console.log(`[${problemType}] 공유 지문 전달 (${sharedPassage.length}자)`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[generate-all] Error response:', errorText);
+          let errorMessage = errorText || `HTTP ${response.status} error`;
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.error || errorJson.message || errorMessage;
+          } catch { /* keep errorText */ }
+
+          if (response.status === 401) {
+            throw new Error(language === 'ko'
+              ? '인증이 만료되었습니다. 다시 로그인해주세요.'
+              : 'Authentication expired. Please log in again.');
           }
-
-          const response = await fetch(functionUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session?.access_token}`,
-            },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[${problemType}] Error response:`, errorText);
-            let errorMessage = '';
-
-            try {
-              const errorJson = JSON.parse(errorText);
-              console.error(`[${problemType}] Parsed error JSON:`, errorJson);
-
-              if (errorJson.error) {
-                if (typeof errorJson.error === 'string') {
-                  try {
-                    const nestedError = JSON.parse(errorJson.error);
-                    console.error(`[${problemType}] Nested error:`, nestedError);
-                    if (nestedError.error?.message) {
-                      errorMessage = nestedError.error.message;
-                    } else if (nestedError.message) {
-                      errorMessage = nestedError.message;
-                    } else {
-                      errorMessage = errorJson.error;
-                    }
-                  } catch {
-                    errorMessage = errorJson.error;
-                  }
-                } else if (errorJson.error?.message) {
-                  errorMessage = errorJson.error.message;
-                } else if (errorJson.error?.error?.message) {
-                  errorMessage = errorJson.error.error.message;
-                } else {
-                  errorMessage = errorText;
-                }
-              } else if (errorJson.message) {
-                errorMessage = errorJson.message;
-              } else {
-                errorMessage = errorText;
-              }
-
-              if (errorJson.errorDetails) {
-                console.error(`[${problemType}] Error details:`, errorJson.errorDetails);
-                const detailsStr = String(errorJson.errorDetails);
-                if (detailsStr.includes('Error:')) {
-                  const match = detailsStr.match(/Error: (.+?)(?:\n|$)/);
-                  if (match && match[1]) {
-                    errorMessage = match[1].trim();
-                  }
-                } else if (detailsStr.length < 200) {
-                  errorMessage = detailsStr;
-                }
-              }
-            } catch {
-              errorMessage = errorText || `HTTP ${response.status} error`;
-            }
-
-            const lowerErrorMessage = errorMessage.toLowerCase();
-            if (lowerErrorMessage.includes('overloaded') || lowerErrorMessage.includes('unavailable') || response.status === 503) {
-              throw new Error(language === 'ko'
-                ? 'AI 서버가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.'
-                : 'AI server is temporarily overloaded. Please try again later.');
-            } else if (lowerErrorMessage.includes('quota') || lowerErrorMessage.includes('quota_exceeded')) {
-              throw new Error(language === 'ko'
-                ? 'AI 서비스 사용량 한도를 초과했습니다. 나중에 다시 시도해주세요.'
-                : 'AI service quota exceeded. Please try again later.');
-            } else if (errorMessage && errorMessage !== 'Unknown error') {
-              throw new Error(language === 'ko'
-                ? `문제 생성 중 오류가 발생했습니다: ${errorMessage}`
-                : `An error occurred while generating problems: ${errorMessage}`);
-            } else {
-              throw new Error(language === 'ko'
-                ? `문제 생성 중 오류가 발생했습니다. (HTTP ${response.status})`
-                : `An error occurred while generating problems. (HTTP ${response.status})`);
-            }
+          if (response.status === 503 || errorMessage.toLowerCase().includes('overloaded')) {
+            throw new Error(language === 'ko'
+              ? 'AI 서버가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.'
+              : 'AI server is temporarily overloaded. Please try again later.');
           }
-
-          const result = await response.json();
-
-          if (!result.success) {
-            let errorMsg = result.error || (language === 'ko' ? '문제 생성에 실패했습니다.' : 'Failed to generate problems.');
-            throw new Error(errorMsg);
-          }
-
-          // 지문 모드: 첫 번째 호출의 응답에서 passage 추출하여 이후 호출에 공유
-          if (isPassageMode && !sharedPassage && result.passage) {
-            sharedPassage = result.passage;
-            console.log(`[${problemType}] 지문 추출 성공 (${sharedPassage!.length}자), 이후 문제 유형에 공유 예정`);
-          }
-
-          // 동기식 응답에서 생성된 문제 ID 수집
-          if (result.problems && Array.isArray(result.problems)) {
-            const ids = result.problems.map((p: any) => p.id).filter(Boolean);
-            collectedProblemIds.push(...ids);
-            console.log(`[${problemType}] ${ids.length}개 문제 생성 완료 (총 수집: ${collectedProblemIds.length}개)`);
-          } else {
-            console.log(`[${problemType}] 문제 생성 완료 (응답에 ID 없음, 수: ${result.count || 0})`);
-          }
-
-          // 지문 모드에서 첫 번째 호출 후 passage를 아직 못 얻었으면 DB에서 조회
-          if (isPassageMode && !sharedPassage && result.problems?.length > 0) {
-            const firstProblemId = result.problems[0]?.id;
-            if (firstProblemId) {
-              const { data: firstProblem } = await supabase
-                .from('generated_problems')
-                .select('passage')
-                .eq('id', firstProblemId)
-                .single();
-              if (firstProblem?.passage) {
-                sharedPassage = firstProblem.passage;
-                console.log(`[${problemType}] DB fallback으로 지문 추출 성공 (${sharedPassage!.length}자)`);
-              }
-            }
-          }
-        } catch (innerError) {
-          console.error(`Error generating ${problemType} problems:`, innerError);
-          hasError = true;
-
-          const problemTypeName = language === 'ko'
-            ? (problemType === 'multiple_choice' ? '객관식' :
-              problemType === 'short_answer' ? '단답형' :
-                problemType === 'essay' ? '서술형' : 'O/X')
-            : (problemType === 'multiple_choice' ? 'Multiple Choice' :
-              problemType === 'short_answer' ? 'Short Answer' :
-                problemType === 'essay' ? 'Essay' : 'True/False');
-
-          const errorMsg = innerError instanceof Error ? innerError.message : String(innerError);
-          setErrorAndNotify(language === 'ko'
-            ? `${problemTypeName} 문제 생성 중 오류가 발생했습니다: ${errorMsg}`
-            : `Error generating ${problemTypeName} problems: ${errorMsg}`);
-
-          if (realtimeSubscription) {
-            await supabase.removeChannel(realtimeSubscription);
-            setRealtimeSubscription(null);
-          }
-          setIsGenerating(false);
-          generationStartTimeRef.current = null;
-          return; // 에러 발생 시 즉시 중단
+          throw new Error(language === 'ko'
+            ? `문제 생성 요청 실패: ${errorMessage}`
+            : `Failed to request problem generation: ${errorMessage}`);
         }
-      }
 
-      // 모든 Edge Function 호출 완료 - 동기식 응답 기반으로 문제 조회
-      if (!hasError) {
-        console.log(`[Direct] 모든 Edge Function 호출 완료. 수집된 ID: ${collectedProblemIds.length}개`);
-
-        try {
-          // DB에서 생성된 문제 전체 데이터 조회
-          let allProblems: GeneratedProblem[] = [];
-
-          if (collectedProblemIds.length > 0) {
-            // 수집된 ID로 직접 조회
-            const { data: problems, error: fetchError } = await supabase
-              .from('generated_problems')
-              .select('*')
-              .in('id', collectedProblemIds);
-
-            if (fetchError) {
-              console.error('[Direct] ID 기반 조회 실패:', fetchError);
-            } else {
-              allProblems = (problems || []) as GeneratedProblem[];
-            }
-          }
-
-          // ID 기반 조회 실패 시 시간 기반 fallback
-          if (allProblems.length === 0) {
-            const startTime = generationStartTimeRef.current || Date.now();
-            const queryStartTime = new Date(startTime - 2000).toISOString();
-            console.log('[Direct] ID 기반 조회 결과 없음. 시간 기반 fallback 조회...');
-
-            const { data: problems, error: fetchError } = await supabase
-              .from('generated_problems')
-              .select('*')
-              .eq('user_id', userId)
-              .gte('created_at', queryStartTime)
-              .neq('stem', '__GENERATION_ERROR__')
-              .neq('stem', '__TIMEOUT_ERROR__')
-              .order('created_at', { ascending: true });
-
-            if (fetchError) {
-              console.error('[Direct] 시간 기반 조회 실패:', fetchError);
-            } else {
-              allProblems = (problems || []) as GeneratedProblem[];
-            }
-          }
-
-          if (allProblems.length > 0) {
-            console.log(`[Direct] ${allProblems.length}개 문제 조회 완료 - 즉시 완료 처리`);
-            handleGenerationComplete(allProblems);
-          } else {
-            // 조회되지 않는 극히 드문 경우 - 기존 Realtime/폴링에 위임
-            console.warn('[Direct] 문제 조회 실패. Realtime/폴링 fallback 대기...');
-          }
-        } catch (fetchErr) {
-          console.error('[Direct] 문제 조회 중 오류:', fetchErr);
-          // Realtime/폴링 fallback에 위임
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || (language === 'ko' ? '문제 생성 요청에 실패했습니다.' : 'Failed to request problem generation.'));
         }
+
+        console.log(`[generate-all] 백그라운드 생성 시작: sessionId=${result.sessionId}, types=${typesPayload.map(t => t.problemType).join(',')}`);
+        // 이후 문제 수신은 Realtime 구독 + 폴링 fallback이 처리
+      } catch (callError) {
+        console.error('[generate-all] 호출 실패:', callError);
+        const errorMsg = callError instanceof Error ? callError.message : String(callError);
+        setErrorAndNotify(errorMsg);
+
+        if (realtimeSubscription) {
+          await supabase.removeChannel(realtimeSubscription);
+          setRealtimeSubscription(null);
+        }
+        setIsGenerating(false);
+        generationStartTimeRef.current = null;
+        return;
       }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : (language === 'ko' ? '문제 생성 중 오류가 발생했습니다.' : 'An error occurred while generating problems.');

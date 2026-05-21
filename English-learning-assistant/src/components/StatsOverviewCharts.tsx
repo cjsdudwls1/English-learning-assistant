@@ -95,11 +95,6 @@ const CHART_CONFIG = {
   },
 } as const;
 
-// 헬퍼 함수: depth 4인지 확인
-const isDepth4 = (state: DrillDownState): boolean => {
-  return state.type === 'depth' && state.depth === 4;
-};
-
 // 헬퍼 함수: 최종 depth인지 확인 (depth 4만 최종 depth)
 const isFinalDepth = (state: DrillDownState): boolean => {
   return state.type === 'depth' && state.depth === 4;
@@ -412,191 +407,98 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
     }
   }, [doughnutChartRef, drillDownState]);
 
+  // 클릭 좌표 → target 추출 (index, datasetIndex, label)
+  const resolveBarClickTarget = useCallback(
+    (event: any, chartData: any, elements: any[] | undefined): { index: number; datasetIndex: number; label: string } | null => {
+      const chart = barChartRef;
+      if (!chart) return null;
+      const xScale = chart.scales.x;
+      const yScale = chart.scales.y;
+      if (!xScale || !yScale) return null;
+
+      // y좌표로 overview 상태에서 stacked bar 세그먼트 판별하는 내부 헬퍼
+      const resolveDatasetIndexByY = (canvasY: number | null, idx: number, fallback: number): number => {
+        if (canvasY === null || drillDownState.type !== 'overview' || !chartData.datasets || chartData.datasets.length < 2) {
+          return fallback;
+        }
+        const correctData = chartData.datasets[0].data[idx] || 0;
+        const total = correctData + (chartData.datasets[1].data[idx] || 0);
+        if (total <= 0 || yScale.max <= 0 || canvasY < yScale.top || canvasY > yScale.bottom) {
+          return fallback;
+        }
+        const scaleHeight = yScale.bottom - yScale.top;
+        const relativeY = canvasY - yScale.top;
+        const boundaryY = scaleHeight - (correctData / yScale.max) * scaleHeight;
+        const barTop = scaleHeight - (total / yScale.max) * scaleHeight;
+        if (relativeY >= boundaryY && relativeY <= scaleHeight) return 0; // 정답
+        if (relativeY >= barTop && relativeY < boundaryY) return 1;       // 오답
+        return fallback;
+      };
+
+      let index: number | null = null;
+      let datasetIndex: number | null = null;
+
+      if (elements && elements.length > 0) {
+        index = elements[0].index;
+        const canvasY = event.offsetY !== undefined ? event.offsetY :
+          (event.nativeEvent?.offsetY !== undefined ? event.nativeEvent.offsetY : null);
+        datasetIndex = resolveDatasetIndexByY(canvasY, index, elements[0].datasetIndex);
+      } else {
+        const canvasX = event.offsetX !== undefined ? event.offsetX :
+          (event.nativeEvent?.offsetX !== undefined ? event.nativeEvent.offsetX : null);
+        if (canvasX === null) return null;
+        if (canvasX >= xScale.left && canvasX <= xScale.right) {
+          const labelCount = chartData.labels.length;
+          const calculatedIndex = Math.floor(((canvasX - xScale.left) / (xScale.right - xScale.left)) * labelCount);
+          if (calculatedIndex >= 0 && calculatedIndex < labelCount) {
+            index = calculatedIndex;
+            const canvasY = event.offsetY !== undefined ? event.offsetY :
+              (event.nativeEvent?.offsetY !== undefined ? event.nativeEvent.offsetY : null);
+            datasetIndex = resolveDatasetIndexByY(canvasY, index, 0);
+          }
+        }
+      }
+
+      if (index === null || index < 0 || index >= chartData.labels.length) return null;
+      return { index, datasetIndex: datasetIndex ?? 0, label: chartData.labels[index] as string };
+    },
+    [barChartRef, drillDownState]
+  );
+
+  // DrillDownState 전이 dispatcher
+  const dispatchDrillDown = useCallback(
+    (target: { index: number; datasetIndex: number; label: string }, currentState: DrillDownState): void => {
+      const { label, datasetIndex } = target;
+      if (!label) return;
+
+      if (currentState.type === 'overview') {
+        const filter: FilterType = datasetIndex === 0 ? 'correct' : 'incorrect';
+        setDrillDownState({ type: 'category', filter, category: label });
+      } else if (currentState.type === 'filtered') {
+        setDrillDownState({ type: 'category', filter: currentState.filter, category: label });
+      } else if (currentState.type === 'category') {
+        setDrillDownState({ type: 'depth', filter: currentState.filter, category: currentState.category, depth: 2, depth2Value: label });
+      } else if (currentState.type === 'depth') {
+        if (currentState.depth === 2) {
+          setDrillDownState({ type: 'depth', filter: currentState.filter, category: currentState.category, depth: 3, depth2Value: currentState.depth2Value, depth3Value: label });
+        } else if (currentState.depth === 3) {
+          setDrillDownState({ type: 'depth', filter: currentState.filter, category: currentState.category, depth: 4, depth2Value: currentState.depth2Value, depth3Value: currentState.depth3Value, depth4Value: label });
+        }
+      }
+    },
+    [setDrillDownState]
+  );
+
   // 막대그래프 클릭 핸들러
   const handleBarClick = useCallback((event: any, chartData: any, elements?: any[]) => {
     if (!barChartRef || !chartData?.labels) return;
-    
-    // 최종 depth일 때는 더 이상 드릴다운하지 않음
     if (isFinalDepth(drillDownState)) return;
-    
-    const chart = barChartRef;
-    const xScale = chart.scales.x;
-    const yScale = chart.scales.y;
-    
-    if (!xScale || !yScale) return;
-    
-    let index: number | null = null;
-    let datasetIndex: number | null = null;
-    
-    // elements가 있으면 막대를 클릭한 것
-    if (elements && elements.length > 0) {
-      index = elements[0].index;
-      
-      // stacked bar의 경우 여러 element가 반환될 수 있음
-      // y 좌표를 사용하여 실제로 클릭한 세그먼트 판별
-      const canvasY = event.offsetY !== undefined ? event.offsetY : 
-                     (event.nativeEvent?.offsetY !== undefined ? event.nativeEvent.offsetY : null);
-      
-      if (canvasY !== null && drillDownState.type === 'overview' && chartData.datasets && chartData.datasets.length >= 2) {
-        // 막대의 정답/오답 세그먼트 높이 계산
-        const correctData = chartData.datasets[0].data[index] || 0;
-        const incorrectData = chartData.datasets[1].data[index] || 0;
-        const total = correctData + incorrectData;
-        
-        if (total > 0 && yScale.max > 0) {
-          // offsetY는 canvas의 위쪽 모서리(0)에서 시작
-          // yScale은 차트 내부 좌표계이므로 변환 필요
-          // canvasY가 yScale 영역 내에 있는지 확인
-          if (canvasY >= yScale.top && canvasY <= yScale.bottom) {
-            // yScale 내에서의 상대 위치 계산
-            const scaleHeight = yScale.bottom - yScale.top;
-            const relativeY = canvasY - yScale.top;
-            
-            // 데이터 값을 픽셀 높이로 변환
-            const totalHeight = (total / yScale.max) * scaleHeight;
-            const correctHeight = (correctData / yScale.max) * scaleHeight;
-            
-            // 막대의 bottom은 yScale.bottom (차트 내부 좌표)
-            // 막대의 top은 bottom - totalHeight
-            // 정답과 오답의 경계는 bottom - correctHeight
-            const barBottom = scaleHeight; // yScale 내에서의 bottom (상대 위치)
-            const barTop = barBottom - totalHeight;
-            const boundaryY = barBottom - correctHeight;
-            
-            // 클릭한 y 위치가 어느 세그먼트인지 확인
-            // (정답이 아래, 오답이 위에 쌓여있으므로)
-            // relativeY는 위에서 아래로 증가 (0이 top, scaleHeight가 bottom)
-            if (relativeY >= boundaryY && relativeY <= barBottom) {
-              // 정답 세그먼트 클릭 (아래쪽)
-              datasetIndex = 0;
-            } else if (relativeY >= barTop && relativeY < boundaryY) {
-              // 오답 세그먼트 클릭 (위쪽)
-              datasetIndex = 1;
-            } else {
-              // elements에서 가져온 datasetIndex 사용
-              datasetIndex = elements[0].datasetIndex;
-            }
-          } else {
-            // yScale 영역 밖이면 elements 사용
-            datasetIndex = elements[0].datasetIndex;
-          }
-        } else {
-          // 데이터가 없으면 elements에서 가져온 값 사용
-          datasetIndex = elements[0].datasetIndex;
-        }
-      } else {
-        // y 좌표를 가져올 수 없으면 elements에서 가져온 값 사용
-        datasetIndex = elements[0].datasetIndex;
-      }
-    } else {
-      // elements가 없으면 차트 영역 전체에서 x축 위치 기반으로 계산
-      // Chart.js의 이벤트는 chart.canvas 기준 좌표를 사용
-      const canvasX = event.offsetX !== undefined ? event.offsetX : 
-                     (event.nativeEvent?.offsetX !== undefined ? event.nativeEvent.offsetX : null);
-      
-      if (canvasX === null) return;
-      
-      // x축 스케일 영역 내에서 클릭한 경우
-      if (canvasX >= xScale.left && canvasX <= xScale.right) {
-        const labelCount = chartData.labels.length;
-        const scaleWidth = xScale.right - xScale.left;
-        const relativeX = canvasX - xScale.left;
-        const calculatedIndex = Math.floor((relativeX / scaleWidth) * labelCount);
-        
-        if (calculatedIndex >= 0 && calculatedIndex < labelCount) {
-          index = calculatedIndex;
-          // y 좌표로 정답/오답 판별
-          const canvasY = event.offsetY !== undefined ? event.offsetY : 
-                         (event.nativeEvent?.offsetY !== undefined ? event.nativeEvent.offsetY : null);
-          
-          if (canvasY !== null && drillDownState.type === 'overview' && chartData.datasets && chartData.datasets.length >= 2) {
-            const correctData = chartData.datasets[0].data[index] || 0;
-            const incorrectData = chartData.datasets[1].data[index] || 0;
-            const total = correctData + incorrectData;
-            
-            if (total > 0 && yScale.max > 0 && canvasY >= yScale.top && canvasY <= yScale.bottom) {
-              const scaleHeight = yScale.bottom - yScale.top;
-              const relativeY = canvasY - yScale.top;
-              const totalHeight = (total / yScale.max) * scaleHeight;
-              const correctHeight = (correctData / yScale.max) * scaleHeight;
-              const barBottom = scaleHeight;
-              const barTop = barBottom - totalHeight;
-              const boundaryY = barBottom - correctHeight;
-              
-              if (relativeY >= boundaryY && relativeY <= barBottom) {
-                datasetIndex = 0; // 정답
-              } else if (relativeY >= barTop && relativeY < boundaryY) {
-                datasetIndex = 1; // 오답
-              } else {
-                datasetIndex = 0; // 기본값: 정답
-              }
-            } else {
-              datasetIndex = 0; // 기본값: 정답
-            }
-          } else {
-            datasetIndex = 0; // 기본값: 정답
-          }
-        }
-      }
-    }
-    
-    if (index === null || index < 0 || index >= chartData.labels.length) return;
-    
-    const clickedLabel = chartData.labels[index] as string;
-    
-    // datasetIndex가 여전히 null이면 기본값 사용
-    if (datasetIndex === null) {
-      datasetIndex = 0;
-    }
 
-    // overview 상태에서 막대차트 클릭
-    if (drillDownState.type === 'overview' && clickedLabel) {
-      // 클릭한 세그먼트가 정답(0)인지 오답(1)인지 확인
-      // x축 레이블을 클릭한 경우 datasetIndex가 0이므로 정답으로 처리
-      const filter: FilterType = datasetIndex === 0 ? 'correct' : 'incorrect';
-      // 해당 카테고리로 필터링
-      setDrillDownState({
-        type: 'category',
-        filter,
-        category: clickedLabel
-      });
-    } else if (drillDownState.type === 'filtered' && clickedLabel) {
-      setDrillDownState({
-        type: 'category',
-        filter: drillDownState.filter,
-        category: clickedLabel
-      });
-    } else if (drillDownState.type === 'category' && clickedLabel) {
-      setDrillDownState({
-        type: 'depth',
-        filter: drillDownState.filter,
-        category: drillDownState.category,
-        depth: 2,
-        depth2Value: clickedLabel
-      });
-    } else if (drillDownState.type === 'depth' && clickedLabel) {
-      if (drillDownState.depth === 2) {
-        setDrillDownState({
-          type: 'depth',
-          filter: drillDownState.filter,
-          category: drillDownState.category,
-          depth: 3,
-          depth2Value: drillDownState.depth2Value,
-          depth3Value: clickedLabel
-        });
-      } else if (drillDownState.depth === 3) {
-        setDrillDownState({
-          type: 'depth',
-          filter: drillDownState.filter,
-          category: drillDownState.category,
-          depth: 4,
-          depth2Value: drillDownState.depth2Value,
-          depth3Value: drillDownState.depth3Value,
-          depth4Value: clickedLabel
-        });
-      }
-    }
-  }, [barChartRef, drillDownState]);
+    const target = resolveBarClickTarget(event, chartData, elements);
+    if (!target) return;
+
+    dispatchDrillDown(target, drillDownState);
+  }, [barChartRef, drillDownState, resolveBarClickTarget, dispatchDrillDown]);
 
   // 필터링된 rows 계산
   const filteredRows = useMemo(() => {

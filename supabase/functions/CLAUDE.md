@@ -19,8 +19,6 @@
 - `aiClient.ts` → AI 클라이언트 인터페이스
 - `vertexClient.ts` / `vertexAuth.ts` → Vertex AI REST API + 인증
 - `models.ts` → 모델 시퀀스 + 재시도 정책
-- `prompts.ts` → AI 프롬프트 템플릿
-- `validation.ts` → AI 응답 검증
 - `taxonomy.ts` → 문제 분류 체계 매핑
 
 ## 규칙
@@ -35,7 +33,6 @@
 
 - 전체 상세: `docs/edge-functions.md`
 - AI 모델 시퀀스: `_shared/models.ts`
-- 프롬프트 템플릿: `_shared/prompts.ts`
 
 ## 배포
 

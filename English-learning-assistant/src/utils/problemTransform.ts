@@ -37,6 +37,7 @@ export function transformToProblemItem(
       alternate_interpretations: [],
     },
     correct_answer: label.correct_answer || null,
+    question_type: (p.question_type || p.content?.question_type || undefined) as any,
     문제_유형_분류: {
       depth1: classification.depth1 || '',
       depth2: classification.depth2 || '',
@@ -47,6 +48,10 @@ export function transformToProblemItem(
       난이도: classification['난이도'] ?? null,
     },
     분류_근거: '',
+    passage: p.content?.passage ?? null,
+    instruction: p.content?.instruction ?? null,
+    question_body: p.content?.question_body ?? null,
+    visual_context: p.content?.visual_context ?? null,
   };
 }
 
@@ -74,6 +79,7 @@ export function transformFromLabelJoin(row: any): ProblemItem {
       alternate_interpretations: [],
     },
     correct_answer: row.correct_answer || null,
+    question_type: (row.problems.question_type || row.problems.content?.question_type || undefined) as any,
     문제_유형_분류: {
       depth1: classification.depth1 || '',
       depth2: classification.depth2 || '',
@@ -84,6 +90,10 @@ export function transformFromLabelJoin(row: any): ProblemItem {
       난이도: classification['난이도'] ?? null,
     },
     분류_근거: '',
+    passage: row.problems.content?.passage ?? null,
+    instruction: row.problems.content?.instruction ?? null,
+    question_body: row.problems.content?.question_body ?? null,
+    visual_context: row.problems.content?.visual_context ?? null,
   };
 }
 

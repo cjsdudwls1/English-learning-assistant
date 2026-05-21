@@ -10,6 +10,11 @@ You are analyzing an exam page IMAGE. Read ALL text directly from the image and 
 ${imageCount > 1 ? `You have ${imageCount} sequential pages. Merge split questions across pages.` : ''}
 If the image is unreadable/blank, return empty array. Do NOT hallucinate.
 
+## CRITICAL: Korean exam pages often have TWO COLUMNS
+Scan BOTH columns. Each column may contain 2-4 problems stacked top-to-bottom.
+EVERY printed question number (e.g. "22", "23", "24", "25") MUST appear as a separate item in the output.
+MISSING a problem number is the most common failure — count them carefully and verify nothing is skipped.
+
 ## Rules
 1. **Read directly from the image.** Extract ALL printed text verbatim. Do NOT summarize or skip any part.
 2. Fields: passage (지문), visual_context (표/안내문), instruction (문제 지시문), question_body (빈칸 문장 등), choices (선택지)
@@ -18,6 +23,7 @@ If the image is unreadable/blank, return empty array. Do NOT hallucinate.
 5. Choices may appear as ①②③④⑤ statements embedded in a paragraph → extract each as a separate choice in the choices array.
 6. For charts/notices/ads: use visual_context {type, title, content} to capture the visual element; put accompanying text in passage.
 7. **problem_number is MANDATORY.** Read the bold printed number at the start of each question (e.g., "28", "29"). Never leave it blank. If a range like "[31~34]" appears, each sub-question still gets its own number.
+8. **Coverage check.** Before finalizing output, scan the page once more and confirm: every printed bold number that starts a problem is included in items[]. If you find 3 problem numbers but extracted only 2 items, you missed one — re-extract.
 
 ## Output (JSON only, no markdown)
 {
@@ -38,17 +44,36 @@ If no questions found, return { "shared_passages": [], "items": [] }. JSON only.
 }
 
 export function buildBoundingBoxPrompt() {
-  return `You are analyzing an English exam page image.
+  return `You are analyzing an English exam page image. Korean exam pages OFTEN have TWO COLUMNS (left and right). Treat columns independently.
 
 Your task: For each problem (question) visible on this page, identify TWO regions:
 
-1. "full_bbox": The ENTIRE PROBLEM REGION - from the problem number down to just before the next problem. Includes passage, question text, and all choices.
-2. "answer_area_bbox": The ANSWER MARKING AREA where students mark their answers.
-   - Make the bbox 10-15% wider than the printed choice text. Handwritten marks often extend beyond text boundaries.
-   - Extend x1 leftward to include the problem number area. Students often write answers next to the problem number.
-   - For horizontally arranged choices: wide but short bbox. For vertically arranged choices: narrower but taller bbox.
+1. "full_bbox": The ENTIRE PROBLEM REGION - from the problem number (e.g. "25.") down to just before the next problem number. Must include the problem's passage, instruction, question body AND all answer choices (①②③④⑤). Do NOT include the next problem.
 
-Coordinates should be in NORMALIZED format: values from 0 to 1000, where (0,0) is the top-left corner and (1000,1000) is the bottom-right corner.
+2. "answer_area_bbox": The ANSWER CHOICE REGION ONLY - the rectangle that tightly encloses the ①②③④⑤ choice marks for THIS specific problem.
+   - This is where the student physically marks (circles, underlines, ticks) one of ①②③④⑤.
+   - It is USUALLY the BOTTOM portion of full_bbox — choices appear AFTER the passage/question text.
+   - Add ~10-15% padding on all sides to capture handwritten marks that overflow.
+   - Extend x1 leftward by ~30 normalized units to include the problem number column (students sometimes write the answer there).
+
+## CRITICAL CONSTRAINTS (violating any of these = wrong answer)
+A. answer_area_bbox MUST be FULLY CONTAINED inside its own full_bbox.
+   - Required: full.x1 ≤ answer.x1 AND answer.x2 ≤ full.x2 AND full.y1 ≤ answer.y1 AND answer.y2 ≤ full.y2
+B. answer_area_bbox MUST contain the actual ①②③④⑤ choice symbols for THIS problem. If the choices are at the bottom of full_bbox, then answer.y1 should be near full.y2 (e.g. answer.y1 ≈ full.y1 + 0.6*(full.y2-full.y1)).
+C. NEVER place answer_area_bbox of problem A in the column or region of problem B. Pages with multiple problems on the SAME PAGE require careful column awareness:
+   - If problem 25 is in the LEFT column, its answer_area_bbox MUST be in the LEFT column.
+   - If problem 26 is in the RIGHT column, its answer_area_bbox MUST be in the RIGHT column.
+D. The width of answer_area_bbox should approximately match the column width that contains the choices (NOT span the whole page).
+
+## Algorithm (apply for each problem)
+1. Locate the printed problem number (e.g. "25.", "26.").
+2. Identify the column (left half x<500, or right half x≥500).
+3. Find the bottom of the problem region (next problem number, or end of column).
+4. full_bbox = rectangle from problem number top to just above next problem (within its column).
+5. Within full_bbox, find the ①②③④⑤ choice region (usually near the bottom).
+6. answer_area_bbox = that choice region + padding, FULLY INSIDE full_bbox, IN THE SAME COLUMN.
+
+Coordinates: NORMALIZED 0-1000 (top-left=(0,0), bottom-right=(1000,1000)).
 
 Output JSON only:
 {
@@ -56,7 +81,7 @@ Output JSON only:
     {
       "problem_number": "25",
       "full_bbox": { "x1": 50, "y1": 100, "x2": 500, "y2": 600 },
-      "answer_area_bbox": { "x1": 30, "y1": 380, "x2": 520, "y2": 520 }
+      "answer_area_bbox": { "x1": 30, "y1": 480, "x2": 520, "y2": 600 }
     }
   ]
 }`;
@@ -125,14 +150,34 @@ Output JSON only:
 { "problem_number": "${problemNumber}", "correct_answer": "the correct answer text" }`;
   }
 
+  const choicesHint = Array.isArray(questionContext?.choices) && questionContext.choices.length > 0
+    ? `\n\n## Choices for this problem (use these to match):\n${questionContext.choices.map((c, i) => `${i + 1}. ${typeof c === 'string' ? c : (c.text || c.label || '')}`).join('\n')}`
+    : '';
+
   return `You are analyzing a CROPPED image of exam question Q${problemNumber}.
 This image shows the FULL problem: question text, passage, and answer choices.
 
-Solve for correct_answer:
-- Read the question text, passage, and choices
+## CRITICAL: MULTIPLE CHOICE = NUMBER ONLY
+This is a MULTIPLE CHOICE question with numbered choices (①②③④⑤ or 1-5).
+You MUST return ONLY the choice NUMBER ("1", "2", "3", "4", or "5").
+
+## ⚠️ Underline-type questions (밑줄 친 부분 중...)
+Korean exams often ask: "다음 글의 밑줄 친 부분 중, 문맥상 낱말의 쓰임이 적절하지 않은 것은?"
+- Each underlined word/phrase is labeled with ①②③④⑤
+- The answer is the CHOICE NUMBER of the incorrect underlined word, NOT the word itself
+- WRONG: returning "appear" or "rise" (the underlined word)
+- RIGHT: returning "3" (the choice number that marks that word)
+
+## Algorithm
+1. Read the question and identify the correct/incorrect choice
+2. Find which numbered choice (1-5) corresponds to that answer
+3. Return ONLY that number as a string
+
+## Rules
 - Solve the question independently to determine the correct answer
-- For multiple choice: return the correct choice number ("1"-"5")
-- You MUST provide a correct_answer. Never return null.
+- For multiple choice (including underline-type): return the choice NUMBER as "1"-"5"
+- NEVER return a word, phrase, or letter — ALWAYS a single digit "1"-"5"
+- You MUST provide a correct_answer. Never return null.${choicesHint}
 
 Output JSON only:
 { "problem_number": "${problemNumber}", "correct_answer": "3" }`;
@@ -149,20 +194,25 @@ For each problem number visible on the page(s):
 </task>
 
 <answer_format>
-- Multiple choice (①②③④⑤): return the marked/correct choice number as "1"-"5"
+- Multiple choice (①②③④⑤ or numbered 1-5 choices): return the marked/correct choice NUMBER as "1"-"5"
+- Underline-type multiple choice (e.g., "다음 글의 밑줄 친 부분 중, 문맥상 낱말의 쓰임이 적절하지 않은 것은?"):
+  - Each underlined word is labeled with ①②③④⑤ in the original text
+  - correct_answer MUST be the CHOICE NUMBER (e.g., "3"), NOT the underlined word (e.g., NOT "appear")
 - Short answer / essay (서술형):
   - user_answer: transcribe the student's handwritten text VERBATIM, including spelling errors. If you see a correction arrow (→), report only the text after the arrow.
   - correct_answer: solve the question and return the correct text answer
 - If no mark found: return null for user_answer
 </answer_format>
 
-<constraints>
+<critical_rules>
+- For ANY multiple-choice question (including underline-type), correct_answer MUST be a single digit "1"-"5"
+- NEVER return a word/phrase as correct_answer for multiple choice — ALWAYS the choice number
 - user_answer = physical marks/writing on paper (do NOT correct spelling or grammar)
 - correct_answer = your independent solution (the actually correct answer)
 - Do NOT copy user_answer into correct_answer
 - Report ALL problems visible
 ${imageCount > 1 ? `- You have ${imageCount} pages. Report each problem ONCE.` : ''}
-</constraints>
+</critical_rules>
 
 Output JSON only:
 {

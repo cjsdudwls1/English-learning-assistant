@@ -4,13 +4,6 @@ import { getCurrentUserId } from './auth';
 import { calculateSessionStats } from '../../utils/sessionStats';
 import { isCorrectFromMark, normalizeMark } from '../marks';
 
-export async function createSession(imageUrl: string): Promise<string> {
-  const userId = await getCurrentUserId();
-  const { data, error } = await supabase.from('sessions').insert({ user_id: userId, image_urls: [imageUrl] }).select('id').single();
-  if (error) throw error;
-  return data.id as string;
-}
-
 // 사용자의 세션 목록 조회 (최근순) - 라벨링이 완료된 세션만
 export async function fetchUserSessions(): Promise<SessionWithProblems[]> {
   const userId = await getCurrentUserId();

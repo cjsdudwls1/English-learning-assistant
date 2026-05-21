@@ -9,8 +9,9 @@ import { getTranslation } from '../utils/translations';
 export const ProfilePage: React.FC = () => {
   const { language } = useLanguage();
   const t = getTranslation(language);
-  const { refreshRole } = useUserRole();
+  const { refreshRole, availableAcademies } = useUserRole();
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'profile' | 'academy'>('profile');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +134,54 @@ export const ProfilePage: React.FC = () => {
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {/* 탭 */}
+      <div className="flex gap-1 mb-6 border-b border-slate-200 dark:border-slate-700">
+        <button
+          type="button"
+          onClick={() => setActiveTab('profile')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'profile' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+        >
+          {language === 'ko' ? '프로필' : 'Profile'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('academy')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'academy' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+        >
+          {language === 'ko' ? '학원' : 'Academy'}
+        </button>
+      </div>
+
+      {/* 학원 탭 */}
+      {activeTab === 'academy' && (
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-3">{language === 'ko' ? '내 학원' : 'My Academies'}</h3>
+            {availableAcademies.length === 0 ? (
+              <p className="text-sm text-slate-400 py-3 text-center">{language === 'ko' ? '소속된 학원이 없습니다.' : 'No academies yet.'}</p>
+            ) : (
+              <div className="space-y-2">
+                {availableAcademies.map(a => (
+                  <div key={a.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{a.name}</p>
+                      {a.description && <p className="text-xs text-slate-500 mt-0.5">{a.description}</p>}
+                    </div>
+                    <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+                      {a.role === 'director' ? (language === 'ko' ? '학원장' : 'Director') :
+                       a.role === 'teacher' ? (language === 'ko' ? '선생님' : 'Teacher') :
+                       (language === 'ko' ? '학생' : 'Student')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+
+      {activeTab === 'profile' && <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.profile.email}</label>
           <input
@@ -336,14 +384,14 @@ export const ProfilePage: React.FC = () => {
             {saving ? t.profile.saving : t.profile.save}
           </button>
         </div>
-      </form>
+      </form>}
 
-      {error && (
+      {activeTab === 'profile' && error && (
         <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded text-sm">
           {error}
         </div>
       )}
-      {message && (
+      {activeTab === 'profile' && message && (
         <div className="mt-4 p-3 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-800 text-green-800 dark:text-green-200 rounded text-sm">
           {message}
         </div>

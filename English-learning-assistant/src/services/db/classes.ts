@@ -2,11 +2,11 @@ import { supabase } from '../supabaseClient';
 import { getCurrentUserId } from './auth';
 import type { ClassInfo, ClassMember } from '../../types';
 
-export async function createClass(name: string, description: string | null): Promise<string> {
+export async function createClass(name: string, description: string | null, academyId?: string | null): Promise<string> {
   const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from('classes')
-    .insert({ name, description, created_by: userId })
+    .insert({ name, description, created_by: userId, academy_id: academyId ?? null })
     .select('id')
     .single();
   if (error) throw error;

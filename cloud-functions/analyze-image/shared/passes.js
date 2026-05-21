@@ -16,7 +16,24 @@ import {
   buildCroppedUserAnswerPrompt,
   buildCroppedCorrectAnswerPrompt,
   buildClassificationPrompt,
+  buildHandwritingDetectionPrompt,
 } from './prompts.js';
+
+/**
+ * 모델 시퀀스를 순서대로 시도하고 첫 성공 결과를 반환
+ * @param {{ models: string[], callFn: (model: string) => Promise<any> }} opts
+ * @returns {Promise<any>} 성공한 모델의 결과, 모두 실패 시 null 반환
+ */
+async function runWithModelFallback({ models, callFn }) {
+  for (const model of models) {
+    try {
+      return await callFn(model);
+    } catch (err) {
+      console.warn(`[passes:runWithModelFallback] ${model} 실패:`, err?.message);
+    }
+  }
+  return null;
+}
 
 /**
  * Pass A: 구조 추출 - 이미지에서 문제/지문/선택지 추출
@@ -65,23 +82,26 @@ export async function executePass0({ ai, sessionId, imageBase64, mimeType }) {
     { inlineData: { data: imageBase64, mimeType } },
   ];
 
-  for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
-    try {
+  const result = await runWithModelFallback({
+    models: LIGHTWEIGHT_MODEL_SEQUENCE,
+    callFn: async (model) => {
       const { response, usageMetadata } = await generateWithRetry({
         ai, model,
         contents: [{ role: 'user', parts }],
-        sessionId, maxRetries: 2, baseDelayMs: 2000, temperature: 1.0,
+        sessionId, maxRetries: 2, baseDelayMs: 2000, temperature: 0.0,
       });
       const text = extractTextFromResponse(response, model);
       const parsed = parseJsonResponse(text, model);
-      return { bboxes: parsed.problems || [], usageMetadata };
-    } catch (modelError) {
-      console.warn(`[passes] Pass 0 모델 ${model} 실패:`, modelError?.message);
-      continue;
-    }
-  }
+      const bboxes = parsed.problems || [];
+      if (bboxes.length === 0) {
+        console.warn(`[passes] Pass 0 모델 ${model}이 bbox 0개 반환, 다음 모델로 폴백`);
+        throw new Error('bbox 0개');
+      }
+      return { bboxes, usageMetadata };
+    },
+  });
 
-  return { bboxes: [], usageMetadata: null };
+  return result ?? { bboxes: [], usageMetadata: null };
 }
 
 /**
@@ -90,12 +110,12 @@ export async function executePass0({ ai, sessionId, imageBase64, mimeType }) {
  * - 각 크롭 이미지를 개별 API 호출로 처리 (배치 3개씩 병렬)
  * - buildPromptFn에 problem_number를 전달하여 문제별 프롬프트 생성
  */
-async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionContextMap, temperature = 1.0 }) {
+async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionContextMap, temperature = 1.0, modelSequence }) {
   if (crops.length === 0) return { marks: [], usageMetadata: null };
 
-  const model = LIGHTWEIGHT_MODEL_SEQUENCE[0];
   const marks = [];
   let lastUsageMetadata = null;
+  const models = modelSequence || LIGHTWEIGHT_MODEL_SEQUENCE;
 
   const BATCH_SIZE = 3;
   for (let i = 0; i < crops.length; i += BATCH_SIZE) {
@@ -110,24 +130,28 @@ async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionCo
           { inlineData: { data: crop.croppedBase64, mimeType: crop.mimeType } },
         ];
 
-        try {
-          const { response, usageMetadata } = await generateWithRetry({
-            ai, model,
-            contents: [{ role: 'user', parts }],
-            sessionId, maxRetries: 2, baseDelayMs: 1500, temperature,
-          });
-          lastUsageMetadata = usageMetadata;
-          const text = extractTextFromResponse(response, model);
-          const parsed = parseJsonResponse(text, model);
-          return {
-            problem_number: parsed.problem_number || crop.problem_number,
-            user_answer: parsed.user_answer ?? null,
-            correct_answer: parsed.correct_answer ?? null,
-          };
-        } catch (err) {
-          console.error(`[passes:detectFromCrops] Q${crop.problem_number} 실패:`, err?.message);
-          return null;
+        for (const model of models) {
+          try {
+            const { response, usageMetadata } = await generateWithRetry({
+              ai, model,
+              contents: [{ role: 'user', parts }],
+              sessionId, maxRetries: 2, baseDelayMs: 1500, temperature,
+            });
+            lastUsageMetadata = usageMetadata;
+            const text = extractTextFromResponse(response, model);
+            const parsed = parseJsonResponse(text, model);
+            return {
+              problem_number: parsed.problem_number || crop.problem_number,
+              user_answer: parsed.user_answer ?? null,
+              correct_answer: parsed.correct_answer ?? null,
+            };
+          } catch (err) {
+            console.warn(`[passes:detectFromCrops] Q${crop.problem_number} ${model} 실패: ${err?.message}, 다음 모델로 폴백`);
+            continue;
+          }
         }
+        console.error(`[passes:detectFromCrops] Q${crop.problem_number} 모든 모델 실패`);
+        return null;
       })
     );
 
@@ -176,11 +200,24 @@ function mergeUserAndCorrectMarks(userMarks, correctMarks) {
 
 /**
  * Pass B: 필기 인식 - 크롭된 답안/문제 영역에서 user_answer, correct_answer 추출
+ * user_answer: 필기 마크 인식 (지각 작업) - temperature=0.0으로 결정성 확보
+ * correct_answer: 정답 추론 (논리 작업) - temperature=0.0 + 강한 모델 우선
  */
 export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap }) {
   const [userResult, correctResult] = await Promise.all([
-    detectFromCrops({ ai, sessionId, crops: answerAreaCrops, buildPromptFn: buildCroppedUserAnswerPrompt, questionContextMap }),
-    detectFromCrops({ ai, sessionId, crops: fullCrops, buildPromptFn: buildCroppedCorrectAnswerPrompt, questionContextMap }),
+    detectFromCrops({
+      ai, sessionId, crops: answerAreaCrops,
+      buildPromptFn: buildCroppedUserAnswerPrompt,
+      questionContextMap,
+      temperature: 0.0,
+    }),
+    detectFromCrops({
+      ai, sessionId, crops: fullCrops,
+      buildPromptFn: buildCroppedCorrectAnswerPrompt,
+      questionContextMap,
+      temperature: 0.0,
+      modelSequence: ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'],
+    }),
   ]);
 
   const mergedMarks = mergeUserAndCorrectMarks(userResult.marks, correctResult.marks);
@@ -226,8 +263,9 @@ Output JSON only:
     { inlineData: { data: imageBase64, mimeType } },
   ];
 
-  for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
-    try {
+  const result = await runWithModelFallback({
+    models: LIGHTWEIGHT_MODEL_SEQUENCE,
+    callFn: async (model) => {
       const { response, usageMetadata } = await generateWithRetry({
         ai, model,
         contents: [{ role: 'user', parts }],
@@ -238,12 +276,9 @@ Output JSON only:
       const marks = Array.isArray(parsed?.marks) ? parsed.marks : (Array.isArray(parsed) ? parsed : []);
       console.log(`[passes:SubjectiveUserAnswers] ${model}: ${marks.length}개 주관식 user_answer 감지`, { sessionId });
       return { marks, usageMetadata };
-    } catch (err) {
-      console.warn(`[passes:SubjectiveUserAnswers] ${model} 실패:`, err?.message, { sessionId });
-      continue;
-    }
-  }
-  return { marks: [], usageMetadata: null };
+    },
+  });
+  return result ?? { marks: [], usageMetadata: null };
 }
 
 /**
@@ -251,13 +286,13 @@ Output JSON only:
  * 전체 이미지 기반으로 user_answer + correct_answer를 감지
  * 원본: analysisProcessor.ts#detectHandwritingMarks + pageAnalyzer.ts fallback
  */
-import { buildHandwritingDetectionPrompt } from './prompts.js';
 
 export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeType, totalPages }) {
   const prompt = buildHandwritingDetectionPrompt(totalPages);
   const imagePart = { inlineData: { data: imageBase64, mimeType } };
 
-  let allMarks = [];
+  // problem_number → mark 인덱스 Map (O(n) 누적)
+  const marksMap = new Map();
   let lastUsageMetadata = null;
 
   for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
@@ -290,17 +325,17 @@ export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeTy
       // marks 누적 (problem_number 기준 중복 제거, 기존 null → 새 값으로 업데이트)
       if (marks.length > 0) {
         for (const mark of marks) {
-          const existing = allMarks.find(m => String(m.problem_number) === String(mark.problem_number));
+          const key = String(mark.problem_number);
+          const existing = marksMap.get(key);
           if (!existing) {
-            allMarks.push(mark);
+            marksMap.set(key, mark);
           } else if (!existing.user_answer && mark.user_answer) {
-            const idx = allMarks.indexOf(existing);
-            allMarks[idx] = { ...existing, user_answer: mark.user_answer };
+            marksMap.set(key, { ...existing, user_answer: mark.user_answer });
           }
         }
 
         // 모든 marks에 user_answer가 있으면 조기 종료
-        const nullCount = allMarks.filter(m => !m.user_answer).length;
+        const nullCount = [...marksMap.values()].filter(m => !m.user_answer).length;
         if (nullCount === 0) {
           console.log(`[passes:PassB-FullImage] 모든 marks에 답안 있음, 조기 종료`, { sessionId });
           break;
@@ -311,6 +346,7 @@ export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeTy
     }
   }
 
+  const allMarks = [...marksMap.values()];
   console.log(`[passes:PassB-FullImage] 완료: ${allMarks.length}개 marks`, { sessionId });
   return { marks: allMarks, usageMetadata: lastUsageMetadata };
 }
@@ -349,8 +385,9 @@ export async function executePassC({ ai, sessionId, taxonomyData, pageItems, use
   }
 
 
-  for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
-    try {
+  const result = await runWithModelFallback({
+    models: LIGHTWEIGHT_MODEL_SEQUENCE,
+    callFn: async (model) => {
       const { response, usageMetadata } = await generateWithRetry({
         ai, model,
         contents: [{ role: 'user', parts }],
@@ -361,11 +398,8 @@ export async function executePassC({ ai, sessionId, taxonomyData, pageItems, use
       const parsed = parseJsonResponse(text, model);
       const classifications = parsed.classifications || (Array.isArray(parsed) ? parsed : []);
       return { classifications, usageMetadata };
-    } catch (modelError) {
-      console.warn(`[passes] Pass C 모델 ${model} 실패:`, modelError?.message);
-      continue;
-    }
-  }
+    },
+  });
 
-  return { classifications: [], usageMetadata: null };
+  return result ?? { classifications: [], usageMetadata: null };
 }

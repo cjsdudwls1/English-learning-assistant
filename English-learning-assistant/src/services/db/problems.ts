@@ -4,6 +4,8 @@ import { getCurrentUserId } from './auth';
 import { isCorrectFromMark, normalizeMark } from '../marks';
 import { transformToProblemItem, transformFromLabelJoin } from '../../utils/problemTransform';
 
+const ID_CHUNK = 500;
+
 // 특정 세션의 문제 조회
 export async function fetchSessionProblems(sessionId: string): Promise<ProblemItem[]> {
   const userId = await getCurrentUserId();
@@ -24,8 +26,6 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
   const { data: problems, error: problemsError } = await supabase
     .from('problems')
     .select(`
-      id,
-      index_in_image,
       id,
       index_in_image,
       content,
@@ -57,33 +57,74 @@ export async function fetchProblemsByIds(problemIds: string[]): Promise<ProblemI
 
   if (!problemIds || problemIds.length === 0) return [];
 
-  // labels 기준으로 조인하여 소유자 필터링 및 문제 데이터 수집
-  const { data, error } = await supabase
-    .from('labels')
-    .select(`
-      problem_id,
-      user_answer,
-      user_mark,
-      is_correct,
-      classification,
-      problems!inner (
-        id,
-        index_in_image,
-        id,
-        index_in_image,
-        content,
-        session_id,
-        sessions!inner (
-          user_id
-        )
-      )
-    `)
-    .in('problem_id', problemIds)
-    .eq('problems.sessions.user_id', userId);
+  // 1) problems (id IN problemIds) → session_id 확보
+  const problemsRows: any[] = [];
+  for (let i = 0; i < problemIds.length; i += ID_CHUNK) {
+    const chunk = problemIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await supabase
+      .from('problems')
+      .select('id, index_in_image, content, session_id')
+      .in('id', chunk);
+    if (error) throw error;
+    problemsRows.push(...(data || []));
+  }
+  if (problemsRows.length === 0) return [];
 
-  if (error) throw error;
+  // 2) sessions (id IN session_ids, user_id 일치) → 소유 검증
+  const sessionIds = Array.from(new Set(problemsRows.map((p) => p.session_id)));
+  const ownedSessionIds = new Set<string>();
+  for (let i = 0; i < sessionIds.length; i += ID_CHUNK) {
+    const chunk = sessionIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('id')
+      .in('id', chunk)
+      .eq('user_id', userId);
+    if (error) throw error;
+    for (const s of data || []) ownedSessionIds.add(s.id);
+  }
 
-  return (data || []).map((row: any) => transformFromLabelJoin(row));
+  const ownedProblems = problemsRows.filter((p) => ownedSessionIds.has(p.session_id));
+  if (ownedProblems.length === 0) return [];
+  const problemMap = new Map<string, any>();
+  for (const p of ownedProblems) problemMap.set(p.id, p);
+  const ownedProblemIds = ownedProblems.map((p) => p.id);
+
+  // 3) labels (problem_id IN owned)
+  const labelsRows: any[] = [];
+  for (let i = 0; i < ownedProblemIds.length; i += ID_CHUNK) {
+    const chunk = ownedProblemIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await supabase
+      .from('labels')
+      .select('problem_id, user_answer, user_mark, is_correct, correct_answer, classification')
+      .in('problem_id', chunk);
+    if (error) throw error;
+    labelsRows.push(...(data || []));
+  }
+
+  // transformFromLabelJoin 호환 형태로 wrapping
+  const result: ProblemItem[] = [];
+  for (const l of labelsRows) {
+    const p = problemMap.get(l.problem_id);
+    if (!p) continue;
+    result.push(
+      transformFromLabelJoin({
+        problem_id: l.problem_id,
+        user_answer: l.user_answer,
+        user_mark: l.user_mark,
+        is_correct: l.is_correct,
+        correct_answer: l.correct_answer,
+        classification: l.classification,
+        problems: {
+          id: p.id,
+          index_in_image: p.index_in_image,
+          content: p.content,
+          session_id: p.session_id,
+        },
+      }),
+    );
+  }
+  return result;
 }
 
 // 분류별 문제 조회 (정답/오답 필터링 포함)
@@ -96,72 +137,76 @@ export async function fetchProblemsByClassification(
 ): Promise<any[]> {
   const userId = await getCurrentUserId();
 
-  let query = supabase
-    .from('labels')
-    .select(`
-      problem_id,
-      is_correct,
-      classification,
-      user_answer,
-      problems!inner (
-        id,
-        session_id,
-        index_in_image,
-        id,
-        session_id,
-        index_in_image,
-        content,
-        sessions!inner (
-          user_id,
-          created_at,
-          image_urls
-        )
-      )
-    `)
-    .eq('problems.sessions.user_id', userId);
+  // 1) sessions (user_id)
+  const { data: sessions, error: sErr } = await supabase
+    .from('sessions')
+    .select('id, created_at, image_urls')
+    .eq('user_id', userId);
+  if (sErr) throw sErr;
+  if (!sessions || sessions.length === 0) return [];
+  const sessionMap = new Map<string, { id: string; created_at: string; image_urls: string[] | null }>();
+  for (const s of sessions) sessionMap.set(s.id, s);
 
-  // 분류 필터링
-  if (depth1) {
-    query = query.eq('classification->>depth1', depth1);
+  // 2) problems (session_id IN)
+  const sessionIds = sessions.map((s) => s.id);
+  const problemsRows: any[] = [];
+  for (let i = 0; i < sessionIds.length; i += ID_CHUNK) {
+    const chunk = sessionIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await supabase
+      .from('problems')
+      .select('id, session_id, index_in_image, content')
+      .in('session_id', chunk);
+    if (error) throw error;
+    problemsRows.push(...(data || []));
   }
-  if (depth2) {
-    query = query.eq('classification->>depth2', depth2);
-  }
-  if (depth3) {
-    query = query.eq('classification->>depth3', depth3);
-  }
-  if (depth4) {
-    query = query.eq('classification->>depth4', depth4);
+  if (problemsRows.length === 0) return [];
+  const problemMap = new Map<string, any>();
+  for (const p of problemsRows) problemMap.set(p.id, p);
+  const problemIds = problemsRows.map((p) => p.id);
+
+  // 3) labels (problem_id IN, classification/is_correct 필터)
+  const labelsRows: any[] = [];
+  for (let i = 0; i < problemIds.length; i += ID_CHUNK) {
+    const chunk = problemIds.slice(i, i + ID_CHUNK);
+    let q = supabase
+      .from('labels')
+      .select('problem_id, is_correct, classification, user_answer')
+      .in('problem_id', chunk);
+    if (depth1) q = q.eq('classification->>depth1', depth1);
+    if (depth2) q = q.eq('classification->>depth2', depth2);
+    if (depth3) q = q.eq('classification->>depth3', depth3);
+    if (depth4) q = q.eq('classification->>depth4', depth4);
+    if (isCorrect !== null) q = q.eq('is_correct', isCorrect);
+    const { data, error } = await q;
+    if (error) throw error;
+    labelsRows.push(...(data || []));
   }
 
-  // 정답/오답 필터링
-  if (isCorrect !== null) {
-    query = query.eq('is_correct', isCorrect);
-  }
-
-  const { data, error } = await query;
-
-  if (error) throw error;
-
-  // 데이터 포맷 변환
-  return (data || []).map((item: any) => ({
-    problem_id: item.problem_id,
-    is_correct: item.is_correct,
-    classification: item.classification || {},
-    user_answer: item.user_answer || '',
-    problem: {
-      id: item.problems.id,
-      session_id: item.problems.session_id,
-      index_in_image: item.problems.index_in_image,
-      stem: item.problems.content?.stem || item.problems.stem,
-      choices: item.problems.content?.choices || item.problems.choices,
-      session: {
-        id: item.problems.session_id,
-        created_at: item.problems.sessions.created_at,
-        image_url: item.problems.sessions.image_urls?.[0] || '',
+  const result: any[] = [];
+  for (const l of labelsRows) {
+    const p = problemMap.get(l.problem_id);
+    if (!p) continue;
+    const session = sessionMap.get(p.session_id);
+    result.push({
+      problem_id: l.problem_id,
+      is_correct: l.is_correct,
+      classification: l.classification || {},
+      user_answer: l.user_answer || '',
+      problem: {
+        id: p.id,
+        session_id: p.session_id,
+        index_in_image: p.index_in_image,
+        stem: p.content?.stem,
+        choices: p.content?.choices,
+        session: {
+          id: p.session_id,
+          created_at: session?.created_at || '',
+          image_url: session?.image_urls?.[0] || '',
+        },
       },
-    },
-  }));
+    });
+  }
+  return result;
 }
 
 // 문제별 라벨링 정보 조회 (라벨링 UI용) - AI 분석 결과 포함
@@ -184,7 +229,7 @@ export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id:
   const { data: problems, error: problemsError } = await supabase
     .from('problems')
     .select(`
-      id, 
+      id,
       index_in_image,
       labels (
         is_correct
@@ -284,4 +329,3 @@ export async function deleteProblems(problemIds: string[]): Promise<number> {
 
   return data?.length ?? 0;
 }
-

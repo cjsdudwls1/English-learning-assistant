@@ -46,8 +46,57 @@ function parseAnswerNumber(raw) {
   const circled = '①②③④⑤';
   const circledIdx = circled.indexOf(s);
   if (circledIdx !== -1) return circledIdx + 1;
-  const numMatch = s.match(/(\d+)/);
+  // 순수 숫자 또는 '4번', '4.' 형식만 매칭 (단어 안의 숫자는 제외)
+  // 예: "appear" → null, "3" → 3, "4번" → 4
+  if (/^[0-9]+$/.test(s)) return parseInt(s, 10);
+  const numMatch = s.match(/^(\d+)[번.)\s]?$/);
   return numMatch ? parseInt(numMatch[1], 10) : null;
+}
+
+// ─── 단어→번호 매핑 (객관식 채점 fallback) ──────────────────
+
+/**
+ * 객관식 문제에서 correct_answer가 단어/구문으로 들어왔을 때
+ * choices 배열에서 그 단어를 포함하는 항목을 찾아 1-based 번호로 변환.
+ * - 정확 일치 우선, 그 다음 부분 일치(단어 포함)
+ * - 매칭 실패 시 null
+ *
+ * 예: choices=[{text:"appear"}, {text:"rise"}, {text:"reach"}], correct="rise" → 2
+ */
+function mapWordToChoiceNumber(rawAnswer, choices) {
+  if (!rawAnswer || !Array.isArray(choices) || choices.length === 0) return null;
+  const answer = String(rawAnswer).trim().toLowerCase();
+  if (!answer) return null;
+
+  const normalize = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9가-힣\s]/gi, '').replace(/\s+/g, ' ');
+  const normAnswer = normalize(answer);
+
+  // 1단계: 정확 일치 (text 또는 label)
+  for (let i = 0; i < choices.length; i++) {
+    const c = choices[i];
+    const text = typeof c === 'string' ? c : (c?.text || '');
+    const label = typeof c === 'string' ? '' : (c?.label || '');
+    if (normalize(text) === normAnswer || normalize(label) === normAnswer) {
+      return i + 1;
+    }
+  }
+
+  // 2단계: 부분 일치 (choice 텍스트가 answer를 단어 단위로 포함하거나, answer가 choice를 단어 단위로 포함)
+  for (let i = 0; i < choices.length; i++) {
+    const c = choices[i];
+    const text = typeof c === 'string' ? c : (c?.text || '');
+    const normText = normalize(text);
+    if (!normText) continue;
+
+    // 단어 경계 매칭: " word " 형태로 둘러싸서 부분 단어 매칭 방지
+    const paddedText = ` ${normText} `;
+    const paddedAnswer = ` ${normAnswer} `;
+    if (paddedText.includes(paddedAnswer) || paddedAnswer.includes(paddedText)) {
+      return i + 1;
+    }
+  }
+
+  return null;
 }
 
 // ─── choices 정규화 ─────────────────────────────────────────
@@ -118,26 +167,27 @@ function buildContentJson(item, normalizedChoicesArr) {
  * @returns {string[]} 업로드된 이미지 URL 배열
  */
 export async function uploadImages(supabase, images, userId) {
-  const imageUrls = [];
+  const baseTs = Date.now();
+  const results = await Promise.all(
+    images.map(async (imageData, index) => {
+      const fileName = `${userId}/${baseTs}_${index}_${imageData.fileName || 'image.jpg'}`;
+      const buffer = Buffer.from(imageData.imageBase64, 'base64');
 
-  for (let index = 0; index < images.length; index++) {
-    const imageData = images[index];
-    const fileName = `${userId}/${Date.now()}_${index}_${imageData.fileName || 'image.jpg'}`;
-    const buffer = Buffer.from(imageData.imageBase64, 'base64');
+      const { error: uploadError } = await supabase.storage
+        .from('uploaded-images')
+        .upload(fileName, buffer, { contentType: imageData.mimeType || 'image/jpeg' });
 
-    const { error: uploadError } = await supabase.storage
-      .from('uploaded-images')
-      .upload(fileName, buffer, { contentType: imageData.mimeType || 'image/jpeg' });
+      if (uploadError) {
+        console.error(`[dbOperations] 이미지 ${index} 업로드 실패:`, uploadError);
+      }
 
-    if (uploadError) {
-      console.error(`[dbOperations] 이미지 ${index} 업로드 실패:`, uploadError);
-    }
+      const { data: urlData } = supabase.storage.from('uploaded-images').getPublicUrl(fileName);
+      return { index, url: urlData?.publicUrl || fileName };
+    })
+  );
 
-    const { data: urlData } = supabase.storage.from('uploaded-images').getPublicUrl(fileName);
-    imageUrls.push(urlData?.publicUrl || fileName);
-  }
-
-  return imageUrls;
+  results.sort((a, b) => a.index - b.index);
+  return results.map((r) => r.url);
 }
 
 // ─── 세션 생성 (image_urls 검증/정리 포함) ──────────────────
@@ -307,9 +357,32 @@ export async function saveLabels(supabase, sessionId, savedProblems, validatedIt
     if (isCorrect === null) {
       const userAns = String(it.user_answer || '').trim();
       const correctAns = String(it.correct_answer || '').trim();
+      const choices = Array.isArray(it.choices) ? it.choices : [];
+      const isObjective = choices.length > 0;
+
       if (userAns && correctAns) {
-        const userNum = parseAnswerNumber(userAns);
-        const correctNum = parseAnswerNumber(correctAns);
+        let userNum = parseAnswerNumber(userAns);
+        let correctNum = parseAnswerNumber(correctAns);
+
+        // 객관식 fallback: parseAnswerNumber 실패 시 choices에서 단어 매칭으로 번호 복원
+        // 예: "다음 글의 밑줄 친 부분 중..." 문제에서 correct_answer가 "appear" 같은 단어로 들어온 경우
+        if (isObjective) {
+          if (userNum === null) {
+            const mapped = mapWordToChoiceNumber(userAns, choices);
+            if (mapped !== null) {
+              userNum = mapped;
+              console.log(`[dbOperations:saveLabels] Q${it.problem_number} user_answer "${userAns}" → choice #${mapped}`);
+            }
+          }
+          if (correctNum === null) {
+            const mapped = mapWordToChoiceNumber(correctAns, choices);
+            if (mapped !== null) {
+              correctNum = mapped;
+              console.log(`[dbOperations:saveLabels] Q${it.problem_number} correct_answer "${correctAns}" → choice #${mapped}`);
+            }
+          }
+        }
+
         if (userNum !== null && correctNum !== null) {
           isCorrect = userNum === correctNum;
         } else {
@@ -414,10 +487,32 @@ export async function saveLabels(supabase, sessionId, savedProblems, validatedIt
  * 문제별 메타데이터 업데이트 (난이도, 어휘 난이도, 분석)
  * 난이도를 영어↔한국어 양방향으로 정규화한다.
  */
-export async function updateProblemMetadata(supabase, savedProblems, validatedItems, userLanguage) {
-  let metaSuccessCount = 0;
-  let metaErrorCount = 0;
+function normalizeDifficulty(difficulty, userLanguage) {
+  if (userLanguage === 'en') {
+    const valid = ['high', 'medium', 'low'];
+    if (valid.includes(difficulty || '')) return difficulty;
+    if (difficulty === '상') return 'high';
+    if (difficulty === '중') return 'medium';
+    if (difficulty === '하') return 'low';
+    return 'medium';
+  } else {
+    const valid = ['상', '중', '하'];
+    if (valid.includes(difficulty || '')) return difficulty;
+    if (difficulty === 'high') return '상';
+    if (difficulty === 'medium') return '중';
+    if (difficulty === 'low') return '하';
+    return '중';
+  }
+}
 
+/**
+ * 메타데이터 N개 UPDATE + sessions.status='completed' 를 단일 RPC로 atomic 처리.
+ * 기존 Promise.all 병렬 UPDATE는 PgBouncer transaction pooling 환경에서 한 UPDATE의
+ * 실패가 같은 backend connection의 다른 transaction을 25P02 (current transaction is aborted)
+ * cascade 시키는 문제가 있었음. 단일 PL/pgSQL 트랜잭션 RPC로 원천 차단.
+ */
+export async function finalizeAnalysisSession(supabase, sessionId, analysisModel, savedProblems, validatedItems, userLanguage) {
+  const problemUpdates = [];
   for (const problem of savedProblems) {
     const originalItem = validatedItems[problem.index_in_image];
     if (!originalItem) continue;
@@ -425,89 +520,50 @@ export async function updateProblemMetadata(supabase, savedProblems, validatedIt
     const meta = originalItem.metadata || {};
     const cls = originalItem.classification || {};
 
-    // problem_type 생성
     const typeParts = [cls.depth1, cls.depth2, cls.depth3, cls.depth4]
       .filter((v) => typeof v === 'string' && v.trim().length > 0);
     const problemType = typeParts.length > 0
       ? typeParts.join(' - ')
       : (userLanguage === 'ko' ? '분류 없음' : 'Unclassified');
 
-    // 난이도 정규화 (양방향)
-    let difficulty = meta.difficulty;
-    if (userLanguage === 'en') {
-      const valid = ['high', 'medium', 'low'];
-      if (!valid.includes(difficulty || '')) {
-        if (difficulty === '상') difficulty = 'high';
-        else if (difficulty === '중') difficulty = 'medium';
-        else if (difficulty === '하') difficulty = 'low';
-        else difficulty = 'medium';
-      }
-    } else {
-      const valid = ['상', '중', '하'];
-      if (!valid.includes(difficulty || '')) {
-        if (difficulty === 'high') difficulty = '상';
-        else if (difficulty === 'medium') difficulty = '중';
-        else if (difficulty === 'low') difficulty = '하';
-        else difficulty = '중';
-      }
-    }
-
-    // 단어 난이도 1-9
+    const difficulty = normalizeDifficulty(meta.difficulty, userLanguage);
     const wdNum = Number(meta.word_difficulty);
     const wordDifficulty = (!isNaN(wdNum) && wdNum >= 1 && wdNum <= 9) ? Math.round(wdNum) : 5;
 
-    const { error: updateError } = await supabase
-      .from('problems')
-      .update({
-        problem_metadata: {
-          difficulty,
-          word_difficulty: wordDifficulty,
-          problem_type: problemType,
-          analysis: meta.analysis || '',
-        },
-      })
-      .eq('id', problem.id);
-
-    if (updateError) {
-      console.error(`[dbOperations:updateProblemMetadata] 문제 ${problem.id} 메타데이터 업데이트 실패:`, updateError);
-      metaErrorCount++;
-    } else {
-      metaSuccessCount++;
-    }
+    problemUpdates.push({
+      id: problem.id,
+      metadata: {
+        difficulty,
+        word_difficulty: wordDifficulty,
+        problem_type: problemType,
+        analysis: meta.analysis || '',
+      },
+    });
   }
 
-  console.log(`[dbOperations:updateProblemMetadata] 메타데이터 저장 완료: ${metaSuccessCount}/${savedProblems.length} (에러: ${metaErrorCount})`);
-}
+  console.log(`[dbOperations:finalizeAnalysisSession] RPC 호출`, { sessionId, problemCount: problemUpdates.length });
 
-// ─── 세션 완료 (labeled 상태 가드) ──────────────────────────
-// 원본: sessionManager.ts#completeSession
+  const { data, error } = await supabase.rpc('finalize_analysis_session', {
+    p_session_id: sessionId,
+    p_analysis_model: analysisModel,
+    p_problem_updates: problemUpdates,
+  });
 
-/**
- * 세션 상태를 'completed'로 업데이트한다.
- * 이미 'labeled' 상태인 경우 덮어쓰지 않도록 .eq('status', 'processing') 가드를 건다.
- */
-export async function completeSession(supabase, sessionId, analysisModel) {
-  const modelsUsed = {
-    ocr: 'none (direct multimodal)',
-    analysis: analysisModel,
-  };
-
-  console.log(`[dbOperations:completeSession] 세션 상태 업데이트 시작`, { sessionId, modelsUsed });
-
-  const { error: statusUpdateError } = await supabase
-    .from('sessions')
-    .update({
-      status: 'completed',
-      analysis_model: analysisModel,
-      models_used: modelsUsed,
-    })
-    .eq('id', sessionId)
-    // 사용자 라벨링이 이미 끝나 labeled로 바뀐 경우 되돌리지 않도록 가드
-    .eq('status', 'processing');
-
-  if (statusUpdateError) {
-    console.error(`[dbOperations:completeSession] 상태 업데이트 에러`, { sessionId, error: statusUpdateError });
-  } else {
-    console.log(`[dbOperations:completeSession] 세션 완료 처리됨`, { sessionId });
+  if (error) {
+    console.error(`[dbOperations:finalizeAnalysisSession] RPC 실패`, { sessionId, error });
+    throw error;
   }
+
+  // idempotency 분기 처리 (RPC가 already_finalized/session_not_found 반환 가능)
+  if (data?.reason === 'session_not_found') {
+    console.error(`[dbOperations:finalizeAnalysisSession] 세션 없음`, { sessionId });
+    throw new Error(`finalize: session ${sessionId} not found`);
+  }
+  if (data?.reason === 'already_finalized') {
+    console.warn(`[dbOperations:finalizeAnalysisSession] 중복 호출 감지 (no-op)`, { sessionId, current_status: data.current_status });
+    return data;
+  }
+
+  console.log(`[dbOperations:finalizeAnalysisSession] 완료`, { sessionId, result: data });
+  return data;
 }

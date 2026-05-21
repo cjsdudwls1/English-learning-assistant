@@ -5,7 +5,6 @@ export { findTaxonomyByDepth, fetchTaxonomyByCode, fetchAllTaxonomy } from './db
 
 // Sessions
 export {
-  createSession,
   fetchUserSessions,
   fetchSessionsByStatus,
   fetchAnalyzingSessions,
@@ -95,3 +94,17 @@ export {
   fetchTeacherPerformances,
   type TeacherPerformance,
 } from './db/teacherStats';
+
+// Academies
+export {
+  fetchMyAcademies,
+  fetchAcademyById,
+  createAcademy,
+  fetchAcademyMembers,
+  addAcademyMember,
+  removeAcademyMember,
+  searchUserByEmail,
+  fetchAcademyHierarchy,
+  type AcademyMembership,
+  type AcademyMember,
+} from './db/academies';

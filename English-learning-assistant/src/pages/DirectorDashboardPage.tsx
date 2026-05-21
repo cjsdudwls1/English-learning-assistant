@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { fetchDirectorOverview, fetchAllClasses, fetchClassAssignmentStats, fetchTeacherPerformances, fetchClassMembers, deleteClass, type DirectorOverview, type TeacherPerformance } from '../services/db';
+import { fetchAcademyHierarchy } from '../services/db/academies';
 import { AcademyOverviewCard } from '../components/director/AcademyOverviewCard';
 import { DirectorClassStatsCard } from '../components/director/DirectorClassStatsCard';
 import { TeacherPerformanceCard } from '../components/director/TeacherPerformanceCard';
+import { AcademyHierarchyCard } from '../components/director/AcademyHierarchyCard';
 import { StudentStatsPanel } from '../components/teacher/StudentStatsPanel';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { fetchClassHierarchicalStats, type StatsNode } from '../services/stats';
-import type { ClassInfo, ClassMember, MonthlyStats } from '../types';
+import { useUserRole } from '../contexts/UserRoleContext';
+import type { AcademyHierarchy, ClassInfo, ClassMember, MonthlyStats } from '../types';
 
 export const DirectorDashboardPage: React.FC = () => {
+  const { activeAcademyId } = useUserRole();
   const [overview, setOverview] = useState<DirectorOverview | null>(null);
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [classStats, setClassStats] = useState<MonthlyStats[]>([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [teachers, setTeachers] = useState<TeacherPerformance[]>([]);
+  const [hierarchy, setHierarchy] = useState<AcademyHierarchy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,12 +35,22 @@ export const DirectorDashboardPage: React.FC = () => {
 
   useEffect(() => {
     const load = async () => {
+      setLoading(true);
       try {
-        const [o, c, t] = await Promise.all([fetchDirectorOverview(), fetchAllClasses(), fetchTeacherPerformances()]);
+        const allClasses = await fetchAllClasses();
+        const filteredClasses = activeAcademyId
+          ? allClasses.filter(c => c.academy_id === activeAcademyId)
+          : allClasses;
+        const [o, t, h] = await Promise.all([
+          fetchDirectorOverview(activeAcademyId),
+          fetchTeacherPerformances(activeAcademyId),
+          activeAcademyId ? fetchAcademyHierarchy(activeAcademyId) : Promise.resolve(null),
+        ]);
         setOverview(o);
-        setClasses(c);
+        setClasses(filteredClasses);
         setTeachers(t);
-        if (c.length > 0) setSelectedClassId(c[0].id);
+        setHierarchy(h);
+        setSelectedClassId(filteredClasses.length > 0 ? filteredClasses[0].id : null);
       } catch (e) {
         setError(e instanceof Error ? e.message : '데이터를 불러오지 못했습니다.');
       } finally {
@@ -43,7 +58,7 @@ export const DirectorDashboardPage: React.FC = () => {
       }
     };
     load();
-  }, []);
+  }, [activeAcademyId]);
 
   useEffect(() => {
     if (!selectedClassId) return;
@@ -96,7 +111,7 @@ export const DirectorDashboardPage: React.FC = () => {
         return prevId;
       });
       // 통계 업데이트
-      fetchDirectorOverview().then(setOverview).catch(console.error);
+      fetchDirectorOverview(activeAcademyId).then(setOverview).catch(console.error);
     } catch (e) {
       alert(e instanceof Error ? e.message : '학급 삭제에 실패했습니다.');
     }
@@ -110,6 +125,14 @@ export const DirectorDashboardPage: React.FC = () => {
       {error && <p className="text-red-500 text-sm">{error}</p>}
       {overview && <AcademyOverviewCard overview={overview} />}
       <TeacherPerformanceCard teachers={teachers} />
+
+      {hierarchy && (
+        <AcademyHierarchyCard
+          hierarchy={hierarchy}
+          onSelectStudent={handleSelectStudent}
+          selectedStudentId={selectedStudentId}
+        />
+      )}
 
       <DirectorClassStatsCard
         classes={classes}

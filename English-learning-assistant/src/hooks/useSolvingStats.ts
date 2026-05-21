@@ -2,6 +2,30 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchMonthlySolvingStats, fetchDailySolvingStats } from '../services/db';
 import type { MonthlyStats, DailyStats } from '../types';
 
+function isAuthLockError(e: unknown): boolean {
+  const msg = e instanceof Error
+    ? e.message
+    : (e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e));
+  return msg.includes('Lock broken') || msg.includes('steal');
+}
+
+async function withAuthLockRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 200): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (isAuthLockError(e) && i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 export function useSolvingStats() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
@@ -17,13 +41,17 @@ export function useSolvingStats() {
     setError(null);
     setSelectedMonth(null);
     setSelectedDate(null);
-    fetchMonthlySolvingStats(year)
+    withAuthLockRetry(() => fetchMonthlySolvingStats(year))
       .then((data) => { if (!cancelled) setMonthlyStats(data); })
       .catch((e) => {
-        if (!cancelled) {
+        if (cancelled) return;
+        if (isAuthLockError(e)) {
+          console.warn('[SolvingStats] Auth lock conflict on monthly fetch:', e);
           setMonthlyStats([]);
-          setError(e instanceof Error ? e.message : '월별 통계를 불러오지 못했습니다.');
+          return;
         }
+        setMonthlyStats([]);
+        setError(e instanceof Error ? e.message : '월별 통계를 불러오지 못했습니다.');
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -33,13 +61,17 @@ export function useSolvingStats() {
     if (!selectedMonth) { setDailyStats([]); return; }
     let cancelled = false;
     setSelectedDate(null);
-    fetchDailySolvingStats(year, selectedMonth)
+    withAuthLockRetry(() => fetchDailySolvingStats(year, selectedMonth))
       .then((data) => { if (!cancelled) setDailyStats(data); })
       .catch((e) => {
-        if (!cancelled) {
+        if (cancelled) return;
+        if (isAuthLockError(e)) {
+          console.warn('[SolvingStats] Auth lock conflict on daily fetch:', e);
           setDailyStats([]);
-          setError(e instanceof Error ? e.message : '일별 통계를 불러오지 못했습니다.');
+          return;
         }
+        setDailyStats([]);
+        setError(e instanceof Error ? e.message : '일별 통계를 불러오지 못했습니다.');
       });
     return () => { cancelled = true; };
   }, [year, selectedMonth]);

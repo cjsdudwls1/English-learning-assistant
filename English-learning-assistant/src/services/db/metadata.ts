@@ -3,6 +3,13 @@ import { getCurrentUserId } from './auth';
 
 export interface ProblemMetadataItem {
   problem_id: string;
+  content: {
+    stem?: string;
+    choices?: Array<string | { text?: string; label?: string; [key: string]: any }>;
+    [key: string]: any;
+  } | null;
+  correct_answer: string | null;
+  user_answer: string | null;
   metadata: {
     difficulty: '상' | '중' | '하' | 'high' | 'medium' | 'low';
     word_difficulty: number;
@@ -13,10 +20,13 @@ export interface ProblemMetadataItem {
     id: string;
     created_at: string;
     image_url: string;
+    image_urls: string[];
   };
   classification: any;
   is_correct: boolean;
 }
+
+const ID_CHUNK = 500;
 
 export async function fetchProblemsMetadataByCorrectness(
   depth1?: string,
@@ -27,69 +37,76 @@ export async function fetchProblemsMetadataByCorrectness(
 ): Promise<ProblemMetadataItem[]> {
   const userId = await getCurrentUserId();
 
-  let query = supabase
-    .from('labels')
-    .select(`
-      problem_id,
-      is_correct,
-      classification,
-      problems!inner (
-        id,
-        session_id,
-        problem_metadata,
-        sessions!inner (
-          user_id,
-          created_at,
-          image_urls
-        )
-      )
-    `)
-    .eq('problems.sessions.user_id', userId);
+  // 1) 사용자의 sessions (id, created_at, image_urls)
+  const { data: sessions, error: sErr } = await supabase
+    .from('sessions')
+    .select('id, created_at, image_urls')
+    .eq('user_id', userId);
+  if (sErr) throw sErr;
+  if (!sessions || sessions.length === 0) return [];
+  const sessionMap = new Map<string, { id: string; created_at: string; image_urls: string[] | null }>();
+  for (const s of sessions) sessionMap.set(s.id, s);
 
-  // 분류 필터링
-  if (depth1) {
-    query = query.eq('classification->>depth1', depth1);
+  // 2) sessions의 problems (id, session_id, content, problem_metadata)
+  const sessionIds = sessions.map((s) => s.id);
+  const problemsRows: any[] = [];
+  for (let i = 0; i < sessionIds.length; i += ID_CHUNK) {
+    const chunk = sessionIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await supabase
+      .from('problems')
+      .select('id, session_id, content, problem_metadata')
+      .in('session_id', chunk);
+    if (error) throw error;
+    problemsRows.push(...(data || []));
   }
-  if (depth2) {
-    query = query.eq('classification->>depth2', depth2);
+  if (problemsRows.length === 0) return [];
+  const problemMap = new Map<string, any>();
+  for (const p of problemsRows) problemMap.set(p.id, p);
+  const problemIds = problemsRows.map((p) => p.id);
+
+  // 3) problems의 labels (classification/is_correct 필터)
+  const labelsRows: any[] = [];
+  for (let i = 0; i < problemIds.length; i += ID_CHUNK) {
+    const chunk = problemIds.slice(i, i + ID_CHUNK);
+    let q = supabase
+      .from('labels')
+      .select('problem_id, is_correct, correct_answer, user_answer, classification')
+      .in('problem_id', chunk);
+    if (depth1) q = q.eq('classification->>depth1', depth1);
+    if (depth2) q = q.eq('classification->>depth2', depth2);
+    if (depth3) q = q.eq('classification->>depth3', depth3);
+    if (depth4) q = q.eq('classification->>depth4', depth4);
+    if (isCorrect !== null) q = q.eq('is_correct', isCorrect);
+    const { data, error } = await q;
+    if (error) throw error;
+    labelsRows.push(...(data || []));
   }
-  if (depth3) {
-    query = query.eq('classification->>depth3', depth3);
+
+  const items: ProblemMetadataItem[] = [];
+  for (const l of labelsRows) {
+    const problem = problemMap.get(l.problem_id);
+    if (!problem) continue;
+    const session = sessionMap.get(problem.session_id);
+    items.push({
+      problem_id: l.problem_id,
+      content: problem.content || null,
+      correct_answer: l.correct_answer || null,
+      user_answer: l.user_answer || null,
+      metadata: problem.problem_metadata || null,
+      session: {
+        id: problem.session_id,
+        created_at: session?.created_at || '',
+        image_url: session?.image_urls?.[0] || '',
+        image_urls: session?.image_urls || [],
+      },
+      classification: l.classification || {},
+      is_correct: l.is_correct,
+    });
   }
-  if (depth4) {
-    query = query.eq('classification->>depth4', depth4);
-  }
 
-  // 정답/오답 필터링
-  if (isCorrect !== null) {
-    query = query.eq('is_correct', isCorrect);
-  }
-
-  // Note: Supabase는 조인된 테이블의 컬럼으로 직접 정렬할 수 없으므로
-  // 데이터를 가져온 후 클라이언트에서 정렬합니다.
-
-  const { data, error } = await query;
-
-  if (error) throw error;
-
-  // 데이터 포맷 변환 및 정렬 (최신순)
-  const items = (data || []).map((item: any) => ({
-    problem_id: item.problem_id,
-    metadata: item.problems.problem_metadata || null,
-    session: {
-      id: item.problems.session_id,
-      created_at: item.problems.sessions.created_at,
-      image_url: item.problems.sessions.image_urls?.[0] || '',
-    },
-    classification: item.classification || {},
-    is_correct: item.is_correct,
-  }));
-
-  // 시간 순서: 최신순 (클라이언트에서 정렬)
   return items.sort((a, b) => {
     const dateA = new Date(a.session.created_at).getTime();
     const dateB = new Date(b.session.created_at).getTime();
-    return dateB - dateA; // 내림차순 (최신순)
+    return dateB - dateA;
   });
 }
-

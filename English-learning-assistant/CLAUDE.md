@@ -27,7 +27,6 @@ npx tsc --noEmit   # 타입 체크
 - Supabase 클라이언트: 싱글턴 (`src/services/supabaseClient.ts`)
 - 다크모드: Tailwind `dark:` 클래스 + `document.documentElement.classList`
 - 다국어: `src/utils/translations.ts`의 ko/en 문자열만 사용
-- 이미지 처리: `canvasCropper.ts`에서 WASM mutex로 병렬 크롭 시 스레드 안전성 보장
 - 문제 생성: Supabase Realtime 구독으로 스트리밍 수신
 - API 키는 절대 프론트엔드에 노출하지 않음 — Edge Function에서만 사용
 

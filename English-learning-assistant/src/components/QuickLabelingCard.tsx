@@ -302,22 +302,65 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     </button>
                   </div>
 
-                  {/* 문제 내용 */}
-                  <div className="mb-3">
-                    <p className="text-slate-700 dark:text-slate-300 font-medium mb-2">{problem.문제내용.text}</p>
+                  {/* 문제 내용 — 분리 표시 (지문/시각자료/지시문/본문/보기) */}
+                  <div className="mb-3 space-y-2">
+                    {problem.passage && (
+                      <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 p-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+                          {language === 'ko' ? '지문' : 'Passage'}
+                        </div>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{problem.passage}</p>
+                      </div>
+                    )}
+                    {problem.visual_context && (problem.visual_context.title || problem.visual_context.content) && (
+                      <div className="rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-1">
+                          {problem.visual_context.type || (language === 'ko' ? '자료' : 'Visual')}
+                          {problem.visual_context.title ? ` — ${problem.visual_context.title}` : ''}
+                        </div>
+                        {problem.visual_context.content && (
+                          <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{problem.visual_context.content}</p>
+                        )}
+                      </div>
+                    )}
+                    {problem.instruction && (
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500 dark:text-indigo-400 mb-1">
+                          {language === 'ko' ? '지시문' : 'Instruction'}
+                        </div>
+                        <p className="text-slate-800 dark:text-slate-200 font-semibold">{problem.instruction}</p>
+                      </div>
+                    )}
+                    {problem.question_body && (
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+                          {language === 'ko' ? '문제 본문' : 'Question'}
+                        </div>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{problem.question_body}</p>
+                      </div>
+                    )}
+                    {/* 분리 필드가 하나도 없을 때만 stem 폴백 표시 */}
+                    {!problem.passage && !problem.instruction && !problem.question_body && !problem.visual_context && (
+                      <p className="text-slate-700 dark:text-slate-300 font-medium whitespace-pre-wrap">{problem.문제내용.text}</p>
+                    )}
                     {qType === 'multiple_choice' && problem.문제_보기 && problem.문제_보기.length > 0 && (
-                      <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-400 space-y-1">
-                        {problem.문제_보기.map((choice, idx) => (
-                          <li key={idx}>{choice.text}</li>
-                        ))}
-                      </ul>
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+                          {language === 'ko' ? '보기' : 'Choices'}
+                        </div>
+                        <ol className="list-decimal list-inside text-sm text-slate-600 dark:text-slate-400 space-y-1">
+                          {problem.문제_보기.map((choice, idx) => (
+                            <li key={idx}>{choice.text}</li>
+                          ))}
+                        </ol>
+                      </div>
                     )}
                     {qType === 'ox' && (
                       <p className="text-sm text-slate-500 dark:text-slate-400 italic">
                         {language === 'ko' ? 'O/X 판별 문제' : 'True/False question'}
                       </p>
                     )}
-                    {(qType === 'essay' || qType === 'short_answer') && (
+                    {(qType === 'essay' || qType === 'short_answer') && (!problem.문제_보기 || problem.문제_보기.length === 0) && (
                       <p className="text-sm text-slate-500 dark:text-slate-400 italic">
                         {qType === 'essay'
                           ? (language === 'ko' ? '서술형 문제' : 'Essay question')
