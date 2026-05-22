@@ -6,12 +6,9 @@
 
 | 함수 | 역할 |
 |------|------|
-| `generate-similar-problems` | 원본 문제 기반 유사 문제 생성 |
 | `generate-example` | 예시 문장 생성 |
-| `generate-report` | 학습 리포트 생성 |
-| `generate-problems-by-type` | 유형별 문제 생성 |
+| `generate-problems-by-type` | 유형별 문제 생성 (부족분 보충) |
 | `reclassify-problems` | 문제 재분류 |
-| `test-bbox` | 바운딩 박스 테스트 |
 
 ## 공유 모듈 (`_shared/`)
 
