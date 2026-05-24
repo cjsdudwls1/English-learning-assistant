@@ -287,6 +287,65 @@ function mergeHandwritingMarks(pageItems, marks, sessionId) {
 }
 
 /**
+ * 페이지 경계에서 발생하는 중복 problem_number 제거
+ * - "[41~42] 다음 글을 읽고…" 같은 범위 지문 헤더가 다음(이어지는) 페이지에서
+ *   선택지·본문·답이 전부 빈 껍데기 문항으로 재추출되는 노이즈를 차단한다.
+ * - 같은 problem_number가 둘 이상이면 "실질 점수"(선택지>본문/지문>답>지시문)가
+ *   가장 높은 항목만 남기고, 버리는 쪽의 답/지문 필드는 남는 항목에 결손 보충한다
+ *   (페이지가 갈리며 한쪽에만 들어간 필기 마크/지문 유실 방지).
+ * - 등장 순서(페이지 순서)는 보존한다. saveProblems/saveLabels가 배열 인덱스로
+ *   매칭하므로 본 함수는 두 호출 이전에 단 한 번만 적용해야 한다.
+ */
+function dedupeProblemItems(items, sessionId) {
+  const substanceScore = (it) => {
+    const choices = Array.isArray(it.choices) ? it.choices.length : 0;
+    const hasAns = (it.correct_answer != null && String(it.correct_answer).trim() !== '')
+      || (it.user_answer != null && String(it.user_answer).trim() !== '');
+    const hasBody = !!(it.question_body && String(it.question_body).trim())
+      || !!(it.passage && String(it.passage).trim())
+      || !!(it.shared_passage_ref && String(it.shared_passage_ref).trim());
+    const hasInstr = !!(it.instruction && String(it.instruction).trim());
+    return choices * 10 + (hasAns ? 5 : 0) + (hasBody ? 2 : 0) + (hasInstr ? 1 : 0);
+  };
+
+  // 버리는 항목의 비어있지 않은 답/지문 필드를 남는 항목의 결손에 보충
+  const backfill = (keep, drop) => {
+    for (const f of ['user_answer', 'correct_answer', 'user_marked_correctness', 'passage', 'shared_passage_ref', 'question_body']) {
+      const cur = keep[f];
+      const curEmpty = cur == null || (typeof cur === 'string' && cur.trim() === '');
+      if (curEmpty && drop[f] != null && String(drop[f]).trim() !== '') keep[f] = drop[f];
+    }
+  };
+
+  const byNum = new Map(); // problem_number → 채택된 item
+  const order = [];
+  let droppedCount = 0;
+  for (const it of items) {
+    const key = String(it.problem_number ?? '').trim();
+    if (!key) { order.push(it); continue; } // 번호 없는 항목은 그대로 보존
+    if (!byNum.has(key)) {
+      byNum.set(key, it);
+      order.push(it);
+      continue;
+    }
+    const prev = byNum.get(key);
+    droppedCount++;
+    if (substanceScore(it) > substanceScore(prev)) {
+      backfill(it, prev); // 새 항목 채택, 이전 항목 정보 보충 후 자리 교체
+      const idx = order.indexOf(prev);
+      if (idx >= 0) order[idx] = it;
+      byNum.set(key, it);
+    } else {
+      backfill(prev, it); // 이전 항목 유지, 새 항목 정보 보충
+    }
+  }
+  if (droppedCount > 0) {
+    console.log(`[handler] 중복 problem_number 제거: ${items.length} → ${order.length} (${droppedCount}개 병합)`, { sessionId });
+  }
+  return order;
+}
+
+/**
  * 단일 페이지에 대한 4-Pass 분석 파이프라인 실행
  * Pass A(구조) + Pass 0(좌표) → 크롭 → Pass B(필기) → Pass C(분류)
  *
@@ -523,6 +582,10 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
       if (images[idx]) images[idx].imageBase64 = '';
     }
   }
+
+  // 페이지 경계 중복 problem_number 제거 (예: [41~42] 범위 헤더가 이어지는
+  // 페이지에서 빈 껍데기로 재추출되는 노이즈 차단)
+  allValidatedItems = dedupeProblemItems(allValidatedItems, sessionId);
 
   if (allValidatedItems.length === 0) {
     if (images.length > 0) {
