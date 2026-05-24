@@ -26,6 +26,7 @@ export const MODEL_SEQUENCE = [
 ];
 
 export const MODEL_RETRY_POLICY = {
+  'gemini-3.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-2.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-3.1-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-3-flash-preview': { maxRetries: 1, baseDelayMs: 1500 },
@@ -39,6 +40,19 @@ export const LIGHTWEIGHT_MODEL_SEQUENCE = [
   'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
   'gemini-3-flash-preview',
+];
+
+/** 정답 추론(correct_answer) 전용 모델 시퀀스 — 정확도 우선
+ *  - 정답 추론은 '문제당 1회' 저빈도 호출 → 최상위 추론 모델을 1순위로 써도 부하 영향 작음
+ *  - gemini-3.5-flash(GA, 2026-05): 최신·최강 Flash, near-Pro 추론력
+ *  - 폴백 3.1-flash-lite(GA): 공식 벤치 기준 2.5-flash 추론 상회(GPQA 86.9% vs 79%)
+ *  - 폴백 2.5-flash(GA): 최종 안전망
+ *  - preview 모델 제외: Vertex DSQ 공유풀 제약으로 burst 시 429 위험(실측 이력)
+ */
+export const ANSWER_MODEL_SEQUENCE = [
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
 ];
 
 // API 호출 타임아웃 (밀리초)

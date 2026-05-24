@@ -172,14 +172,15 @@ This image shows the FULL problem: question text, passage, and answer choices.
 
 ## CRITICAL: MULTIPLE CHOICE = NUMBER ONLY
 This is a MULTIPLE CHOICE question with numbered choices (①②③④⑤ or 1-5).
-You MUST return ONLY the choice NUMBER ("1", "2", "3", "4", or "5").
+You MUST return ONLY the choice NUMBER as a plain ASCII Arabic digit ("1", "2", "3", "4", or "5").
+NEVER output a circled/enclosed glyph (①②③④⑤) — always convert ①→"1", ②→"2", ③→"3", ④→"4", ⑤→"5".
 
 ## ⚠️ Underline-type questions (밑줄 친 부분 중...)
 Korean exams often ask: "다음 글의 밑줄 친 부분 중, 문맥상 낱말의 쓰임이 적절하지 않은 것은?"
 - Each underlined word/phrase is labeled with ①②③④⑤
 - The answer is the CHOICE NUMBER of the incorrect underlined word, NOT the word itself
 - WRONG: returning "appear" or "rise" (the underlined word)
-- RIGHT: returning "3" (the choice number that marks that word)
+- RIGHT: returning the choice number (e.g. "2") that marks that word — pick the number that actually corresponds to the answer, not a fixed value
 
 ## Algorithm
 1. Read the question and identify the correct/incorrect choice
@@ -190,10 +191,13 @@ Korean exams often ask: "다음 글의 밑줄 친 부분 중, 문맥상 낱말�
 - Solve the question independently to determine the correct answer
 - For multiple choice (including underline-type): return the choice NUMBER as "1"-"5"
 - NEVER return a word, phrase, or letter — ALWAYS a single digit "1"-"5"
+- This applies to ALL numbered multiple-choice types — including sentence-insertion (문장 삽입), sentence-ordering (순서 배열), grammar (어법), and vocabulary/underline (어휘·밑줄) questions. For these, the choices ①②③④⑤ (or 1-5) indicate positions/options, and correct_answer MUST be that choice NUMBER.
+- NEVER copy a sentence, clause, or excerpt from the passage into correct_answer. Even if the question is about inserting or reordering a sentence, output the choice NUMBER only — NOT the sentence text.
+- The example output below uses a placeholder; do NOT copy its value. Determine the actual number by solving the question.
 - You MUST provide a correct_answer. Never return null.${choicesHint}
 
 Output JSON only:
-{ "problem_number": "${problemNumber}", "correct_answer": "3" }`;
+{ "problem_number": "${problemNumber}", "correct_answer": "<the correct choice number 1-5>" }`;
 }
 
 export function buildHandwritingDetectionPrompt(imageCount = 1) {
@@ -207,10 +211,10 @@ For each problem number visible on the page(s):
 </task>
 
 <answer_format>
-- Multiple choice (①②③④⑤ or numbered 1-5 choices): return the marked/correct choice NUMBER as "1"-"5"
+- Multiple choice (①②③④⑤ or numbered 1-5 choices): return the marked/correct choice NUMBER as a plain ASCII Arabic digit "1"-"5" (convert circled glyphs ①→"1" … ⑤→"5"; NEVER output ①②③④⑤)
 - Underline-type multiple choice (e.g., "다음 글의 밑줄 친 부분 중, 문맥상 낱말의 쓰임이 적절하지 않은 것은?"):
   - Each underlined word is labeled with ①②③④⑤ in the original text
-  - correct_answer MUST be the CHOICE NUMBER (e.g., "3"), NOT the underlined word (e.g., NOT "appear")
+  - correct_answer MUST be the CHOICE NUMBER (a single digit "1"-"5" that you determine by solving), NOT the underlined word (e.g., NOT "appear")
 - Short answer / essay (서술형):
   - user_answer: transcribe the student's handwritten text VERBATIM, including spelling errors. If you see a correction arrow (→), report only the text after the arrow.
   - correct_answer: solve the question and return the correct text answer
@@ -218,8 +222,9 @@ For each problem number visible on the page(s):
 </answer_format>
 
 <critical_rules>
-- For ANY multiple-choice question (including underline-type), correct_answer MUST be a single digit "1"-"5"
+- For ANY multiple-choice question (including underline-type, sentence-insertion 문장 삽입, sentence-ordering 순서 배열, grammar 어법, vocabulary/underline 어휘·밑줄), correct_answer MUST be a plain ASCII Arabic digit "1"-"5" — NEVER a circled glyph (①②③④⑤); convert ①→"1", ②→"2", ③→"3", ④→"4", ⑤→"5"
 - NEVER return a word/phrase as correct_answer for multiple choice — ALWAYS the choice number
+- NEVER copy a sentence, clause, or excerpt from the passage into correct_answer. For sentence-insertion or ordering questions, the answer is the position/option NUMBER (①②③④⑤ → "1"-"5"), NOT the sentence text.
 - user_answer = physical marks/writing on paper (do NOT correct spelling or grammar)
 - correct_answer = your independent solution (the actually correct answer)
 - Do NOT copy user_answer into correct_answer
@@ -227,10 +232,11 @@ For each problem number visible on the page(s):
 ${imageCount > 1 ? `- You have ${imageCount} pages. Report each problem ONCE.` : ''}
 </critical_rules>
 
-Output JSON only:
+Output JSON only (the answer values below are illustrative placeholders — solve each problem to get the real value; do NOT default to any single number):
 {
   "marks": [
-    { "problem_number": "1", "user_answer": "4", "correct_answer": "3" },
+    { "problem_number": "1", "user_answer": "4", "correct_answer": "2" },
+    { "problem_number": "2", "user_answer": "1", "correct_answer": "5" },
     { "problem_number": "6", "user_answer": "cutting", "correct_answer": "cutting" }
   ]
 }

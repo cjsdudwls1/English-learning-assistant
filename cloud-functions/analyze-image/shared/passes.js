@@ -8,7 +8,7 @@
 
 import { callDocumentAI } from './documentAiClient.js';
 import { callModelWithFailover, generateWithRetry, extractTextFromResponse, parseJsonResponse } from './aiClient.js';
-import { LIGHTWEIGHT_MODEL_SEQUENCE, CLASSIFICATION_SCHEMA } from './config.js';
+import { LIGHTWEIGHT_MODEL_SEQUENCE, ANSWER_MODEL_SEQUENCE, CLASSIFICATION_SCHEMA } from './config.js';
 import * as config from './config.js';
 import {
   buildPrompt,
@@ -216,7 +216,8 @@ export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, 
       buildPromptFn: buildCroppedCorrectAnswerPrompt,
       questionContextMap,
       temperature: 0.0,
-      modelSequence: ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'],
+      // 정답 추론은 정확도 우선 → 최상위 모델 시퀀스 사용 (config.ANSWER_MODEL_SEQUENCE)
+      modelSequence: ANSWER_MODEL_SEQUENCE,
     }),
   ]);
 
