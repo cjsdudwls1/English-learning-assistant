@@ -8,7 +8,7 @@
 
 import { callDocumentAI } from './documentAiClient.js';
 import { callModelWithFailover, generateWithRetry, extractTextFromResponse, parseJsonResponse } from './aiClient.js';
-import { LIGHTWEIGHT_MODEL_SEQUENCE, ANSWER_MODEL_SEQUENCE, CLASSIFICATION_SCHEMA } from './config.js';
+import { LIGHTWEIGHT_MODEL_SEQUENCE, ANSWER_MODEL_SEQUENCE, USER_ANSWER_MODEL_SEQUENCE, CLASSIFICATION_SCHEMA } from './config.js';
 import * as config from './config.js';
 import {
   buildPrompt,
@@ -122,7 +122,7 @@ export async function executePass0({ ai, sessionId, imageBase64, mimeType }) {
  * - 각 크롭 이미지를 개별 API 호출로 처리 (배치 3개씩 병렬)
  * - buildPromptFn에 problem_number를 전달하여 문제별 프롬프트 생성
  */
-async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionContextMap, temperature = 1.0, modelSequence }) {
+async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionContextMap, temperature = 0.0, modelSequence }) {
   if (crops.length === 0) return { marks: [], usageMetadata: null };
 
   const marks = [];
@@ -222,6 +222,8 @@ export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, 
       buildPromptFn: buildCroppedUserAnswerPrompt,
       questionContextMap,
       temperature: 0.0,
+      // 필기 마크 '지각'은 신형 비전이 우월 → 3.5-flash 우선(2.5-flash의 인접번호 오인 회피)
+      modelSequence: USER_ANSWER_MODEL_SEQUENCE,
     }),
     detectFromCrops({
       ai, sessionId, crops: fullCrops,
@@ -234,6 +236,44 @@ export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, 
   ]);
 
   const mergedMarks = mergeUserAndCorrectMarks(userResult.marks, correctResult.marks);
+
+  // ── 정밀 보충: user_answer가 null인 문제를 fullCrop에서 재독해 ──
+  // answer_area_bbox가 좁거나 빗나가 선택지 번호 위 마크(예: ③에 친 동그라미)를 놓치면
+  // user_answer=null이 된다. fullCrop은 문제 전체(선택지 ①~⑤ 포함) + 2배 확대 + 문제별 격리라
+  // 다운스케일된 전체 페이지 fallback보다 마크 위치 인식이 훨씬 정확하다.
+  const needRetry = new Set(
+    mergedMarks
+      .filter(m => m.user_answer == null || String(m.user_answer).trim() === '')
+      .map(m => String(m.problem_number))
+  );
+  // mergedMarks에 아직 없지만 fullCrop은 있는 문제(answerArea 크롭 자체가 없던 경우)도 포함
+  for (const fc of fullCrops) {
+    const pn = String(fc.problem_number);
+    if (!mergedMarks.some(m => String(m.problem_number) === pn)) needRetry.add(pn);
+  }
+  const retryFullCrops = fullCrops.filter(fc => needRetry.has(String(fc.problem_number)));
+  if (retryFullCrops.length > 0) {
+    console.log(`[passes:PassB] user_answer 누락 ${retryFullCrops.length}개 → fullCrop 재독해: [${retryFullCrops.map(c => c.problem_number).join(',')}]`, { sessionId });
+    const retryResult = await detectFromCrops({
+      ai, sessionId, crops: retryFullCrops,
+      buildPromptFn: (pn, ctx) => buildCroppedUserAnswerPrompt(pn, ctx, true), // isFullCrop=true
+      questionContextMap,
+      temperature: 0.0,
+      modelSequence: USER_ANSWER_MODEL_SEQUENCE, // 1차와 동일하게 3.5-flash 우선
+    });
+    for (const rm of retryResult.marks) {
+      if (rm.user_answer == null || String(rm.user_answer).trim() === '') continue;
+      const existing = mergedMarks.find(m => String(m.problem_number) === String(rm.problem_number));
+      if (existing) {
+        if (existing.user_answer == null || String(existing.user_answer).trim() === '') {
+          existing.user_answer = rm.user_answer;
+        }
+      } else {
+        mergedMarks.push({ problem_number: String(rm.problem_number), user_answer: rm.user_answer, correct_answer: null });
+      }
+    }
+  }
+
   return {
     marks: mergedMarks,
     usageMetadata: userResult.usageMetadata || correctResult.usageMetadata,
@@ -300,15 +340,15 @@ Output JSON only:
  * 원본: analysisProcessor.ts#detectHandwritingMarks + pageAnalyzer.ts fallback
  */
 
-export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeType, totalPages }) {
-  const prompt = buildHandwritingDetectionPrompt(totalPages);
+export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeType, totalPages, focusNumbers = null, modelSequence = LIGHTWEIGHT_MODEL_SEQUENCE }) {
+  const prompt = buildHandwritingDetectionPrompt(totalPages, focusNumbers);
   const imagePart = { inlineData: { data: imageBase64, mimeType } };
 
   // problem_number → mark 인덱스 Map (O(n) 누적)
   const marksMap = new Map();
   let lastUsageMetadata = null;
 
-  for (const model of LIGHTWEIGHT_MODEL_SEQUENCE) {
+  for (const model of modelSequence) {
     try {
       console.log(`[passes:PassB-FullImage] ${model}로 전체 이미지 기반 필기 감지 시작...`, { sessionId });
 
@@ -316,7 +356,9 @@ export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeTy
       const { response, usageMetadata } = await generateWithRetry({
         ai, model,
         contents: [{ role: 'user', parts }],
-        sessionId, maxRetries: 1, baseDelayMs: 2000, temperature: 1.0,
+        // 필기 마크 '지각'은 결정성 우선(temp=0.0). 1.0은 동일 마크를 run마다 다른 번호로
+        // 흔들어 confident-wrong을 유발(실측: Q40 ③을 2.5-flash가 ①로 오인).
+        sessionId, maxRetries: 1, baseDelayMs: 2000, temperature: 0.0,
       });
       lastUsageMetadata = usageMetadata;
       const text = extractTextFromResponse(response, model);
@@ -349,11 +391,25 @@ export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeTy
           }
         }
 
-        // 모든 marks에 user_answer가 있으면 조기 종료
-        const nullCount = [...marksMap.values()].filter(m => !m.user_answer).length;
-        if (nullCount === 0) {
-          console.log(`[passes:PassB-FullImage] 모든 marks에 답안 있음, 조기 종료`, { sessionId });
-          break;
+        // 조기 종료 판단:
+        // - focusNumbers 지정 시: 모든 focus 문항이 답안과 함께 잡혔을 때만 종료
+        //   (모델이 focus 문항을 아예 누락하면 다음 모델을 계속 시도)
+        // - 미지정 시: 반환된 모든 marks에 답안이 있으면 종료
+        if (Array.isArray(focusNumbers) && focusNumbers.length > 0) {
+          const allFocusAnswered = focusNumbers.every(n => {
+            const mk = marksMap.get(String(n));
+            return mk && mk.user_answer != null && String(mk.user_answer).trim() !== '';
+          });
+          if (allFocusAnswered) {
+            console.log(`[passes:PassB-FullImage] 모든 focus 문항(${focusNumbers.join(',')}) 답안 확보, 조기 종료`, { sessionId });
+            break;
+          }
+        } else {
+          const nullCount = [...marksMap.values()].filter(m => !m.user_answer).length;
+          if (nullCount === 0) {
+            console.log(`[passes:PassB-FullImage] 모든 marks에 답안 있음, 조기 종료`, { sessionId });
+            break;
+          }
         }
       }
     } catch (err) {

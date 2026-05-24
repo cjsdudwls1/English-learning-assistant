@@ -17,7 +17,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 import { StageError, markSessionFailed, parseModelError } from './shared/errors.js';
-import { VERTEX_PROJECT_ID, VERTEX_LOCATION } from './shared/config.js';
+import { VERTEX_PROJECT_ID, VERTEX_LOCATION, USER_ANSWER_MODEL_SEQUENCE } from './shared/config.js';
 import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js';
 import { cropRegions } from './shared/imageCropper.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
@@ -430,30 +430,38 @@ async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxo
       passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap });
       console.log(`[handler] Pass B (크롭): ${passBResult.marks.length}개 marks (기대: ${pageItems.length}개)`, { sessionId });
 
-      // 크롭 기반 marks가 부족하면 (fetch failed 등) 전체 이미지 fallback으로 보충
-      if (passBResult.marks.length < pageItems.length) {
-        console.log(`[handler] Pass B marks 부족 (${passBResult.marks.length}/${pageItems.length}), 전체 이미지 fallback 보충 시작`, { sessionId });
+      // marks에서 통째로 누락된 문항(크롭 fetch 실패 등)
+      const missingProblems = pageItems
+        .filter(it => !passBResult.marks.some(m => String(m.problem_number) === String(it.problem_number)))
+        .map(it => String(it.problem_number));
+      // correct_answer가 비어있는 mark 존재 여부
+      const hasMissingCorrect = passBResult.marks.some(m => m.correct_answer == null || String(m.correct_answer).trim() === '');
+
+      // 전체 이미지 fallback은 (1) 통째 누락 문항 복구, (2) correct_answer 결손 보충 용도.
+      // user_answer는 일부러 덮어쓰지 않는다: 고해상도 크롭(answerArea + fullCrop 재독해)이
+      // 읽지 못한 마크를 저해상도·전체페이지 인식이 추측하면 오답을 주입한다
+      // (실측: Q45 정답 ③인데 full-page가 ⑤로 오인식). 못 읽은 마크는 null로 두는 편이
+      // 자신있는 오답보다 안전하다.
+      if (missingProblems.length > 0 || hasMissingCorrect) {
+        console.log(`[handler] Pass B 보충 필요 (통째 누락 [${missingProblems.join(',')}], correct결손=${hasMissingCorrect}), 전체 이미지 fallback`, { sessionId });
         const fallbackResult = await executePassBFullImage({
           ai, sessionId,
           imageBase64: imageData.imageBase64,
           mimeType: imageData.mimeType,
           totalPages,
+          focusNumbers: missingProblems,
+          modelSequence: USER_ANSWER_MODEL_SEQUENCE, // 전체이미지 필기 지각도 3.5-flash 우선(2.5-flash 인접번호 오인 회피)
         });
         console.log(`[handler] Pass B fallback 보충: ${fallbackResult.marks.length}개 marks`, { sessionId });
 
-        // fallback marks를 기존에 누적 (기존 크롭 결과 우선, 누락분만 보충)
         for (const fbMark of fallbackResult.marks) {
           const existing = passBResult.marks.find(m => String(m.problem_number) === String(fbMark.problem_number));
           if (!existing) {
+            // 통째 누락 문항: full-page가 유일한 출처이므로 그대로 채택
             passBResult.marks.push(fbMark);
-          } else {
-            // 기존에 user_answer가 없으면 fallback에서 보충
-            if (!existing.user_answer && fbMark.user_answer) {
-              existing.user_answer = fbMark.user_answer;
-            }
-            if (!existing.correct_answer && fbMark.correct_answer) {
-              existing.correct_answer = fbMark.correct_answer;
-            }
+          } else if ((existing.correct_answer == null || String(existing.correct_answer).trim() === '') && fbMark.correct_answer) {
+            // 기존 mark는 correct_answer 결손만 보충, user_answer는 보존(덮어쓰지 않음)
+            existing.correct_answer = fbMark.correct_answer;
           }
         }
         console.log(`[handler] Pass B 최종 병합: ${passBResult.marks.length}개 marks`, { sessionId });
@@ -466,6 +474,7 @@ async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxo
         imageBase64: imageData.imageBase64,
         mimeType: imageData.mimeType,
         totalPages,
+        modelSequence: USER_ANSWER_MODEL_SEQUENCE,
       });
       console.log(`[handler] Pass B (full-image fallback): ${passBResult.marks.length}개 marks`, { sessionId });
     }
@@ -477,6 +486,7 @@ async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxo
       imageBase64: imageData.imageBase64,
       mimeType: imageData.mimeType,
       totalPages,
+      modelSequence: USER_ANSWER_MODEL_SEQUENCE,
     });
     console.log(`[handler] Pass B (full-image fallback): ${passBResult.marks.length}개 marks`, { sessionId });
   }

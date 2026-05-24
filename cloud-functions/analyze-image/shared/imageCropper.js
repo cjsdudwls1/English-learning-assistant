@@ -10,17 +10,31 @@ const MIN_CROP_DIMENSION = 10;
 const CROP_JPEG_QUALITY = 85;
 const CROP_ZOOM_FACTOR = 2; // 크롭 후 2배 확대 (작은 필기 감지 향상, 원래 Edge Function 사양 복원)
 
+// 크롭 안전 패딩 (이미지 크기 대비 비율).
+// Pass 0가 선택지 번호 열(①②③④⑤)을 bbox 좌단에서 상습적으로 잘라 마크가 있는
+// 번호를 놓치는 사례가 실측됨(예: Q45 — bbox x1이 번호 열보다 오른쪽에 위치해
+// answerArea/full 모두 마크 식별 불가→null/오답). 좌측을 넉넉히 확장해 번호 열과
+// 번호 위/왼쪽으로 삐져나온 필기를 포함시킨다. 하단은 다음 문제 침범을 막기 위해 최소화.
+const PAD_LEFT = 0.05;
+const PAD_TOP = 0.02;
+const PAD_RIGHT = 0.02;
+const PAD_BOTTOM = 0.03;
+
 /**
- * 정규화된 bbox를 픽셀 좌표로 변환
+ * 정규화된 bbox를 픽셀 좌표로 변환 (+ 안전 패딩, 이미지 경계로 클램프)
  * bbox 좌표는 0~1000 범위 (정규화 좌표, 프롬프트 기준)
  */
 function normalizeToPixel(bbox, imgWidth, imgHeight) {
   // 프롬프트가 0~1000 정규화 좌표를 요청하므로 1000으로 나누어 비율로 변환
-  const left = Math.max(0, Math.round((bbox.x1 / 1000) * imgWidth));
-  const top = Math.max(0, Math.round((bbox.y1 / 1000) * imgHeight));
-  const width = Math.min(imgWidth - left, Math.round(((bbox.x2 - bbox.x1) / 1000) * imgWidth));
-  const height = Math.min(imgHeight - top, Math.round(((bbox.y2 - bbox.y1) / 1000) * imgHeight));
-  return { left, top, width, height };
+  const rawLeft = (bbox.x1 / 1000) * imgWidth;
+  const rawTop = (bbox.y1 / 1000) * imgHeight;
+  const rawRight = (bbox.x2 / 1000) * imgWidth;
+  const rawBottom = (bbox.y2 / 1000) * imgHeight;
+  const left = Math.max(0, Math.round(rawLeft - PAD_LEFT * imgWidth));
+  const top = Math.max(0, Math.round(rawTop - PAD_TOP * imgHeight));
+  const right = Math.min(imgWidth, Math.round(rawRight + PAD_RIGHT * imgWidth));
+  const bottom = Math.min(imgHeight, Math.round(rawBottom + PAD_BOTTOM * imgHeight));
+  return { left, top, width: right - left, height: bottom - top };
 }
 
 async function cropSingleRegion(imageBuffer, bbox, imgWidth, imgHeight) {

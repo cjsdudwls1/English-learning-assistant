@@ -100,7 +100,15 @@ Output JSON only:
 }`;
 }
 
-export function buildCroppedUserAnswerPrompt(problemNumber, questionContext) {
+export function buildCroppedUserAnswerPrompt(problemNumber, questionContext, isFullCrop = false) {
+  // isFullCrop=true: answer_area_bbox가 마크를 놓쳐 user_answer가 null로 잡혔을 때,
+  // 문제 전체 크롭(선택지 ①~⑤ 전부 포함, 2배 확대)에서 재독해하는 경우.
+  const scopeLine = isFullCrop
+    ? `You are analyzing a CROPPED and ZOOMED image showing the FULL problem (question text + all choices ①~⑤) for exam question Q${problemNumber}.
+The student's mark may sit directly ON a choice number (a circle/check/underline around ①②③④⑤). Scan every choice number carefully.`
+    : `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.
+This image is zoomed into ONLY the answer marking region. Look very carefully for any handwritten marks.`;
+
   if (questionContext?.isSubjective) {
     return `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.
 This is a SHORT ANSWER / ESSAY type question (not multiple choice).
@@ -118,8 +126,7 @@ Output JSON only:
 { "problem_number": "${problemNumber}", "user_answer": "the student's handwritten answer" }`;
   }
 
-  return `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.
-This image is zoomed into ONLY the answer marking region. Look very carefully for any handwritten marks.
+  return `${scopeLine}
 
 ## Primary Rule: Detect the MARKED answer number
 Your main goal is to find which choice number (1-5) the student marked/selected.
@@ -135,8 +142,11 @@ After exams, students sometimes mark their papers during answer-checking:
 - If you see ONLY circles/marks on ONE number (no X anywhere): that number IS user_answer
 - Do NOT assume grading marks exist unless you clearly see both X and O on different numbers
 
-## Output
-If NO handwritten mark is found at all, return null.
+## Output — precision over guessing
+- Return the choice number "1"-"5" ONLY when you can clearly identify which SINGLE choice the mark belongs to.
+- If NO handwritten mark is found at all, return null.
+- If a mark seems present but you CANNOT confidently tell which single choice it sits on (faint, ambiguous, or spanning two numbers), return null — do NOT guess. A wrong answer is worse than null here.
+- NEVER copy a solved/correct answer into user_answer; it must come from the physical pencil/pen mark only.
 
 Output JSON only:
 { "problem_number": "${problemNumber}", "user_answer": "4" }`;
@@ -200,7 +210,15 @@ Output JSON only:
 { "problem_number": "${problemNumber}", "correct_answer": "<the correct choice number 1-5>" }`;
 }
 
-export function buildHandwritingDetectionPrompt(imageCount = 1) {
+export function buildHandwritingDetectionPrompt(imageCount = 1, focusNumbers = null) {
+  const focusBlock = Array.isArray(focusNumbers) && focusNumbers.length > 0
+    ? `\n<priority>
+These problems still have NO detected user_answer — look EXTRA carefully for the student's handwritten mark (faint pencil circles, checkmarks, underlines, or X marks placed on or beside a choice number 1-5): ${focusNumbers.join(', ')}
+For each, report the choice number ONLY if you can clearly identify which single choice the mark belongs to.
+If a mark seems present but you cannot confidently tell which choice it is on, return null — do NOT guess. A wrong answer is worse than null here.
+NEVER copy the solved correct_answer into user_answer; user_answer must come from the physical pencil/pen mark only.
+</priority>\n`
+    : '';
   return `
 <role>You are an expert exam handwriting detection and solving system.</role>
 
@@ -209,6 +227,7 @@ For each problem number visible on the page(s):
 1. Detect user_answer (what the student physically wrote/marked on paper)
 2. Solve for correct_answer independently
 </task>
+${focusBlock}
 
 <answer_format>
 - Multiple choice (①②③④⑤ or numbered 1-5 choices): return the marked/correct choice NUMBER as a plain ASCII Arabic digit "1"-"5" (convert circled glyphs ①→"1" … ⑤→"5"; NEVER output ①②③④⑤)

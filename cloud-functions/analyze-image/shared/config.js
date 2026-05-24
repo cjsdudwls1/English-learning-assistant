@@ -55,6 +55,21 @@ export const ANSWER_MODEL_SEQUENCE = [
   'gemini-2.5-flash',
 ];
 
+/** 사용자 답안(user_answer) 필기 마크 인식 전용 — 정밀 '지각' 우선
+ *  - 실측 2건에서 구형 gemini-2.5-flash가 마크를 인접 번호로 confident-wrong:
+ *    · Q28(학생 마크=①, 좁은 선택지 크롭) → "②"  · Q40(동그라미=③, 전체이미지) → "①"
+ *    둘 다 temperature=0.0에서도 3회 일관 오답 → 지각 작업에서 신뢰 불가, 시퀀스에서 제외.
+ *    '자신있는 오답'은 채점 보조 도구에서 null보다 해롭다.
+ *  - gemini-3.5-flash(신중·near-Pro 지각, 애매하면 정직하게 null) 1순위, GA 폴백
+ *    3.1-flash-lite. 동일 입력에서 둘 다 2.5-flash보다 정확. user_answer도 문제당 1회
+ *    저빈도 호출이라 최상위 모델 1순위 부하 영향 작음.
+ *  - preview 모델 제외: burst 시 429 위험(실측 이력) → GA 모델만.
+ */
+export const USER_ANSWER_MODEL_SEQUENCE = [
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+];
+
 // API 호출 타임아웃 (밀리초)
 export const API_TIMEOUT_MS = {
   withTools: 120_000,
