@@ -8,6 +8,9 @@ analyze-image GCF 배포 스크립트 (publisher / light - Windows PowerShell)
   --cpu=1            경량 작업이라 충분
   --timeout=60s      Pub/Sub publish는 통상 수백 ms
   --max-instances=20 30 동시 + 여유 (publish 빠르니 인스턴스 적게)
+  --min-instances=0  idle 인스턴스 상시 과금 방지(필수). 부하테스트 때 수동으로 5+no-throttle로
+                     바뀌어 수일간 과금된 적 있음 → 스크립트에 0을 명시해 재발 차단.
+                     cpu-throttling은 functions deploy 기본값(throttled)이라 별도 설정 불필요.
   --concurrency=80   여러 publish를 동시에 처리 (CPU 부족 없음)
 #>
 $ErrorActionPreference = 'Stop'
@@ -35,6 +38,7 @@ gcloud functions deploy $FUNCTION_NAME `
   --memory=512MiB `
   --cpu=1 `
   --max-instances=20 `
+  --min-instances=0 `
   --concurrency=80 `
   --env-vars-file=.env.yaml
 
