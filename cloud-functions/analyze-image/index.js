@@ -396,8 +396,13 @@ async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxo
       // 양쪽 키워드 모두 있으면 choices 유무로 결정
       isSubjective = !hasChoices;
     } else {
-      // 키워드 없으면 choices 유무
-      isSubjective = !hasChoices;
+      // 키워드 없음 → 객관식 기본.
+      // choices=0이어도 주관식 키워드가 없으면 주관식으로 단정하지 않는다.
+      // 영어 시험(28~45)은 대부분 객관식이며, 묶음 문제([38~39] 등)의 후속 문항은
+      // instruction이 비고 위치마커(①~⑤)가 choices로 안 잡혀 choices=0이 되곤 한다.
+      // 이를 주관식으로 오판하면 correct_answer가 번호 대신 지문 문장으로 추출되는 결함 발생
+      // (실측: Q39 correct가 지문 문장 전체로 추출됨).
+      isSubjective = false;
     }
 
     console.log(`[handler] Q${item.problem_number} 유형 판별: isSubjective=${isSubjective}, hasChoices=${hasChoices}, hasObjKw=${hasObjectiveKw}, hasSubjKw=${hasSubjectiveKw}`, { sessionId });
