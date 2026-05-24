@@ -342,22 +342,27 @@ async function main() {
     if (validUsers.length === 0) throw new Error('user 생성 모두 실패');
 
     // 3) GCF warmup — 30개 spike로 미리 인스턴스 띄움 (학원 시작 직전 시나리오)
-    // warmup도 인증 필수: 각 user의 JWT를 라운드로빈으로 사용
-    log('WARMUP', '인스턴스 30개 warmup spike...');
-    const warmupStart = Date.now();
-    await Promise.all(Array.from({ length: 30 }, (_, i) => {
-      const warmupUser = validUsers[i % validUsers.length];
-      return fetch(`${GCF_URL}?warmup=1`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${warmupUser.token}`,
-        },
-        body: '{}',
-      }).catch(() => null);
-    }));
-    log('WARMUP', `warmup 30개 완료 (${Date.now() - warmupStart}ms)`);
-    await sleep(3000);  // 인스턴스 안정화 대기
+    // SKIP_WARMUP=1 → warmup 생략, 완전 cold 상태 측정(실사용 최악 시나리오 검증)
+    if (process.env.SKIP_WARMUP === '1') {
+      log('WARMUP', 'SKIP_WARMUP=1 → warmup 생략 (완전 cold 측정)');
+    } else {
+      // warmup도 인증 필수: 각 user의 JWT를 라운드로빈으로 사용
+      log('WARMUP', '인스턴스 30개 warmup spike...');
+      const warmupStart = Date.now();
+      await Promise.all(Array.from({ length: 30 }, (_, i) => {
+        const warmupUser = validUsers[i % validUsers.length];
+        return fetch(`${GCF_URL}?warmup=1`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${warmupUser.token}`,
+          },
+          body: '{}',
+        }).catch(() => null);
+      }));
+      log('WARMUP', `warmup 30개 완료 (${Date.now() - warmupStart}ms)`);
+      await sleep(3000);  // 인스턴스 안정화 대기
+    }
 
     // 4) stagger 발사
     log('FIRE', `${validUsers.length}개 발사 (stagger ${STAGGER_MIN_MS}-${STAGGER_MAX_MS}ms)`);
