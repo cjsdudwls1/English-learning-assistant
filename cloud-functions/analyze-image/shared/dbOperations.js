@@ -220,7 +220,7 @@ export async function createSession(supabase, userId, imageUrls) {
     .insert({
       user_id: userId,
       image_urls: finalImageUrls,
-      status: 'processing',
+      status: 'pending', // worker가 lease 잡을 때 'processing'으로 전환 — C1 race 회피
     })
     .select('id, image_urls')
     .single();

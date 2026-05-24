@@ -4,6 +4,7 @@ import { supabase } from '../services/supabaseClient';
 import { getCurrentUserId } from '../services/db';
 import { deleteProblems } from '../services/db/problems';
 import { useLanguage } from '../contexts/LanguageContext';
+import { resolveImageUrls } from '../utils/imageUrl';
 import type { QuestionType } from '../types';
 
 interface ProblemRow {
@@ -65,8 +66,11 @@ export const AllProblemsPage: React.FC = () => {
         setHasMore(false);
         return;
       }
-      const sessionMap = new Map<string, { id: string; created_at: string; image_urls: string[] | null }>();
-      for (const s of sessions) sessionMap.set(s.id, s);
+      const sessionMap = new Map<string, { id: string; created_at: string; image_urls: string[] }>();
+      await Promise.all(sessions.map(async (s) => {
+        const urls = await resolveImageUrls(s.image_urls);
+        sessionMap.set(s.id, { id: s.id, created_at: s.created_at, image_urls: urls });
+      }));
 
       // 2) problems(session_id IN) + labels 임베드 — 청크 단위, 최신 500개로 절단
       const CHUNK = 500;

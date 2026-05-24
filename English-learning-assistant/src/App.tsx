@@ -468,14 +468,13 @@ const App: React.FC = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
 
-  const compressImage = (file: File, maxDimension: number = 1200, quality: number = 0.8): Promise<{ base64: string; mimeType: string }> => {
+  const compressImage = (file: File, maxDimension: number = 1200, quality: number = 0.8): Promise<{ blob: Blob; mimeType: string }> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         try {
           let { width, height } = img;
-          // 긴 변이 maxDimension보다 크면 비율 유지하며 축소
           if (width > maxDimension || height > maxDimension) {
             const ratio = Math.min(maxDimension / width, maxDimension / height);
             width = Math.round(width * ratio);
@@ -486,16 +485,20 @@ const App: React.FC = () => {
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           if (!ctx) {
+            URL.revokeObjectURL(url);
             reject(new Error('Canvas 2D context not available'));
             return;
           }
           ctx.drawImage(img, 0, 0, width, height);
-          // JPEG로 압축 (품질 0.8 = 80%)
-          const dataUrl = canvas.toDataURL('image/jpeg', quality);
-          const base64 = dataUrl.split(',')[1];
-          console.log(`[Compress] ${file.name}: ${img.naturalWidth}x${img.naturalHeight} → ${width}x${height}, base64 len: ${base64.length} (원본 ${file.size} bytes)`);
-          URL.revokeObjectURL(url);
-          resolve({ base64, mimeType: 'image/jpeg' });
+          canvas.toBlob((blob) => {
+            URL.revokeObjectURL(url);
+            if (!blob) {
+              reject(new Error(`canvas.toBlob returned null: ${file.name}`));
+              return;
+            }
+            console.log(`[Compress] ${file.name}: ${img.naturalWidth}x${img.naturalHeight} → ${width}x${height}, blob ${blob.size}B (원본 ${file.size}B)`);
+            resolve({ blob, mimeType: 'image/jpeg' });
+          }, 'image/jpeg', quality);
         } catch (e) {
           URL.revokeObjectURL(url);
           reject(e);
@@ -509,23 +512,16 @@ const App: React.FC = () => {
     });
   };
 
-  const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
-    // 이미지 파일이면 압축 적용
-    if (file.type.startsWith('image/')) {
-      return compressImage(file);
-    }
-    // 이미지가 아닌 파일은 원본 그대로
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const result = reader.result as string;
-        const [header, data] = result.split(',');
-        const mimeType = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
-        resolve({ base64: data, mimeType });
-      };
-      reader.onerror = (error) => reject(error);
-    });
+  // Supabase Storage `analyze-uploads` bucket에 직접 업로드 → path 반환
+  // RLS: `{userId}/...` 폴더 prefix가 auth.uid()와 일치해야 함
+  const uploadImageDirect = async (blob: Blob, userId: string, index: number, originalName: string): Promise<string> => {
+    const safeName = originalName.replace(/[^\w.-]+/g, '_').slice(0, 60);
+    const path = `${userId}/${Date.now()}_${index}_${safeName}.jpg`;
+    const { error } = await supabase.storage
+      .from('analyze-uploads')
+      .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+    if (error) throw new Error(`Upload failed (${path}): ${error.message}`);
+    return path;
   };
 
   const handleAnalyzeClick = useCallback(async () => {
@@ -573,35 +569,43 @@ const App: React.FC = () => {
         return;
       }
 
-      // 모든 이미지를 base64로 변환
-      console.log(`Converting ${imageFiles.length} files to base64...`);
-      const imagesArray = await Promise.all(
+      // 압축 + Supabase Storage Direct Upload — 무거운 base64 payload를 GCF로 보내지 않음
+      console.log(`Compressing + uploading ${imageFiles.length} files to Storage...`);
+      const imagePaths = await Promise.all(
         imageFiles.map(async (imageFile, index) => {
           try {
-            const { base64, mimeType } = await fileToBase64(imageFile.file);
-            if (!base64 || typeof base64 !== 'string' || !base64.trim()) {
-              throw new Error(`Invalid base64 for file: ${imageFile.file.name}`);
-            }
-            return { imageBase64: base64, mimeType: mimeType || 'image/jpeg', fileName: imageFile.file.name };
-          } catch (convertError) {
-            console.error(`[${index}] Failed to convert file:`, imageFile.file.name, convertError);
-            throw convertError;
+            const { blob } = await compressImage(imageFile.file);
+            const path = await uploadImageDirect(blob, userData.user!.id, index, imageFile.file.name);
+            return path;
+          } catch (uploadErr) {
+            console.error(`[${index}] Upload failed:`, imageFile.file.name, uploadErr);
+            throw uploadErr;
           }
         })
       );
 
-      console.log(`[GCF] Sending ${imagesArray.length} image(s) to Cloud Function...`);
+      console.log(`[GCF] Sending ${imagePaths.length} imagePath(s) to Cloud Function...`);
 
-      // Cloud Function은 분석 완료 후 응답 (이미지 수에 따라 수 분 소요)
-      const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000; // 10분
+      // 인증 토큰 (JWT)을 GCF로 전달
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        throw new Error(language === 'ko' ? '세션이 만료되었습니다.' : 'Session expired.');
+      }
+
+      // Cloud Function은 분석 완료 후 응답
+      const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
 
       const gcfResponse = await fetch(gcfUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({
-          images: imagesArray,
+          imagePaths,
           userId: userData.user.id,
           language: currentLanguage,
         }),

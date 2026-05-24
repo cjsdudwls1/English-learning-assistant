@@ -28,7 +28,7 @@ export const MODEL_SEQUENCE = [
 export const MODEL_RETRY_POLICY = {
   'gemini-2.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-3.1-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },
-  'gemini-3-flash-preview': { maxRetries: 0, baseDelayMs: 1500 },
+  'gemini-3-flash-preview': { maxRetries: 1, baseDelayMs: 1500 },
   'gemini-flash-latest': { maxRetries: 1, baseDelayMs: 2000 },
 };
 

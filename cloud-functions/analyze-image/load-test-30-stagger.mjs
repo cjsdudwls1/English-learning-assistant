@@ -109,9 +109,18 @@ async function main() {
     log('SETUP', `${users.length}명 생성 완료 (${Date.now() - setupStart}ms)`);
 
     log('WARMUP', `5개 인스턴스 사전 warmup...`);
-    await Promise.all(Array.from({ length: 5 }, () =>
-      fetch(`${GCF_URL}?warmup=1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => null)
-    ));
+    // warmup도 인증 필수: user 토큰 라운드로빈
+    await Promise.all(Array.from({ length: 5 }, (_, i) => {
+      const u = users[i % users.length];
+      return fetch(`${GCF_URL}?warmup=1`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(u?.token ? { 'Authorization': `Bearer ${u.token}` } : {}),
+        },
+        body: '{}',
+      }).catch(() => null);
+    }));
     await sleep(500);
 
     log('FIRE', `${users.length}개 GCF 호출 ${STAGGER_MIN_MS}-${STAGGER_MAX_MS}ms 간격 발사`);

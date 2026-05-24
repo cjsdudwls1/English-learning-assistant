@@ -32,6 +32,9 @@ const SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
 ];
 
+// NOTE: `maxRetries` is the MAX TOTAL ATTEMPT COUNT (not extra retries).
+// e.g. maxRetries=1 → 1 attempt, 0 retries on failure.
+//      maxRetries=2 → up to 2 attempts (1 retry on retryable failure).
 export async function generateWithRetry({
   ai, model, contents, sessionId,
   maxRetries, baseDelayMs, temperature,
@@ -49,16 +52,26 @@ export async function generateWithRetry({
 
       const timeoutMs = resolveTimeoutMs(model, !!tools);
 
-      const response = await Promise.race([
-        ai.models.generateContent({
-          model, contents, config,
-          safetySettings: SAFETY_SETTINGS,
-          ...(tools ? { tools } : {}),
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`API call timeout after ${timeoutMs / 1000}s`)), timeoutMs)
-        ),
-      ]);
+      let timeoutHandle;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`API call timeout after ${timeoutMs / 1000}s`)),
+          timeoutMs
+        );
+      });
+      let response;
+      try {
+        response = await Promise.race([
+          ai.models.generateContent({
+            model, contents, config,
+            safetySettings: SAFETY_SETTINGS,
+            ...(tools ? { tools } : {}),
+          }),
+          timeoutPromise,
+        ]);
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
 
       const usageMetadata = response.usageMetadata;
       if (usageMetadata) {

@@ -6,6 +6,7 @@ import { fetchSessionProblems, updateProblemLabels, getSessionStatus } from '../
 import { supabase } from '../services/supabaseClient';
 import { ImageRotator } from '../components/ImageRotator';
 import { ImageModal } from '../components/ImageModal';
+import { resolveImageUrls, resolveImageUrl, invalidateImageUrl, parseStoragePath } from '../utils/imageUrl';
 
 export const SessionDetailPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -61,37 +62,37 @@ export const SessionDetailPage: React.FC = () => {
             .single();
 
           if (!sessionError && sessionData) {
-            // image_urls가 있으면 우선 사용, 없으면 image_url을 배열로 변환
-            let urls: string[] = [];
+            // raw 값(storage path 또는 legacy URL)을 originalImageUrlsRef에 보관 (DB 영속화/회전용)
+            // 표시용은 resolveImageUrls로 매번 signed URL 발급 (CRITICAL #4 회귀 방지)
+            let rawPaths: string[] = [];
             const raw = (sessionData as any).image_urls;
 
             if (raw && Array.isArray(raw)) {
-              urls = raw.filter((u: any) => typeof u === 'string' && u.trim().length > 0).map((u: string) => u.trim());
+              rawPaths = raw.filter((u: any) => typeof u === 'string' && u.trim().length > 0).map((u: string) => u.trim());
             } else if (typeof raw === 'string') {
-              // 혹시 문자열(JSON)로 내려오는 경우 방어
               try {
                 const parsed = JSON.parse(raw);
                 if (Array.isArray(parsed)) {
-                  urls = parsed.filter((u: any) => typeof u === 'string' && u.trim().length > 0).map((u: string) => u.trim());
+                  rawPaths = parsed.filter((u: any) => typeof u === 'string' && u.trim().length > 0).map((u: string) => u.trim());
                 }
               } catch {
                 // ignore
               }
             } else if (raw && typeof raw === 'object') {
-              // {0: 'url1', 1: 'url2'} 형태 방어
               const keys = Object.keys(raw)
                 .map(k => parseInt(k, 10))
                 .filter(n => !Number.isNaN(n))
                 .sort((a, b) => a - b);
               if (keys.length > 0) {
-                urls = keys
+                rawPaths = keys
                   .map(k => raw[k])
                   .filter((u: any) => typeof u === 'string' && u.trim().length > 0)
                   .map((u: string) => u.trim());
               }
             }
-            setImageUrls(urls);
-            originalImageUrlsRef.current = [...urls];
+            originalImageUrlsRef.current = [...rawPaths];
+            const resolved = await resolveImageUrls(rawPaths);
+            setImageUrls(resolved);
           }
         }
       } catch (e) {
@@ -133,24 +134,21 @@ export const SessionDetailPage: React.FC = () => {
     if (!sessionId) return;
 
     try {
-      // 기존 public URL에서 스토리지 경로 추출 후 동일 경로로 덮어쓰기(upsert)
-      // 주의: blob: 미리보기 URL이 아닌 원본 서버 URL을 사용해야 함
-      const currentUrls = originalImageUrlsRef.current.length > 0
-        ? originalImageUrlsRef.current
-        : imageUrls;
-
-      if (imageIndex < 0 || imageIndex >= currentUrls.length) {
+      // rawPaths(originalImageUrlsRef)에는 storage path 또는 legacy absolute URL이 보관됨.
+      // parseStoragePath로 bucket/path 추출 → 동일 위치 upsert → invalidate cache → 새 signed URL 발급.
+      // DB의 image_urls는 path만 유지 (signed URL 영속화 회귀 방지: CRITICAL #4)
+      const rawPaths = originalImageUrlsRef.current;
+      if (imageIndex < 0 || imageIndex >= rawPaths.length) {
         throw new Error('이미지 인덱스가 유효하지 않습니다.');
       }
+      const rawPath = rawPaths[imageIndex];
+      if (!rawPath) throw new Error('이미지 경로를 찾을 수 없습니다.');
 
-      const currentUrl = currentUrls[imageIndex];
-      if (!currentUrl) throw new Error('이미지 URL을 찾을 수 없습니다.');
+      const parsed = parseStoragePath(rawPath);
+      if (!parsed) throw new Error('스토리지 경로를 파싱할 수 없습니다.');
+      const { bucket, path } = parsed;
 
-      const match = currentUrl.match(/\/object\/public\/problem-images\/(.*)$/);
-      if (!match || !match[1]) throw new Error('스토리지 경로를 파싱할 수 없습니다.');
-      const storagePath = match[1];
-
-      const rotatedFile = new File([rotatedBlob], storagePath.split('/').pop() || `rotated_${Date.now()}.jpg`, {
+      const rotatedFile = new File([rotatedBlob], path.split('/').pop() || `rotated_${Date.now()}.jpg`, {
         type: rotatedBlob.type,
         lastModified: Date.now(),
       });
@@ -159,8 +157,8 @@ export const SessionDetailPage: React.FC = () => {
       let uploadError: any = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         const { error } = await supabase.storage
-          .from('problem-images')
-          .upload(storagePath, rotatedFile, {
+          .from(bucket)
+          .upload(path, rotatedFile, {
             contentType: rotatedBlob.type,
             cacheControl: '0',
             upsert: true,
@@ -171,29 +169,14 @@ export const SessionDetailPage: React.FC = () => {
       }
       if (uploadError) throw uploadError;
 
-      // 캐시 무효화를 위해 쿼리스트링 버전 부여
-      const cacheBustedUrl = `${currentUrl.split('?')[0]}?v=${Date.now()}`;
+      // cache 무효화 → 신선한 signed URL 재발급
+      invalidateImageUrl(rawPath);
+      const refreshedUrl = await resolveImageUrl(rawPath);
 
-      // 회전 시 image_urls도 업데이트
-      const updatedUrls = [...currentUrls];
-      updatedUrls[imageIndex] = cacheBustedUrl;
-
-      // DB 업데이트(재시도 포함) - image_urls만 업데이트
-      let updateError: any = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const { error } = await supabase
-          .from('sessions')
-          .update({ image_urls: updatedUrls })
-          .eq('id', sessionId);
-        if (!error) { updateError = null; break; }
-        updateError = error;
-        await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
-      }
-      if (updateError) throw updateError;
-
-      setImageUrls(updatedUrls);
-      originalImageUrlsRef.current = updatedUrls;
-
+      // 표시용 imageUrls만 갱신. DB의 image_urls는 path 유지 (재저장 불필요)
+      const updatedDisplay = [...imageUrls];
+      updatedDisplay[imageIndex] = refreshedUrl;
+      setImageUrls(updatedDisplay);
     } catch (error) {
       console.error('Image rotation failed:', error);
       alert('이미지 회전 중 오류가 발생했습니다.');

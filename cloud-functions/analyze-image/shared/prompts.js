@@ -3,12 +3,25 @@
  * 기존 Deno 프롬프트를 그대로 이식, TypeScript → JavaScript 변환
  */
 
-export function buildStructurePrompt(imageCount = 1) {
+const MAX_OCR_TEXT_LENGTH_PER_PAGE = 8000;
+
+export function buildStructurePrompt(imageCount = 1, ocrPages = []) {
+  const ocrSection = (Array.isArray(ocrPages) && ocrPages.length > 0)
+    ? `\n## Reference OCR text (Document AI pre-OCR — may have errors, treat as HINT only, image is authoritative)\n${ocrPages.map(p => {
+        const text = String(p.text || '');
+        const truncated = text.length > MAX_OCR_TEXT_LENGTH_PER_PAGE
+          ? text.slice(0, MAX_OCR_TEXT_LENGTH_PER_PAGE) + '\n...[truncated for token limit]'
+          : text;
+        return `### Page ${p.page}\n${truncated}`;
+      }).join('\n\n')}\n`
+    : '';
+
   return `
 ## Task
 You are analyzing an exam page IMAGE. Read ALL text directly from the image and extract exam questions into structured JSON.
 ${imageCount > 1 ? `You have ${imageCount} sequential pages. Merge split questions across pages.` : ''}
 If the image is unreadable/blank, return empty array. Do NOT hallucinate.
+${ocrSection}
 
 ## CRITICAL: Korean exam pages often have TWO COLUMNS
 Scan BOTH columns. Each column may contain 2-4 problems stacked top-to-bottom.
@@ -283,6 +296,6 @@ JSON only.
 `;
 }
 
-export function buildPrompt(classificationData, language = 'ko', imageCount = 1) {
-  return buildStructurePrompt(imageCount);
+export function buildPrompt(classificationData, language = 'ko', imageCount = 1, ocrPages = []) {
+  return buildStructurePrompt(imageCount, ocrPages);
 }

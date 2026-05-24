@@ -3,6 +3,7 @@ import type { ProblemItem } from '../../types';
 import { getCurrentUserId } from './auth';
 import { isCorrectFromMark, normalizeMark } from '../marks';
 import { transformToProblemItem, transformFromLabelJoin } from '../../utils/problemTransform';
+import { resolveImageUrls } from '../../utils/imageUrl';
 
 const ID_CHUNK = 500;
 
@@ -145,7 +146,10 @@ export async function fetchProblemsByClassification(
   if (sErr) throw sErr;
   if (!sessions || sessions.length === 0) return [];
   const sessionMap = new Map<string, { id: string; created_at: string; image_urls: string[] | null }>();
-  for (const s of sessions) sessionMap.set(s.id, s);
+  await Promise.all(sessions.map(async (s) => {
+    const urls = await resolveImageUrls(s.image_urls);
+    sessionMap.set(s.id, { id: s.id, created_at: s.created_at, image_urls: urls });
+  }));
 
   // 2) problems (session_id IN)
   const sessionIds = sessions.map((s) => s.id);

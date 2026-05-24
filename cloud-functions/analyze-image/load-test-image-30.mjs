@@ -27,8 +27,8 @@ const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_y0ZeufG01WW57E
 const GCF_URL = process.env.GCF_URL || 'https://analyze-image-jg35qrg4wa-du.a.run.app';
 if (!SERVICE_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY env var required');
 
-const N_USERS = 30;
-const IMAGES_PER_USER = 3;
+const N_USERS = parseInt(process.env.N_USERS || '30', 10);
+const IMAGES_PER_USER = parseInt(process.env.IMAGES_PER_USER || '3', 10);
 const STAGGER_MIN_MS = 100;
 const STAGGER_MAX_MS = 300;
 const POLL_INTERVAL_MS = 5000;
@@ -64,10 +64,11 @@ function mimeFromExt(filename) {
   return 'image/jpeg';
 }
 
-// ─── 이미지 풀 준비 (3 폴더 → 압축 후 base64) ───────────
+// ─── 이미지 풀 준비 (3 폴더 → 압축 후 Buffer 보관) ─────────
 // 프론트엔드 App.tsx:compressImage와 동일 (1200px 긴 변 + JPEG 0.8)
+// Direct Upload: base64 변환 대신 Buffer만 보관 (Storage 업로드 시 사용)
 async function loadImagePool() {
-  const pool = []; // { folder, filename, imageBase64, mimeType, bytes }
+  const pool = []; // { folder, filename, buffer, mimeType, bytes, originalBytes }
   for (const folder of FOLDERS) {
     const dir = join(TEST_IMAGE_BASE, folder);
     let files;
@@ -80,14 +81,13 @@ async function loadImagePool() {
     for (const f of files) {
       const path = join(dir, f);
       const originalBytes = statSync(path).size;
-      // 프론트엔드와 동일하게 1200px + JPEG 80%로 압축
       const compressedBuffer = await sharp(readFileSync(path))
         .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80 })
         .toBuffer();
-      const imageBase64 = compressedBuffer.toString('base64');
       pool.push({
-        folder, filename: f, imageBase64,
+        folder, filename: f,
+        buffer: compressedBuffer,
         mimeType: 'image/jpeg',
         bytes: compressedBuffer.length,
         originalBytes,
@@ -95,6 +95,26 @@ async function loadImagePool() {
     }
   }
   return pool;
+}
+
+// ─── Supabase Storage Direct Upload ─────────────────────
+// frontend의 uploadImageDirect와 동일 — analyze-uploads bucket에 user 폴더로 업로드
+async function uploadImagesForUser(user, images) {
+  // user JWT로 Storage 호출 (RLS 적용)
+  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${user.token}` } },
+  });
+  const baseTs = Date.now();
+  const paths = await Promise.all(images.map(async (im, idx) => {
+    const safe = im.filename.replace(/[^\w.-]+/g, '_').slice(0, 50);
+    const path = `${user.userId}/${baseTs}_${idx}_${safe}.jpg`;
+    const { error } = await userClient.storage
+      .from('analyze-uploads')
+      .upload(path, im.buffer, { contentType: 'image/jpeg', upsert: false });
+    if (error) throw new Error(`Upload failed (${path}): ${error.message}`);
+    return path;
+  }));
+  return paths;
 }
 
 // user[i] → 폴더 i%3 에서 3장 (순환 선택)
@@ -131,11 +151,28 @@ async function createTestUser(idx) {
   return { userId: createData.user.id, token: signIn.session.access_token, email };
 }
 
-// ─── GCF 호출 (analyze-image) ────────────────────────────
+// ─── Storage 업로드 + GCF 호출 (Direct Upload 경로) ──────
 async function callAnalyzeImage(user, images, idx) {
   const t0 = Date.now();
+  let imagePaths;
+  try {
+    imagePaths = await uploadImagesForUser(user, images);
+  } catch (uploadErr) {
+    return {
+      idx,
+      payloadBytes: 0,
+      httpStatus: 0,
+      httpOk: false,
+      elapsed: Date.now() - t0,
+      sessionId: null,
+      uploadedPaths: [],
+      errorBody: `UPLOAD_ERROR: ${uploadErr.message}`,
+    };
+  }
+  const uploadElapsed = Date.now() - t0;
+
   const payload = {
-    images: images.map(im => ({ imageBase64: im.imageBase64, mimeType: im.mimeType })),
+    imagePaths,
     userId: user.userId,
     language: 'ko',
   };
@@ -144,30 +181,37 @@ async function callAnalyzeImage(user, images, idx) {
   try {
     const resp = await fetch(GCF_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
       body: JSON.stringify(payload),
     });
     const text = await resp.text();
     let parsed = null;
     try { parsed = JSON.parse(text); } catch {}
-    const elapsed = Date.now() - t0;
+    const totalElapsed = Date.now() - t0;
     return {
       idx,
       payloadBytes,
+      uploadElapsed,
       httpStatus: resp.status,
       httpOk: resp.status === 200,
-      elapsed,
+      elapsed: totalElapsed,
       sessionId: parsed?.sessionId || null,
+      uploadedPaths: imagePaths,
       errorBody: resp.status !== 200 ? text.slice(0, 500) : null,
     };
   } catch (err) {
     return {
       idx,
       payloadBytes,
+      uploadElapsed,
       httpStatus: 0,
       httpOk: false,
       elapsed: Date.now() - t0,
       sessionId: null,
+      uploadedPaths: imagePaths,
       errorBody: `FETCH_ERROR: ${err.message}`,
     };
   }
@@ -226,7 +270,7 @@ async function countProblems(sessionIds) {
 }
 
 // ─── cleanup ─────────────────────────────────────────────
-async function cleanup(users, sessionIds) {
+async function cleanup(users, sessionIds, uploadedPaths = []) {
   if (sessionIds.length > 0) {
     try {
       const { data: probs } = await admin.from('problems').select('id').in('session_id', sessionIds);
@@ -235,6 +279,13 @@ async function cleanup(users, sessionIds) {
       await admin.from('problems').delete().in('session_id', sessionIds);
       await admin.from('sessions').delete().in('id', sessionIds);
     } catch (e) { log('CLEANUP', 'DB cleanup 일부 실패:', e.message); }
+  }
+  // Storage 객체 정리 (Direct Upload 경로)
+  if (uploadedPaths.length > 0) {
+    try {
+      const { error } = await admin.storage.from('analyze-uploads').remove(uploadedPaths);
+      if (error) log('CLEANUP', 'Storage cleanup 일부 실패:', error.message);
+    } catch (e) { log('CLEANUP', 'Storage cleanup 예외:', e.message); }
   }
   const userIds = users.map(u => u.userId).filter(Boolean);
   if (userIds.length > 0) {
@@ -291,11 +342,20 @@ async function main() {
     if (validUsers.length === 0) throw new Error('user 생성 모두 실패');
 
     // 3) GCF warmup — 30개 spike로 미리 인스턴스 띄움 (학원 시작 직전 시나리오)
+    // warmup도 인증 필수: 각 user의 JWT를 라운드로빈으로 사용
     log('WARMUP', '인스턴스 30개 warmup spike...');
     const warmupStart = Date.now();
-    await Promise.all(Array.from({ length: 30 }, () =>
-      fetch(`${GCF_URL}?warmup=1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => null)
-    ));
+    await Promise.all(Array.from({ length: 30 }, (_, i) => {
+      const warmupUser = validUsers[i % validUsers.length];
+      return fetch(`${GCF_URL}?warmup=1`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${warmupUser.token}`,
+        },
+        body: '{}',
+      }).catch(() => null);
+    }));
     log('WARMUP', `warmup 30개 완료 (${Date.now() - warmupStart}ms)`);
     await sleep(3000);  // 인스턴스 안정화 대기
 
@@ -406,10 +466,12 @@ async function main() {
       return {
         idx: r.idx,
         folder: r.folder,
-        payloadMB: (r.payloadBytes / 1024 / 1024).toFixed(2),
+        payloadKB: (r.payloadBytes / 1024).toFixed(1),
+        uploadElapsed: r.uploadElapsed,
         httpStatus: r.httpStatus,
         httpElapsed: r.elapsed,
         sessionId: r.sessionId,
+        uploadedPaths: r.uploadedPaths || [],
         finalStatus: sstate?.last,
         failure_stage: sstate?.failure_stage,
         failure_message: sstate?.failure_message?.slice(0, 200),
@@ -444,9 +506,17 @@ async function main() {
       writeFileSync(`load-test-results-${runId}-PARTIAL.json`, JSON.stringify(results, null, 2));
     } catch {}
   } finally {
-    log('CLEANUP', `${users.length} users / ${sessionIds.length} sessions 정리...`);
-    await cleanup(users, sessionIds);
-    log('CLEANUP', '완료');
+    const allUploadedPaths = (results.perUser || [])
+      .flatMap(r => r.uploadedPaths || [])
+      .filter(Boolean);
+    if (process.env.SKIP_CLEANUP === '1') {
+      log('CLEANUP', `skip (SKIP_CLEANUP=1) — sessions=${sessionIds.length}, users=${users.length}, paths=${allUploadedPaths.length}`);
+      log('CLEANUP', `세션 ID 목록: ${sessionIds.join(', ')}`);
+    } else {
+      log('CLEANUP', `${users.length} users / ${sessionIds.length} sessions / ${allUploadedPaths.length} storage objects 정리...`);
+      await cleanup(users, sessionIds, allUploadedPaths);
+      log('CLEANUP', '완료');
+    }
   }
 }
 

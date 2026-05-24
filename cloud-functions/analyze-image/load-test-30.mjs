@@ -114,9 +114,18 @@ async function main() {
 
     log('FIRE', `${users.length}개 GCF 동시 호출 시작 (warmup으로 인스턴스 5개 깨우기)...`);
     // 사전 warmup: 별도 5번 호출로 인스턴스 미리 깨우기 (concurrency=4, maxInstance=60)
-    await Promise.all(Array.from({ length: 5 }, () =>
-      fetch(`${GCF_URL}?warmup=1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => null)
-    ));
+    // warmup도 인증 필수: user 토큰 라운드로빈
+    await Promise.all(Array.from({ length: 5 }, (_, i) => {
+      const u = users[i % users.length];
+      return fetch(`${GCF_URL}?warmup=1`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(u?.token ? { 'Authorization': `Bearer ${u.token}` } : {}),
+        },
+        body: '{}',
+      }).catch(() => null);
+    }));
 
     log('FIRE', `${users.length}개 GCF 동시 호출 발사`);
     const fireStart = Date.now();

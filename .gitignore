@@ -34,6 +34,13 @@ env.txt
 # Netlify
 .netlify
 
+# OMC (외부 도구 상태 — 커밋 제외)
+.omc/
+
+# 부하테스트 산출물 / 로그 덤프 (커밋 제외)
+cloud-functions/analyze-image/load-test-results-*.json
+cloud-functions/analyze-image/gcf-logs-*.txt
+
 # Local test images (do not commit)
 test_image/17/
 

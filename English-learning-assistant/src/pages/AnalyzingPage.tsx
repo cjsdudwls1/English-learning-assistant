@@ -1,80 +1,89 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getSessionProgress } from '../services/db';
 import { supabase } from '../services/supabaseClient';
 
+// ─── Phase 3: Supabase Realtime 구독 (polling 제거) ───
+// - 기존: 2초마다 getSessionProgress 폴링 → DB 부하 + 응답 지연
+// - 신규: postgres_changes UPDATE 이벤트 구독 → 상태 변경 즉시 반응
+// - 안전망: Realtime 연결 실패 대비 15초 주기 longer-polling fallback
 export const AnalyzingPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [dots, setDots] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState<string | null>(null);
+  const navigatedRef = useRef(false);
 
-  // 애니메이션 텍스트 효과
   useEffect(() => {
     const interval = setInterval(() => {
       setDots(prev => prev === 3 ? 1 : prev + 1);
     }, 500);
-
     return () => clearInterval(interval);
   }, []);
 
-  // 상태 폴링
   useEffect(() => {
     if (!sessionId) {
       navigate('/stats');
       return;
     }
 
-    const checkStatus = async () => {
-      try {
-        const { status, analysisModel } = await getSessionProgress(sessionId);
-        setCurrentModel(analysisModel);
+    let mounted = true;
 
-        if (status === 'completed') {
-          navigate(`/session/${sessionId}`);
-        } else if (status === 'failed') {
-          setError('분석 중 오류가 발생했습니다. 다시 시도해주세요.');
-        }
-      } catch (err) {
-        console.error('Status check error:', err);
-        // 임시 sessionId인 경우 실제 세션을 찾아보기
-        if (sessionId.includes('_')) {
-          // 임시 sessionId인 경우, 최근 세션을 찾아서 상태 확인
-          try {
-            const { data: sessions } = await supabase
-              .from('sessions')
-              .select('id, status, analysis_model')
-              .eq('user_id', sessionId.split('_')[0])
-              .order('created_at', { ascending: false })
-              .limit(1);
-
-            if (sessions && sessions.length > 0) {
-              const recentSession = sessions[0];
-              setCurrentModel(recentSession.analysis_model);
-              if (recentSession.status === 'completed') {
-                navigate(`/session/${recentSession.id}`);
-              } else if (recentSession.status === 'failed') {
-                setError('분석 중 오류가 발생했습니다. 다시 시도해주세요.');
-              }
-            }
-          } catch (findError) {
-            console.error('Find recent session error:', findError);
-            setError('상태 확인 중 오류가 발생했습니다.');
-          }
-        } else {
-          setError('상태 확인 중 오류가 발생했습니다.');
-        }
+    const handleStatusUpdate = (status: string | null | undefined, analysisModel?: string | null) => {
+      if (!mounted || navigatedRef.current) return;
+      if (analysisModel) setCurrentModel(analysisModel);
+      if (status === 'completed') {
+        navigatedRef.current = true;
+        navigate(`/session/${sessionId}`);
+      } else if (status === 'failed') {
+        setError('분석 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
     };
 
-    // 즉시 한 번 체크
-    checkStatus();
+    // 초기 1회 조회: 페이지 진입 시점에 이미 완료/실패된 경우 즉시 반영
+    (async () => {
+      try {
+        const { status, analysisModel } = await getSessionProgress(sessionId);
+        handleStatusUpdate(status, analysisModel);
+      } catch (err) {
+        console.error('[AnalyzingPage] 초기 상태 조회 실패:', err);
+      }
+    })();
 
-    // 2초마다 상태 확인
-    const interval = setInterval(checkStatus, 2000);
+    // Realtime 구독: sessions 테이블의 UPDATE 이벤트 → status/analysis_model 변경 시 즉시 처리
+    const channel = supabase
+      .channel(`session-status:${sessionId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${sessionId}` },
+        (payload) => {
+          const next = payload.new as { status?: string | null; analysis_model?: string | null };
+          handleStatusUpdate(next.status, next.analysis_model);
+        },
+      )
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('[AnalyzingPage] Realtime 구독 실패:', status);
+        }
+      });
 
-    return () => clearInterval(interval);
+    // Realtime 연결 안정성 안전망: 15초마다 fallback polling
+    const fallbackInterval = setInterval(async () => {
+      if (navigatedRef.current) return;
+      try {
+        const { status, analysisModel } = await getSessionProgress(sessionId);
+        handleStatusUpdate(status, analysisModel);
+      } catch (err) {
+        console.error('[AnalyzingPage] fallback polling 실패:', err);
+      }
+    }, 15_000);
+
+    return () => {
+      mounted = false;
+      clearInterval(fallbackInterval);
+      supabase.removeChannel(channel);
+    };
   }, [sessionId, navigate]);
 
   const handleRetry = () => {

@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { getCurrentUserId } from './auth';
+import { resolveImageUrls } from '../../utils/imageUrl';
 
 export interface ProblemMetadataItem {
   problem_id: string;
@@ -45,7 +46,10 @@ export async function fetchProblemsMetadataByCorrectness(
   if (sErr) throw sErr;
   if (!sessions || sessions.length === 0) return [];
   const sessionMap = new Map<string, { id: string; created_at: string; image_urls: string[] | null }>();
-  for (const s of sessions) sessionMap.set(s.id, s);
+  await Promise.all(sessions.map(async (s) => {
+    const urls = await resolveImageUrls(s.image_urls);
+    sessionMap.set(s.id, { id: s.id, created_at: s.created_at, image_urls: urls });
+  }));
 
   // 2) sessions의 problems (id, session_id, content, problem_metadata)
   const sessionIds = sessions.map((s) => s.id);

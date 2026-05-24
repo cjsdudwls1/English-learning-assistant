@@ -16,15 +16,17 @@ import functions from '@google-cloud/functions-framework';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
-import { StageError, markSessionFailed } from './shared/errors.js';
+import { StageError, markSessionFailed, parseModelError } from './shared/errors.js';
 import { VERTEX_PROJECT_ID, VERTEX_LOCATION } from './shared/config.js';
 import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js';
 import { cropRegions } from './shared/imageCropper.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { executePassA, executePass0, executePassB, executePassBFullImage, executePassC, detectSubjectiveUserAnswers } from './shared/passes.js';
 import { uploadImages, createSession, saveProblems, saveLabels, finalizeAnalysisSession } from './shared/dbOperations.js';
+import { downloadImagesFromStorage } from './shared/imageDownloader.js';
 import { generateAllProblemTypes } from './shared/generateProblems.js';
 import { verifySupabaseJWT } from './shared/jwtVerify.js';
+import { publishAnalyzeJob, decodeAnalyzeJob } from './shared/pubsub.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -34,8 +36,9 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 // 원본: index.ts ANALYSIS_BATCH_SIZE (3→5: 5장 업로드 시 단일 배치로 처리)
 const ANALYSIS_BATCH_SIZE = 5;
 
-// 워치독: GCF 540s 타임아웃 전 500s에 self-abort + markSessionFailed
-const PIPELINE_WATCHDOG_MS = 500_000;
+// 워치독: GCF 540s 타임아웃 전 470s에 self-abort + markSessionFailed
+// - 540s - 470s = 70s 여유: markSessionFailed(10s timeout) + SIGTERM grace(10s) + DB 응답 지연 버퍼
+const PIPELINE_WATCHDOG_MS = 470_000;
 
 // in-flight 세션 추적: SIGTERM 시 일괄 markSessionFailed
 const inFlightSessions = new Map();
@@ -75,11 +78,54 @@ function setCorsHeaders(res) {
 }
 
 function validateRequest(body) {
-  const { images, userId } = body || {};
-  if (!images || !Array.isArray(images) || images.length === 0 || !userId) {
-    return { isValid: false, error: 'images[]와 userId가 필요합니다.' };
+  const { imagePaths, images, userId } = body || {};
+  if (!userId) {
+    return { isValid: false, error: 'userId가 필요합니다.' };
   }
-  return { isValid: true, images, userId, language: body.language };
+  // 신규 (Direct Upload): imagePaths[]만 받음 — base64 페이로드 미경유
+  if (Array.isArray(imagePaths) && imagePaths.length > 0) {
+    const MAX_IMAGES = 10;
+    if (imagePaths.length > MAX_IMAGES) {
+      return { isValid: false, error: `imagePaths는 최대 ${MAX_IMAGES}개까지 허용됩니다.` };
+    }
+    for (const p of imagePaths) {
+      if (typeof p !== 'string' || !p.trim()) {
+        return { isValid: false, error: 'imagePaths 항목은 비어있지 않은 문자열이어야 합니다.' };
+      }
+      // path traversal 차단 + bucket prefix 검증
+      if (p.includes('..') || p.startsWith('/') || p.startsWith('\\')) {
+        return { isValid: false, error: '잘못된 imagePath 형식입니다.' };
+      }
+      // RLS와 동일한 prefix 가드 (Service Role은 RLS 우회하므로 여기서 검증)
+      const firstSegment = p.split('/')[0];
+      if (firstSegment !== userId) {
+        return { isValid: false, error: 'imagePath의 user 폴더가 userId와 일치하지 않습니다.' };
+      }
+    }
+    return { isValid: true, imagePaths, userId, language: body.language };
+  }
+  // 레거시 (base64 inline): images[]
+  if (Array.isArray(images) && images.length > 0) {
+    return { isValid: true, images, userId, language: body.language };
+  }
+  return { isValid: false, error: 'imagePaths[] 또는 images[]가 필요합니다.' };
+}
+
+async function authenticateRequest(req) {
+  if (!SUPABASE_ANON_KEY) {
+    return { ok: false, status: 500, error: 'SUPABASE_ANON_KEY 환경변수가 없습니다' };
+  }
+  const jwtResult = await verifySupabaseJWT(req.get('authorization'), SUPABASE_URL, SUPABASE_ANON_KEY);
+  if (!jwtResult.valid) {
+    console.warn('[analyze-image] JWT 검증 실패:', jwtResult.error);
+    return { ok: false, status: 401, error: 'Unauthorized: ' + jwtResult.error };
+  }
+  const bodyUserId = req.body?.userId;
+  if (bodyUserId && bodyUserId !== jwtResult.userId) {
+    console.warn(`[analyze-image] userId 불일치: body=${bodyUserId}, jwt=${jwtResult.userId}`);
+    return { ok: false, status: 403, error: 'Forbidden: userId does not match token' };
+  }
+  return { ok: true, userId: jwtResult.userId };
 }
 
 function buildAIClient() {
@@ -515,12 +561,23 @@ functions.http('analyzeImage', async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   if (req.query?.warmup === '1') {
+    // keep-warm 핑(Cloud Scheduler): DB/AI 미접근·즉시 200이라 인증 불필요.
+    // Supabase JWT 검증을 걸면 Scheduler가 사용자 토큰을 보낼 수 없어 매 핑마다 401 →
+    // 콜드스타트 방지 무효 + 로그 노이즈 + alert 오발동. 빈 200만 반환하므로 익명 spike도 quota 미소진.
+    // (실제 분석/generate-all 경로는 아래에서 여전히 JWT 필수)
     res.status(200).json({ ok: true, warmup: true });
     return;
   }
 
   if (req.body?.mode === 'generate-all') {
     await handleGenerateAll(req, res);
+    return;
+  }
+
+  // JWT 검증 + userId 일치 가드 (악의적 호출로 quota 소진 방지)
+  const authResult = await authenticateRequest(req);
+  if (!authResult.ok) {
+    res.status(authResult.status).json({ error: authResult.error });
     return;
   }
 
@@ -531,7 +588,14 @@ functions.http('analyzeImage', async (req, res) => {
     const validation = validateRequest(req.body);
     if (!validation.isValid) { res.status(400).json({ error: validation.error }); return; }
 
-    const { images, userId, language } = validation;
+    const { imagePaths, images, userId, language } = validation;
+    const useDirectUpload = Array.isArray(imagePaths) && imagePaths.length > 0;
+    const imageCount = useDirectUpload ? imagePaths.length : images.length;
+
+    if (userId !== authResult.userId) {
+      res.status(403).json({ error: 'Forbidden: userId does not match token' });
+      return;
+    }
 
     // ── 언어 설정: 프론트엔드 전달값 → DB profiles → 기본값 'ko' ──
     // 원본: index.ts:81-93
@@ -555,17 +619,34 @@ functions.http('analyzeImage', async (req, res) => {
 
     const ai = buildAIClient();
 
-    console.log(`[handler] ${images.length}개 이미지 분석 시작 (userId: ${userId}, language: ${userLanguage})`);
+    console.log(`[handler] ${imageCount}개 이미지 분석 시작 (userId: ${userId}, language: ${userLanguage}, mode: ${useDirectUpload ? 'direct-upload' : 'legacy-inline'})`);
 
-    // 즉시 sessionId 발급 (image_urls는 빈 배열로 — 백그라운드에서 채움)
-    // 30+ 동시 요청 시 uploadImages를 응답 전에 동기 실행하면 5분+ 지연되어 client fetch가 끊김
-    sessionId = await createSession(supabase, userId, []);
-    console.log(`[handler] 세션 생성 (즉시 응답용): ${sessionId}`);
+    // Direct Upload 경로: image_urls 컬럼에 storage path 그대로 저장.
+    // C7 fix v2: bucket private + signed URL 영구 저장 시 24h 만료 → history 깨짐.
+    // frontend가 표시 시점에 createSignedUrl로 변환하도록 책임 이관 (utils/imageUrl.ts).
+    const initialImageUrls = useDirectUpload ? imagePaths : [];
+    sessionId = await createSession(supabase, userId, initialImageUrls);
+    console.log(`[handler] 세션 생성: ${sessionId}`);
 
-    // 즉시 응답 반환 — 업로드/분석은 백그라운드로
+    if (useDirectUpload) {
+      // ── Phase 3 아키텍처: Pub/Sub 큐 게재 → analyze-worker가 처리 ──
+      // 장점: analyze-image는 가벼운 publish만 수행 → max-instances 작게 유지, 안정적 throughput
+      try {
+        await publishAnalyzeJob({ sessionId, userId, imagePaths, userLanguage });
+      } catch (publishError) {
+        console.error('[handler] Pub/Sub publish 실패:', publishError?.message, { sessionId });
+        await markSessionFailed(supabase, sessionId, 'pubsub_publish', publishError);
+        res.status(500).json({ error: 'Pub/Sub publish 실패', sessionId });
+        return;
+      }
+      res.status(200).json({ success: true, sessionId, queued: true });
+      return;
+    }
+
+    // ── 레거시 inline base64 경로: 기존 in-process 백그라운드 처리 유지 ──
+    // (Pub/Sub message는 10MB 제한이라 base64 페이로드를 옮길 수 없음)
     res.status(200).json({ success: true, sessionId });
 
-    // 백그라운드 파이프라인: try/catch/finally + 워치독 + SIGTERM 추적으로 좀비 세션 차단
     const abortCtrl = new AbortController();
     const watchdog = setTimeout(async () => {
       console.error(`[handler] 워치독 타임아웃 (${PIPELINE_WATCHDOG_MS}ms): self-abort + markSessionFailed`, { sessionId });
@@ -581,10 +662,10 @@ functions.http('analyzeImage', async (req, res) => {
 
     (async () => {
       try {
-        const imageUrls = await uploadImages(supabase, images, userId);
+        const legacyUrls = await uploadImages(supabase, images, userId);
         const { error: updateError } = await supabase
           .from('sessions')
-          .update({ image_urls: imageUrls })
+          .update({ image_urls: legacyUrls })
           .eq('id', sessionId);
         if (updateError) {
           console.warn('[handler] image_urls 업데이트 실패 (분석은 계속):', updateError?.message, { sessionId });
@@ -617,5 +698,138 @@ functions.http('analyzeImage', async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ error: error?.message || '서버 내부 오류', sessionId });
     }
+  }
+});
+
+// ─── Pub/Sub Worker 엔트리포인트 (Phase 3) ──────────────────
+// gcloud functions deploy analyze-worker --entry-point=analyzeWorker --trigger-topic=analyze-jobs
+//
+// Pub/Sub 메시지: { sessionId, userId, imagePaths, userLanguage }
+// 1) imagePaths → Storage 다운로드 → base64
+// 2) runAnalysisPipeline (Pass A/0/B/C → DB 저장 → finalizeAnalysisSession)
+// 3) 워치독 470s + abort + markSessionFailed
+//
+// Worker가 throw하면 Pub/Sub가 재시도 (메시지 ack 안 함) — at-least-once delivery
+// 중복 방지: 세션 status='completed' 또는 'failed'면 worker가 즉시 ack 후 종료
+functions.cloudEvent('analyzeWorker', async (cloudEvent) => {
+  let payload;
+  try {
+    payload = decodeAnalyzeJob(cloudEvent.data?.message);
+  } catch (decodeError) {
+    console.error('[worker] payload 디코드 실패 (메시지 폐기):', decodeError?.message);
+    return; // ack — 재시도해도 같은 메시지라 무한 루프 방지
+  }
+  const { sessionId, userId, imagePaths, userLanguage } = payload;
+  console.log(`[worker] 작업 시작: sessionId=${sessionId}, userId=${userId}, images=${imagePaths.length}, lang=${userLanguage}`);
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  // ── C1 fix v4: atomic CAS 멱등성 (단일 status .eq 매치) ──
+  // 1) 사전 SELECT: orphan/completed/failed 조기 ack + lease 만료 판정 (정보 채집)
+  // 2) atomic CAS: UPDATE ... WHERE id=? AND status=<expected>
+  //    - expected = 'pending' (정상 케이스) 또는 'processing' (lease 만료 시 takeover)
+  //    - 두 worker가 동시 도착해도 PostgreSQL의 UPDATE row-level lock으로 한 명만 성공
+  //    - PostgREST의 nested or(and(...)) 문법은 timestamp 인코딩 등에서 fragile → 단순 .eq()로 회피
+  const nowISO = new Date().toISOString();
+  let expectedStatus = 'pending';
+  try {
+    const { data: existing, error: selectErr } = await supabase
+      .from('sessions')
+      .select('status, updated_at')
+      .eq('id', sessionId)
+      .maybeSingle();
+    if (selectErr) {
+      console.warn('[worker] 세션 status 사전 조회 실패 (pending 가정으로 계속):', selectErr.message, { sessionId });
+    } else if (!existing) {
+      console.warn(`[worker] session row 없음 → orphan message ack`, { sessionId });
+      return;
+    } else if (existing.status === 'completed' || existing.status === 'failed') {
+      console.warn(`[worker] 세션이 이미 ${existing.status} 상태: ack 후 종료`, { sessionId });
+      return;
+    } else if (existing.status === 'processing') {
+      const ageMs = existing.updated_at ? (Date.now() - new Date(existing.updated_at).getTime()) : 0;
+      if (ageMs < 8 * 60 * 1000) {
+        console.warn(`[worker] 다른 worker가 ${Math.round(ageMs/1000)}s 전 처리 중 (lease 8m): ack 후 종료`, { sessionId });
+        return;
+      }
+      // lease 만료 → takeover 시도
+      expectedStatus = 'processing';
+      console.warn(`[worker] lease 만료 (${Math.round(ageMs/1000)}s) → takeover 시도`, { sessionId });
+    }
+  } catch (selectError) {
+    console.warn('[worker] 세션 status 사전 조회 예외 (pending 가정으로 계속):', selectError?.message, { sessionId });
+  }
+
+  try {
+    const { data: leased, error: leaseErr } = await supabase
+      .from('sessions')
+      .update({ status: 'processing', updated_at: nowISO })
+      .eq('id', sessionId)
+      .eq('status', expectedStatus)
+      .select('id');
+    if (leaseErr) {
+      console.error('[worker] CAS lease 시도 실패 (transient → Pub/Sub retry):', leaseErr.message, { sessionId });
+      throw new StageError('lease_cas_failed', leaseErr);
+    }
+    if (!leased || leased.length === 0) {
+      console.warn(`[worker] CAS lease 실패 (expected=${expectedStatus}): 다른 worker가 status 변경. ack 후 종료`, { sessionId });
+      return;
+    }
+    console.log('[worker] CAS lease 획득', { sessionId, expectedStatus });
+  } catch (leaseException) {
+    if (leaseException instanceof StageError) throw leaseException;
+    console.error('[worker] CAS lease 예외 (transient → Pub/Sub retry):', leaseException?.message, { sessionId });
+    throw new StageError('lease_cas_exception', leaseException);
+  }
+
+  const abortCtrl = new AbortController();
+  const watchdog = setTimeout(async () => {
+    console.error(`[worker] 워치독 타임아웃 (${PIPELINE_WATCHDOG_MS}ms): self-abort + markSessionFailed`, { sessionId });
+    abortCtrl.abort();
+    try {
+      await markSessionFailed(supabase, sessionId, 'watchdog_timeout', new Error('Worker 파이프라인 워치독 초과'));
+    } catch (e) {
+      console.error('[worker] 워치독 markSessionFailed 실패:', e?.message, { sessionId });
+    }
+  }, PIPELINE_WATCHDOG_MS);
+
+  inFlightSessions.set(sessionId, { abortCtrl, startedAt: Date.now() });
+
+  try {
+    // C1 fix: validateVertexAuth를 try 블록 안으로 이동 — 인증 실패는 영구 결함이므로 markSessionFailed + ack
+    await validateVertexAuth(supabase, sessionId);
+    const ai = buildAIClient();
+    const pipelineImages = await downloadImagesFromStorage(supabase, imagePaths, sessionId);
+    await runAnalysisPipeline(supabase, ai, sessionId, pipelineImages, userLanguage);
+    console.log(`[worker] 완료: ${sessionId}`);
+  } catch (pipelineError) {
+    if (abortCtrl.signal.aborted) {
+      console.warn('[worker] 파이프라인 abort됨:', pipelineError?.message, { sessionId });
+      // abort는 영구 — markSessionFailed 이미 워치독에서 처리
+      return;
+    }
+    console.error('[worker] 파이프라인 오류:', pipelineError?.message, { sessionId });
+    const stage = pipelineError instanceof StageError ? pipelineError.stage : 'unknown';
+
+    // C1 fix: transient error는 throw → Pub/Sub exponential backoff 재시도 활용
+    // (rate_limit / server_overload / timeout — 단기 인프라 결함)
+    // permanent error는 markSessionFailed + ack
+    const parsed = parseModelError(pipelineError);
+    const isTransient = parsed.isRateLimit || parsed.isServerOverload || parsed.isTimeout;
+
+    if (isTransient) {
+      console.warn('[worker] transient error → Pub/Sub retry로 위임:', { sessionId, stage, ...parsed });
+      throw pipelineError; // NACK → Pub/Sub가 exponential backoff로 재시도
+    }
+
+    try {
+      await markSessionFailed(supabase, sessionId, stage, pipelineError);
+    } catch (failError) {
+      console.error('[worker] markSessionFailed 실패:', failError?.message, { sessionId });
+    }
+    // permanent error는 throw하지 않음 → ack
+  } finally {
+    clearTimeout(watchdog);
+    inFlightSessions.delete(sessionId);
   }
 });
