@@ -160,6 +160,7 @@ export async function callModelWithFailover({ ai, sessionId, parts, preferredMod
     ? [preferredModel, ...MODEL_SEQUENCE.filter(modelName => modelName !== preferredModel)]
     : [...MODEL_SEQUENCE];
 
+  let lastResult = null;
   for (const model of sequence) {
     const policy = MODEL_RETRY_POLICY[model] || { maxRetries: 1, baseDelayMs: 3000 };
     try {
@@ -173,11 +174,27 @@ export async function callModelWithFailover({ ai, sessionId, parts, preferredMod
       });
       const text = extractTextFromResponse(response, model);
       const parsed = parseJsonResponse(text, model);
+      lastResult = { model, parsed, usageMetadata };
+
+      // 빈 결과(items/problems 0개)는 동시 호출 부하 하의 간헐적 빈 응답일 수 있다
+      // (모델이 thinking에 토큰을 소진하고 출력이 비는 현상 관찰됨) → 다음 모델로 failover.
+      // 실제 빈/blank 페이지라면 모든 모델이 빈 결과를 내고, 루프 종료 후 마지막 결과를 반환한다.
+      const itemCount = (parsed?.items?.length ?? 0) + (parsed?.problems?.length ?? 0);
+      if (itemCount === 0) {
+        console.warn(`[aiClient] 모델 ${model} 빈 결과(0 items), 다음 모델로 failover`, { sessionId });
+        continue;
+      }
       return { model, parsed, usageMetadata };
     } catch (modelError) {
       console.warn(`[aiClient] 모델 ${model} 실패, 다음 모델 시도...`, { sessionId, error: modelError?.message });
       continue;
     }
+  }
+
+  // 모든 모델이 빈 결과를 반환한 경우(예: 실제 빈 페이지)에는 마지막 파싱 결과라도 반환
+  if (lastResult) {
+    console.warn(`[aiClient] 모든 모델이 빈 결과 반환, 마지막 결과 사용`, { sessionId });
+    return lastResult;
   }
 
   throw new StageError('all_models_failed', '모든 모델 호출 실패');

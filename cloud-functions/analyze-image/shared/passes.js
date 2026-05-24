@@ -19,6 +19,18 @@ import {
   buildHandwritingDetectionPrompt,
 } from './prompts.js';
 
+// 원문자(①②③④⑤…) → ASCII 숫자 정규화 백스톱.
+// 프롬프트로 ASCII 출력을 지시해도 모델이 간헐적으로 원문자를 반환하므로 코드 레벨에서 강제 변환한다.
+const CIRCLED_TO_ASCII = { '①': '1', '②': '2', '③': '3', '④': '4', '⑤': '5', '⑥': '6', '⑦': '7', '⑧': '8', '⑨': '9', '⑩': '10' };
+function normalizeChoiceValue(v) {
+  if (v == null) return v;
+  let s = String(v);
+  for (const [glyph, digit] of Object.entries(CIRCLED_TO_ASCII)) {
+    if (s.includes(glyph)) s = s.split(glyph).join(digit);
+  }
+  return s;
+}
+
 /**
  * 모델 시퀀스를 순서대로 시도하고 첫 성공 결과를 반환
  * @param {{ models: string[], callFn: (model: string) => Promise<any> }} opts
@@ -142,8 +154,8 @@ async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionCo
             const parsed = parseJsonResponse(text, model);
             return {
               problem_number: parsed.problem_number || crop.problem_number,
-              user_answer: parsed.user_answer ?? null,
-              correct_answer: parsed.correct_answer ?? null,
+              user_answer: normalizeChoiceValue(parsed.user_answer ?? null),
+              correct_answer: normalizeChoiceValue(parsed.correct_answer ?? null),
             };
           } catch (err) {
             console.warn(`[passes:detectFromCrops] Q${crop.problem_number} ${model} 실패: ${err?.message}, 다음 모델로 폴백`);
@@ -326,6 +338,8 @@ export async function executePassBFullImage({ ai, sessionId, imageBase64, mimeTy
       // marks 누적 (problem_number 기준 중복 제거, 기존 null → 새 값으로 업데이트)
       if (marks.length > 0) {
         for (const mark of marks) {
+          mark.user_answer = normalizeChoiceValue(mark.user_answer);
+          mark.correct_answer = normalizeChoiceValue(mark.correct_answer);
           const key = String(mark.problem_number);
           const existing = marksMap.get(key);
           if (!existing) {
