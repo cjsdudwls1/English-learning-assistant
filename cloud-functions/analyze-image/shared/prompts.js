@@ -247,6 +247,9 @@ ${focusBlock}
 - user_answer = physical marks/writing on paper (do NOT correct spelling or grammar)
 - correct_answer = your independent solution (the actually correct answer)
 - Do NOT copy user_answer into correct_answer
+- Do NOT copy the solved correct_answer into user_answer — user_answer must come from the physical pencil/pen mark only
+- Grading-mark disambiguation: students sometimes self-grade AFTER the exam. If for one problem you see BOTH an X mark on one number AND an O/circle on a DIFFERENT number, the X-marked number = user_answer (their original choice); the O-marked number is the correct answer they added later — do NOT report that O as user_answer. If only marks on ONE number (no X), that number IS user_answer.
+- user_answer precision: if a mark seems present but you cannot confidently tell which single choice it sits on (faint, ambiguous, or spanning two numbers), return null for user_answer — do NOT guess. A wrong answer is worse than null.
 - Report ALL problems visible
 ${imageCount > 1 ? `- You have ${imageCount} pages. Report each problem ONCE.` : ''}
 </critical_rules>

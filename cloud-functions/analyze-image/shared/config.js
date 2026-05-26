@@ -35,7 +35,17 @@ export const MODEL_RETRY_POLICY = {
 
 export const EXTRACTION_TEMPERATURE = 0.0;
 
-/** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 (GA 우선) */
+/** §4 user_answer 교차뷰 확인(consensus). 기본 OFF → prod 30명 동시부하 무영향.
+ *  ON(=‘1’) 시: answerArea 기반 비-null user_answer를 fullCrop(다른 뷰)으로 1회 교차확인,
+ *  불일치하면 null(기권, 정밀도 우선). 문항당 +1 호출 상한(N×아님).
+ */
+export const USER_ANSWER_CONSENSUS = process.env.USER_ANSWER_CONSENSUS === '1';
+
+/** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 (GA 우선)
+ *  - 실험(2026-05-25): Pass 0 1순위를 3.1-flash-lite로 바꾸면 분할 품질이 회귀.
+ *    Q37(36~37 지문공유) 마크를 fallback에서 복구 못 함(2.5는 2/2 복구), Q41/42 병합.
+ *    → 2.5-flash 1순위 유지. 자세한 근거: jobs/60bf0b52 실험 로그.
+ */
 export const LIGHTWEIGHT_MODEL_SEQUENCE = [
   'gemini-2.5-flash',
   'gemini-3.1-flash-lite',

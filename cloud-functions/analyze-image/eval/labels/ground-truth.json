@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "exam": "자이스토리 전국연합학력평가 고1 영어 2021.6 6회 (p98~101) + 20250420 어법 학습지",
+    "scoring": "precision-first",
+    "tier": "A (human-labeled, gold)",
+    "notes": [
+      "precision-first: 'value'가 단일이면 정확값. null 반환은 miss(=recall 손실, 허용) 이고, 다른 값 반환은 confident-wrong(=가장 해로움).",
+      "user_answer.ambiguous=true 면 학생이 흐릿/복수 마킹한 문항. accept 집합 ∈ → correct, null → abstain(허용), 그 외 → wrong.",
+      "type=text 는 서술형 손글씨. 정규화 fuzzy 매칭으로 별도 채점(주요 정밀도 지표에서 제외).",
+      "correct_answer 는 항상 단일값, null_ok=false (null=miss)."
+    ]
+  },
+  "pages": [
+    {
+      "image": "맨 처음 받은거/20250420_134039.jpg",
+      "page_label": "어법 학습지 1쪽 (Q1~9)",
+      "questions": [
+        { "problem_number": "1", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "4" } },
+        { "problem_number": "2", "type": "mc", "user_answer": { "value": "2" }, "correct_answer": { "value": "2" } },
+        { "problem_number": "3", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "3" } },
+        { "problem_number": "4", "type": "mc", "user_answer": { "value": "2" }, "correct_answer": { "value": "2" } },
+        { "problem_number": "5", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "3" } },
+        { "problem_number": "6", "type": "text", "user_answer": { "value": "cutting" }, "correct_answer": { "value": "cutting" } },
+        { "problem_number": "7", "type": "text", "user_answer": { "value": "Are" }, "correct_answer": { "value": "Are" } },
+        { "problem_number": "8", "type": "text", "user_answer": { "value": "aren't going to clear the streets after school" }, "correct_answer": { "value": "aren't going to clean the streets after school" } },
+        { "problem_number": "9", "type": "text", "user_answer": { "value": "We planning lot of events for children" }, "correct_answer": { "value": "We are planning a lot of events for children" } }
+      ]
+    },
+    {
+      "image": "이어지는 지문/KakaoTalk_20251202_101043325_06.jpg",
+      "page_label": "p101 (Q28~31)",
+      "questions": [
+        { "problem_number": "28", "type": "mc", "user_answer": { "ambiguous": true, "accept": ["1", "2"], "null_ok": true }, "correct_answer": { "value": "4" } },
+        { "problem_number": "29", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "5" } },
+        { "problem_number": "30", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "3" } },
+        { "problem_number": "31", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "1" } }
+      ]
+    },
+    {
+      "image": "이어지는 지문/KakaoTalk_20251202_101043325_07.jpg",
+      "page_label": "p100 (Q25~27)",
+      "questions": [
+        { "problem_number": "25", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "5" } },
+        { "problem_number": "26", "type": "mc", "user_answer": { "value": "5" }, "correct_answer": { "value": "3" } },
+        { "problem_number": "27", "type": "mc", "user_answer": { "value": "2" }, "correct_answer": { "value": "5" } }
+      ]
+    },
+    {
+      "image": "이어지는 지문/KakaoTalk_20251202_101043325_08.jpg",
+      "page_label": "p99 (Q22~24)",
+      "questions": [
+        { "problem_number": "22", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "5" } },
+        { "problem_number": "23", "type": "mc", "user_answer": { "ambiguous": true, "accept": ["4", "5"], "null_ok": true }, "correct_answer": { "value": "2" } },
+        { "problem_number": "24", "type": "mc", "user_answer": { "value": "5" }, "correct_answer": { "value": "1" } }
+      ]
+    },
+    {
+      "image": "이어지는 지문/KakaoTalk_20251202_101043325_09.jpg",
+      "page_label": "p98 (Q18~21)",
+      "questions": [
+        { "problem_number": "18", "type": "mc", "user_answer": { "ambiguous": true, "accept": ["2", "3"], "null_ok": true }, "correct_answer": { "value": "1" } },
+        { "problem_number": "19", "type": "mc", "user_answer": { "value": "2" }, "correct_answer": { "value": "3" } },
+        { "problem_number": "20", "type": "mc", "user_answer": { "ambiguous": true, "accept": ["3", "4"], "null_ok": true }, "correct_answer": { "value": "1" } },
+        { "problem_number": "21", "type": "mc", "user_answer": { "value": "1" }, "correct_answer": { "value": "3" } }
+      ]
+    }
+  ]
+}

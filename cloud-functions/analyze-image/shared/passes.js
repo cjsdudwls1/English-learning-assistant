@@ -32,6 +32,21 @@ function normalizeChoiceValue(v) {
 }
 
 /**
+ * MC 답안 범위 정합성(§3 하드닝): 객관식 답이 '한 자리 숫자인데 1~5 밖'이면 null로 무효화.
+ * - 선택지 범위(1~5) 위반은 명백한 오인 → confident-wrong보다 null(기권)이 안전(정밀도 우선).
+ * - 서술형(isSubjective)은 텍스트 답이므로 절대 건드리지 않는다.
+ * - 여러 자리/단어 등은 보존(여기서 과도하게 null하지 않음 — 상위 폴백이 처리).
+ */
+function sanitizeMcAnswer(value, isSubjective) {
+  if (value == null) return null;
+  if (isSubjective) return value;
+  const s = String(value).trim();
+  if (s === '') return null;
+  if (/^[0-9]$/.test(s)) return /^[1-5]$/.test(s) ? s : null;
+  return value;
+}
+
+/**
  * 모델 시퀀스를 순서대로 시도하고 첫 성공 결과를 반환
  * @param {{ models: string[], callFn: (model: string) => Promise<any> }} opts
  * @returns {Promise<any>} 성공한 모델의 결과, 모두 실패 시 null 반환
@@ -152,10 +167,11 @@ async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionCo
             lastUsageMetadata = usageMetadata;
             const text = extractTextFromResponse(response, model);
             const parsed = parseJsonResponse(text, model);
+            const isSubjective = questionContext?.isSubjective;
             return {
               problem_number: parsed.problem_number || crop.problem_number,
-              user_answer: normalizeChoiceValue(parsed.user_answer ?? null),
-              correct_answer: normalizeChoiceValue(parsed.correct_answer ?? null),
+              user_answer: sanitizeMcAnswer(normalizeChoiceValue(parsed.user_answer ?? null), isSubjective),
+              correct_answer: sanitizeMcAnswer(normalizeChoiceValue(parsed.correct_answer ?? null), isSubjective),
             };
           } catch (err) {
             console.warn(`[passes:detectFromCrops] Q${crop.problem_number} ${model} 실패: ${err?.message}, 다음 모델로 폴백`);
@@ -237,6 +253,14 @@ export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, 
 
   const mergedMarks = mergeUserAndCorrectMarks(userResult.marks, correctResult.marks);
 
+  // §4 교차뷰 확인 대상 식별용: answerArea(주 뷰)에서 비-null로 잡힌 문항만 추적.
+  // (null-retry로 fullCrop에서 채워진 답은 동일 뷰 재확인이 되므로 대상에서 제외)
+  const answerAreaPns = new Set(
+    userResult.marks
+      .filter(m => m.user_answer != null && String(m.user_answer).trim() !== '')
+      .map(m => String(m.problem_number))
+  );
+
   // ── 정밀 보충: user_answer가 null인 문제를 fullCrop에서 재독해 ──
   // answer_area_bbox가 좁거나 빗나가 선택지 번호 위 마크(예: ③에 친 동그라미)를 놓치면
   // user_answer=null이 된다. fullCrop은 문제 전체(선택지 ①~⑤ 포함) + 2배 확대 + 문제별 격리라
@@ -270,6 +294,41 @@ export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, 
         }
       } else {
         mergedMarks.push({ problem_number: String(rm.problem_number), user_answer: rm.user_answer, correct_answer: null });
+      }
+    }
+  }
+
+  // ── §4 user_answer 교차뷰 확인 (consensus, feature-flag, 기본 OFF) ──
+  // answerArea(주 뷰)에서 비-null로 잡힌 user_answer를 fullCrop(다른 뷰)으로 1회 교차확인.
+  //  · 일치 → 유지(고신뢰)  · fullCrop=null → answerArea 유지(fullCrop은 마크 누락 잦음)
+  //  · 불일치(둘 다 비-null, 값 다름) → null(기권). '자신있는 오답'은 null보다 해롭다(정밀도 우선).
+  // 부하: 문항당 +1 호출 상한(N×아님). 기본 OFF라 prod 30명 동시부하 무영향.
+  if (config.USER_ANSWER_CONSENSUS && answerAreaPns.size > 0) {
+    const confirmCrops = fullCrops.filter(fc => {
+      const pn = String(fc.problem_number);
+      if (!answerAreaPns.has(pn)) return false;
+      const ctx = questionContextMap?.get(pn);
+      return !ctx?.isSubjective; // 서술형 제외(텍스트 교차확인 무의미)
+    });
+    if (confirmCrops.length > 0) {
+      console.log(`[passes:PassB] consensus 교차확인 ${confirmCrops.length}개: [${confirmCrops.map(c => c.problem_number).join(',')}]`, { sessionId });
+      const confirmResult = await detectFromCrops({
+        ai, sessionId, crops: confirmCrops,
+        buildPromptFn: (pn, ctx) => buildCroppedUserAnswerPrompt(pn, ctx, true), // isFullCrop=true
+        questionContextMap, temperature: 0.0,
+        modelSequence: USER_ANSWER_MODEL_SEQUENCE,
+      });
+      const confirmMap = new Map(confirmResult.marks.map(m => [String(m.problem_number), m.user_answer]));
+      for (const m of mergedMarks) {
+        const pn = String(m.problem_number);
+        if (!answerAreaPns.has(pn)) continue;
+        if (m.user_answer == null || String(m.user_answer).trim() === '') continue;
+        const conf = confirmMap.get(pn);
+        if (conf == null || String(conf).trim() === '') continue; // fullCrop 미검출 → 유지
+        if (String(conf).trim() !== String(m.user_answer).trim()) {
+          console.log(`[passes:PassB] consensus 불일치 Q${pn}: answerArea=${m.user_answer} ≠ fullCrop=${conf} → null(기권)`, { sessionId });
+          m.user_answer = null;
+        }
       }
     }
   }

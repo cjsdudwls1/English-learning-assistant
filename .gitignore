@@ -41,6 +41,9 @@ env.txt
 cloud-functions/analyze-image/load-test-results-*.json
 cloud-functions/analyze-image/gcf-logs-*.txt
 
+# eval 하네스 실행 산출물 (재생성 가능, 커밋 제외)
+cloud-functions/analyze-image/eval/results/
+
 # Local test images (do not commit)
 test_image/17/
 

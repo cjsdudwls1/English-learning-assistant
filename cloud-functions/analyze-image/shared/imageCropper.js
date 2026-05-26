@@ -21,6 +21,23 @@ const PAD_RIGHT = 0.02;
 const PAD_BOTTOM = 0.03;
 
 /**
+ * bbox 좌표 복구(§3 하드닝): 0~1000 클램프 + x1>x2/y1>y2 swap + 과소영역 무효화.
+ * - 유효한 bbox(좌표 정상)는 그대로 통과 → 정상 케이스 행위 불변(회귀 불가).
+ * - Pass 0가 간헐적으로 내는 좌표 뒤집힘/범위이탈만 복구해 크롭 손실을 줄인다.
+ * @returns {{x1,y1,x2,y2}|null} 복구 불가(NaN/과소)면 null
+ */
+function sanitizeBbox(bbox) {
+  if (!bbox) return null;
+  const cl = v => Math.min(1000, Math.max(0, Number(v)));
+  let x1 = cl(bbox.x1), y1 = cl(bbox.y1), x2 = cl(bbox.x2), y2 = cl(bbox.y2);
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  if (x1 > x2) { const t = x1; x1 = x2; x2 = t; }
+  if (y1 > y2) { const t = y1; y1 = y2; y2 = t; }
+  if (x2 - x1 < 5 || y2 - y1 < 5) return null; // 정규화 5단위 미만 = 사실상 빈 영역
+  return { x1, y1, x2, y2 };
+}
+
+/**
  * 정규화된 bbox를 픽셀 좌표로 변환 (+ 안전 패딩, 이미지 경계로 클램프)
  * bbox 좌표는 0~1000 범위 (정규화 좌표, 프롬프트 기준)
  */
@@ -70,9 +87,10 @@ export async function cropRegions(imageBase64, mimeType, bboxes) {
   for (const bbox of bboxes) {
     const problemNumber = String(bbox.problem_number);
 
-    if (bbox.answer_area_bbox) {
+    const answerBbox = sanitizeBbox(bbox.answer_area_bbox);
+    if (answerBbox) {
       try {
-        const croppedBase64 = await cropSingleRegion(imageBuffer, bbox.answer_area_bbox, imgWidth, imgHeight);
+        const croppedBase64 = await cropSingleRegion(imageBuffer, answerBbox, imgWidth, imgHeight);
         if (croppedBase64) {
           answerAreaCrops.push({ problem_number: problemNumber, croppedBase64, mimeType: 'image/jpeg' });
         }
@@ -81,9 +99,10 @@ export async function cropRegions(imageBase64, mimeType, bboxes) {
       }
     }
 
-    if (bbox.full_bbox) {
+    const fullBbox = sanitizeBbox(bbox.full_bbox);
+    if (fullBbox) {
       try {
-        const croppedBase64 = await cropSingleRegion(imageBuffer, bbox.full_bbox, imgWidth, imgHeight);
+        const croppedBase64 = await cropSingleRegion(imageBuffer, fullBbox, imgWidth, imgHeight);
         if (croppedBase64) {
           fullCrops.push({ problem_number: problemNumber, croppedBase64, mimeType: 'image/jpeg' });
         }
