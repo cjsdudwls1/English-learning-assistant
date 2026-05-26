@@ -40,7 +40,8 @@ gcloud functions deploy $FUNCTION_NAME `
   --max-instances=20 `
   --min-instances=0 `
   --concurrency=80 `
-  --env-vars-file=.env.yaml
+  --env-vars-file=.env.yaml `
+  --format=none  # 성공 시 serviceConfig(secret 포함) stdout 덤프 차단
 
 if (-not $?) { throw '배포 실패' }
 Write-Host "[deploy-image] 완료"

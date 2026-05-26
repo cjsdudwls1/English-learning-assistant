@@ -35,6 +35,7 @@ gcloud functions deploy "$FUNCTION_NAME" \
   --cpu=2 \
   --max-instances=40 \
   --concurrency=1 \
-  --env-vars-file=.env.yaml
+  --env-vars-file=.env.yaml \
+  --format=none  # 성공 시 serviceConfig(secret 포함) stdout 덤프 차단
 
 echo "[deploy-worker] 완료"
