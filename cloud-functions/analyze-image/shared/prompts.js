@@ -25,8 +25,9 @@ ${ocrSection}
 
 ## CRITICAL: Korean exam pages often have TWO COLUMNS
 Scan BOTH columns. Each column may contain 2-4 problems stacked top-to-bottom.
-EVERY printed question number (e.g. "22", "23", "24", "25") MUST appear as a separate item in the output.
-MISSING a problem number is the most common failure — count them carefully and verify nothing is skipped.
+EVERY printed question number (e.g. "22", "23", "24", "25") that BELONGS TO THIS PAGE MUST appear as a separate item in the output.
+MISSING a problem number that belongs to this page is the most common failure — count them carefully and verify nothing is skipped.
+BUT beware the opposite failure: a phone photo often catches a thin SLICE of an ADJACENT page at the top or bottom edge. A number printed in such a cut-off slice — where the question text/choices are mostly OUTSIDE the frame and you mainly see a number or a range-header (e.g. "[11~12]", "고난도 [11-12]") — does NOT belong to this page. Still output it, but set "is_fragment": true (Rule 9), and NEVER invent/guess the missing question body, choices, or answer for it.
 
 ## Rules
 1. **Read directly from the image.** Extract ALL printed text verbatim. Do NOT summarize or skip any part.
@@ -37,12 +38,14 @@ MISSING a problem number is the most common failure — count them carefully and
 6. For charts/notices/ads: use visual_context {type, title, content} to capture the visual element; put accompanying text in passage.
 7. **problem_number is MANDATORY.** Read the bold printed number at the start of each question (e.g., "28", "29"). Never leave it blank. If a range like "[31~34]" appears, each sub-question still gets its own number.
 8. **Coverage check.** Before finalizing output, scan the page once more and confirm: every printed bold number that starts a problem is included in items[]. If you find 3 problem numbers but extracted only 2 items, you missed one — re-extract.
+9. **Fragment flag (guard against over-extraction).** For EVERY item, set "is_fragment": true ONLY when it is NOT a real, self-contained question on this page — i.e. it is cut off by the page boundary or bleeds in from an adjacent page, so all you can see is its number or a range-header (e.g. "[11~12]", "고난도 [11-12]") with essentially no real instruction, no choices, and no complete question sentence (a stray cut-off scrap like "a home." counts as fragment). A fully-visible question — one that has a real instruction, OR choices, OR a complete question sentence — MUST be "is_fragment": false. When in doubt, use false (keep it). NEVER set true merely because choices are absent: short-answer/서술형 questions legitimately have no choices and are NOT fragments.
 
 ## Output (JSON only, no markdown)
 {
   "shared_passages": [{ "id": "43-45", "text": "..." }],
   "items": [{
     "problem_number": "25",
+    "is_fragment": false,
     "shared_passage_ref": null,
     "passage": "...",
     "visual_context": null,
@@ -251,6 +254,7 @@ ${focusBlock}
 - Grading-mark disambiguation: students sometimes self-grade AFTER the exam. If for one problem you see BOTH an X mark on one number AND an O/circle on a DIFFERENT number, the X-marked number = user_answer (their original choice); the O-marked number is the correct answer they added later — do NOT report that O as user_answer. If only marks on ONE number (no X), that number IS user_answer.
 - user_answer precision: if a mark seems present but you cannot confidently tell which single choice it sits on (faint, ambiguous, or spanning two numbers), return null for user_answer — do NOT guess. A wrong answer is worse than null.
 - Report ALL problems visible
+- Phantom/cut-off guard: a problem NUMBER can appear WITHOUT its actual content — e.g. only a group header like "[11-12]" or "고난도 [11-12]", or a thin sliver sliced from an ADJACENT page at the photo's edge (number visible, but the question body/choices are not). If a number's question body and choices are NOT actually visible on the page, do NOT invent answers: return null for BOTH user_answer and correct_answer. Fabricating a correct_answer for content you cannot see is a confident-wrong error and is worse than null.
 ${imageCount > 1 ? `- You have ${imageCount} pages. Report each problem ONCE.` : ''}
 </critical_rules>
 
