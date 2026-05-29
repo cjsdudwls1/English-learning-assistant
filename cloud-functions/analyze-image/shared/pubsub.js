@@ -24,7 +24,7 @@ function getClient() {
  * @returns {Promise<string>} messageId
  */
 export async function publishAnalyzeJob(payload) {
-  const { sessionId, userId, imagePaths, userLanguage } = payload;
+  const { sessionId, userId, imagePaths, userLanguage, aiProvider, aiModel } = payload;
   if (!sessionId || !userId || !Array.isArray(imagePaths) || imagePaths.length === 0) {
     throw new Error('publishAnalyzeJob: sessionId, userId, imagePaths[] 필수');
   }
@@ -33,6 +33,8 @@ export async function publishAnalyzeJob(payload) {
     userId,
     imagePaths,
     userLanguage: userLanguage || 'ko',
+    aiProvider: aiProvider || 'gemini',
+    aiModel: aiModel || null,
     publishedAt: Date.now(),
   }), 'utf-8');
 

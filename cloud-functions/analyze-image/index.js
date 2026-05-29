@@ -17,7 +17,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 import { StageError, markSessionFailed, parseModelError } from './shared/errors.js';
-import { VERTEX_PROJECT_ID, VERTEX_LOCATION } from './shared/config.js';
+import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE } from './shared/config.js';
 import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { processPage } from './shared/processPage.js';
@@ -30,6 +30,29 @@ import { publishAnalyzeJob, decodeAnalyzeJob } from './shared/pubsub.js';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+// ─── AI Provider 가용성 검사 ────────────────────────────────
+// 프론트엔드에서 선택한 aiProvider/aiModel을 받아 API 키 존재 여부로 가용성을 판정한다.
+// 키가 비어 있으면 503 + code='provider_unavailable' 응답 → 프론트엔드가 "서비스 준비중입니다" 표시.
+//
+// Gemini(Vertex): 기존 GOOGLE_SERVICE_ACCOUNT_JSON 또는 ADC가 있으면 항상 동작.
+// OpenAI: OPENAI_API_KEY 필요. (실제 호출 로직은 키 확보 후 별도 PR로 추가)
+// Claude: ANTHROPIC_API_KEY 필요. (실제 호출 로직은 키 확보 후 별도 PR로 추가)
+const SUPPORTED_PROVIDERS = ['gemini', 'openai', 'claude'];
+const DEFAULT_PROVIDER = 'gemini';
+
+function checkProviderAvailability(provider) {
+  if (provider === 'openai') {
+    const hasKey = !!(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim());
+    return { available: hasKey, reason: hasKey ? null : 'OPENAI_API_KEY 미설정' };
+  }
+  if (provider === 'claude') {
+    const hasKey = !!(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim());
+    return { available: hasKey, reason: hasKey ? null : 'ANTHROPIC_API_KEY 미설정' };
+  }
+  // gemini는 기존 Vertex AI 자격증명 흐름 그대로 사용
+  return { available: true, reason: null };
+}
 
 // ─── 배치 병렬 처리 상수 ────────────────────────────────────
 // 원본: index.ts ANALYSIS_BATCH_SIZE (3→5: 5장 업로드 시 단일 배치로 처리)
@@ -81,6 +104,14 @@ function validateRequest(body) {
   if (!userId) {
     return { isValid: false, error: 'userId가 필요합니다.' };
   }
+
+  // AI provider/model: 미지정 시 기본값(gemini)로 폴백. 지원 외 provider는 거절.
+  let aiProvider = (body?.aiProvider || DEFAULT_PROVIDER).toString();
+  if (!SUPPORTED_PROVIDERS.includes(aiProvider)) {
+    return { isValid: false, error: `지원하지 않는 aiProvider: ${aiProvider}` };
+  }
+  const aiModel = body?.aiModel ? body.aiModel.toString() : null;
+
   // 신규 (Direct Upload): imagePaths[]만 받음 — base64 페이로드 미경유
   if (Array.isArray(imagePaths) && imagePaths.length > 0) {
     const MAX_IMAGES = 10;
@@ -101,11 +132,11 @@ function validateRequest(body) {
         return { isValid: false, error: 'imagePath의 user 폴더가 userId와 일치하지 않습니다.' };
       }
     }
-    return { isValid: true, imagePaths, userId, language: body.language };
+    return { isValid: true, imagePaths, userId, language: body.language, aiProvider, aiModel };
   }
   // 레거시 (base64 inline): images[]
   if (Array.isArray(images) && images.length > 0) {
-    return { isValid: true, images, userId, language: body.language };
+    return { isValid: true, images, userId, language: body.language, aiProvider, aiModel };
   }
   return { isValid: false, error: 'imagePaths[] 또는 images[]가 필요합니다.' };
 }
@@ -323,6 +354,7 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
 
         const { pageItems, usedModel } = await processPage({
           ai, sessionId, imageData, pageNum: idx + 1, totalPages: images.length, taxonomyData, userLanguage,
+          correctSource: CORRECT_SOURCE, // 기본 'crop'(행위보존). env CORRECT_SOURCE=fullpage 로 비용 -25% 경로.
         });
         return { pageItems, usedModel };
       } catch (pageError) {
@@ -411,7 +443,21 @@ functions.http('analyzeImage', async (req, res) => {
     const validation = validateRequest(req.body);
     if (!validation.isValid) { res.status(400).json({ error: validation.error }); return; }
 
-    const { imagePaths, images, userId, language } = validation;
+    const { imagePaths, images, userId, language, aiProvider, aiModel } = validation;
+
+    // Provider 가용성 가드: API 키 미설정 시 503 + code='provider_unavailable'
+    // 프론트엔드는 이 코드를 받으면 "서비스 준비중입니다" 메시지로 표시한다.
+    const availability = checkProviderAvailability(aiProvider);
+    if (!availability.available) {
+      console.warn(`[analyze-image] provider 미가용: ${aiProvider} (${availability.reason})`);
+      res.status(503).json({
+        error: '서비스 준비중입니다.',
+        code: 'provider_unavailable',
+        provider: aiProvider,
+      });
+      return;
+    }
+
     const useDirectUpload = Array.isArray(imagePaths) && imagePaths.length > 0;
     const imageCount = useDirectUpload ? imagePaths.length : images.length;
 
@@ -455,7 +501,7 @@ functions.http('analyzeImage', async (req, res) => {
       // ── Phase 3 아키텍처: Pub/Sub 큐 게재 → analyze-worker가 처리 ──
       // 장점: analyze-image는 가벼운 publish만 수행 → max-instances 작게 유지, 안정적 throughput
       try {
-        await publishAnalyzeJob({ sessionId, userId, imagePaths, userLanguage });
+        await publishAnalyzeJob({ sessionId, userId, imagePaths, userLanguage, aiProvider, aiModel });
       } catch (publishError) {
         console.error('[handler] Pub/Sub publish 실패:', publishError?.message, { sessionId });
         await markSessionFailed(supabase, sessionId, 'pubsub_publish', publishError);
@@ -542,10 +588,24 @@ functions.cloudEvent('analyzeWorker', async (cloudEvent) => {
     console.error('[worker] payload 디코드 실패 (메시지 폐기):', decodeError?.message);
     return; // ack — 재시도해도 같은 메시지라 무한 루프 방지
   }
-  const { sessionId, userId, imagePaths, userLanguage } = payload;
-  console.log(`[worker] 작업 시작: sessionId=${sessionId}, userId=${userId}, images=${imagePaths.length}, lang=${userLanguage}`);
+  const { sessionId, userId, imagePaths, userLanguage, aiProvider, aiModel } = payload;
+  const provider = aiProvider || DEFAULT_PROVIDER;
+  console.log(`[worker] 작업 시작: sessionId=${sessionId}, userId=${userId}, images=${imagePaths.length}, lang=${userLanguage}, provider=${provider}, model=${aiModel || 'default'}`);
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  // Worker 측 provider 재검증: publish 이후 키가 회수되었을 수 있어 fail-fast.
+  // 키가 없으면 세션을 failed로 마킹하고 ack (재시도 무의미)
+  const availability = checkProviderAvailability(provider);
+  if (!availability.available) {
+    console.warn(`[worker] provider 미가용 (${provider}: ${availability.reason}) → 세션 failed`, { sessionId });
+    try {
+      await markSessionFailed(supabase, sessionId, 'provider_unavailable', new Error(`${provider} 서비스 준비중입니다.`));
+    } catch (e) {
+      console.error('[worker] provider_unavailable markSessionFailed 실패:', e?.message, { sessionId });
+    }
+    return;
+  }
 
   // ── C1 fix v4: atomic CAS 멱등성 (단일 status .eq 매치) ──
   // 1) 사전 SELECT: orphan/completed/failed 조기 ack + lease 만료 판정 (정보 채집)

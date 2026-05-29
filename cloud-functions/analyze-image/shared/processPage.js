@@ -11,7 +11,7 @@
 import { cropRegions } from './imageCropper.js';
 import {
   executePassA, executePass0, executePassB, executePassBFullImage,
-  executePassC, detectSubjectiveUserAnswers,
+  executePassC, detectSubjectiveUserAnswers, detectCorrectFromCrops,
 } from './passes.js';
 import { USER_ANSWER_MODEL_SEQUENCE } from './config.js';
 
@@ -84,7 +84,7 @@ export function mergeHandwritingMarks(pageItems, marks, sessionId) {
  *
  * 원본: pageAnalyzer.ts#analyzeOnePage
  */
-export async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxonomyData, userLanguage, runClassification = true }) {
+export async function processPage({ ai, sessionId, imageData, pageNum, totalPages, taxonomyData, userLanguage, runClassification = true, correctSource = 'crop' }) {
   // Pass A + Pass 0 병렬 실행
   const [passAResult, pass0Result] = await Promise.all([
     executePassA({ ai, sessionId, imageBase64: imageData.imageBase64, mimeType: imageData.mimeType, pageNum, totalPages, taxonomyData }),
@@ -160,7 +160,7 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
       const fullCrops = cropResult.fullCrops;
       console.log(`[handler] 크롭: ${answerAreaCrops.length} answer + ${fullCrops.length} full`, { sessionId });
 
-      passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap });
+      passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap, correctSource });
       console.log(`[handler] Pass B (크롭): ${passBResult.marks.length}개 marks (기대: ${pageItems.length}개)`, { sessionId });
 
       // marks에서 통째로 누락된 문항(크롭 fetch 실패 등)
@@ -198,6 +198,28 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
           }
         }
         console.log(`[handler] Pass B 최종 병합: ${passBResult.marks.length}개 marks`, { sessionId });
+      }
+
+      // correctSource='fullpage' 잔여 보충: 풀페이지(fallback)가 채우지 못한 correct만 문항별
+      // 크롭으로 1회 보충한다. 어법지 등 문항이 많은 페이지에서 풀페이지 1회 추론이 일부 문항
+      // correct를 누락(실측: Q5)하는 recall 손실을 메우면서, 호출 증가는 잔여분(보통 0~소수)뿐이다.
+      if (correctSource === 'fullpage') {
+        const stillMissing = new Set(
+          passBResult.marks
+            .filter(m => m.correct_answer == null || String(m.correct_answer).trim() === '')
+            .map(m => String(m.problem_number))
+        );
+        const fixCrops = fullCrops.filter(fc => stillMissing.has(String(fc.problem_number)));
+        if (fixCrops.length > 0) {
+          console.log(`[handler] correct 잔여 보충 ${fixCrops.length}개 크롭: [${fixCrops.map(c => c.problem_number).join(',')}]`, { sessionId });
+          const fix = await detectCorrectFromCrops({ ai, sessionId, fullCrops: fixCrops, questionContextMap });
+          for (const fm of fix.marks) {
+            const ex = passBResult.marks.find(m => String(m.problem_number) === String(fm.problem_number));
+            if (ex && (ex.correct_answer == null || String(ex.correct_answer).trim() === '') && fm.correct_answer) {
+              ex.correct_answer = fm.correct_answer;
+            }
+          }
+        }
       }
     } catch (cropError) {
       // 크롭 실패 시: 전체 이미지 기반 fallback (이전 pageAnalyzer.ts:288-297 복원)

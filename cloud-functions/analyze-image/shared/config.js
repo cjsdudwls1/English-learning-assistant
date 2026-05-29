@@ -41,6 +41,18 @@ export const EXTRACTION_TEMPERATURE = 0.0;
  */
 export const USER_ANSWER_CONSENSUS = process.env.USER_ANSWER_CONSENSUS === '1';
 
+/** correct_answer 추론 소스. 기본 'crop'(행위보존) → prod 무영향.
+ *  - 'crop'    : 문항별 fullCrop으로 correct 추론(문항 N개 → N호출).
+ *  - 'fullpage': correct 크롭 호출 생략 → full-image fallback이 풀페이지 1회로 채우고,
+ *                풀페이지가 놓친 잔여(null)만 문항별 크롭으로 보충.
+ *  eval(gold 5장×N=3, docai on) 실측:
+ *   · 호출 -25%(10.9→8.2/pg), 토큰 -15%(37.8k→32.2k/pg)
+ *   · correct precision 1.0 유지(=confident-wrong 0). crop은 어법지 Q4를 2/3런 오답(precision↓).
+ *   · correct recall은 어법지류에서 미세 손실(Pass0 bbox 누락 문항 Q5가 abstain) — 안전한 실패.
+ *   · user_answer/text는 crop과 동등(노이즈 범위).
+ *  env CORRECT_SOURCE=fullpage 로 점진 적용. */
+export const CORRECT_SOURCE = process.env.CORRECT_SOURCE === 'fullpage' ? 'fullpage' : 'crop';
+
 /** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 (GA 우선)
  *  - 실험(2026-05-25): Pass 0 1순위를 3.1-flash-lite로 바꾸면 분할 품질이 회귀.
  *    Q37(36~37 지문공유) 마크를 fallback에서 복구 못 함(2.5는 2/2 복구), Q41/42 병합.

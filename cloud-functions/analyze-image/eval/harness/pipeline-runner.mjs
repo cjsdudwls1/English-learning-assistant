@@ -35,7 +35,7 @@ export function buildAIClient() {
  * 단일 이미지에 대해 실제 파이프라인 실행 → marks 추출
  * @returns {{ problem_number, user_answer, correct_answer }[]}
  */
-export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPages = 1, sessionId }) {
+export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPages = 1, sessionId, correctSource = 'crop' }) {
   const buf = fs.readFileSync(imagePath);
   const ext = path.extname(imagePath).toLowerCase();
   const mimeType = EXT_TO_MIME[ext] || 'image/jpeg';
@@ -50,6 +50,7 @@ export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPage
     pageNum, totalPages,
     taxonomyData: [], userLanguage: 'ko',
     runClassification: false,
+    correctSource, // 'crop'(현재) | 'fullpage'(하이브리드): correct 추론 소스 전환
   });
 
   return pageItems.map(it => ({

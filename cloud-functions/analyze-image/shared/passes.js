@@ -227,29 +227,52 @@ function mergeUserAndCorrectMarks(userMarks, correctMarks) {
 }
 
 /**
+ * correctSource='fullpage' 잔여 보충용: 지정 fullCrops에서 correct_answer만 크롭 추론.
+ * - 풀페이지 1회로 correct를 채울 때 문항이 많은 페이지(예: 어법지 12문항)는 일부 문항을
+ *   누락한다(실측: Q5 correct 3런 내내 null). 그 잔여 문항만 문항별 크롭으로 보충하면
+ *   recall을 회복하면서도 호출 수는 누락분(보통 0~소수)만 추가된다.
+ */
+export async function detectCorrectFromCrops({ ai, sessionId, fullCrops, questionContextMap }) {
+  return detectFromCrops({
+    ai, sessionId, crops: fullCrops,
+    buildPromptFn: buildCroppedCorrectAnswerPrompt,
+    questionContextMap,
+    temperature: 0.0,
+    modelSequence: ANSWER_MODEL_SEQUENCE,
+  });
+}
+
+/**
  * Pass B: 필기 인식 - 크롭된 답안/문제 영역에서 user_answer, correct_answer 추출
  * user_answer: 필기 마크 인식 (지각 작업) - temperature=0.0으로 결정성 확보
  * correct_answer: 정답 추론 (논리 작업) - temperature=0.0 + 강한 모델 우선
  */
-export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap }) {
-  const [userResult, correctResult] = await Promise.all([
-    detectFromCrops({
-      ai, sessionId, crops: answerAreaCrops,
-      buildPromptFn: buildCroppedUserAnswerPrompt,
-      questionContextMap,
-      temperature: 0.0,
-      // 필기 마크 '지각'은 신형 비전이 우월 → 3.5-flash 우선(2.5-flash의 인접번호 오인 회피)
-      modelSequence: USER_ANSWER_MODEL_SEQUENCE,
-    }),
-    detectFromCrops({
-      ai, sessionId, crops: fullCrops,
-      buildPromptFn: buildCroppedCorrectAnswerPrompt,
-      questionContextMap,
-      temperature: 0.0,
-      // 정답 추론은 정확도 우선 → 최상위 모델 시퀀스 사용 (config.ANSWER_MODEL_SEQUENCE)
-      modelSequence: ANSWER_MODEL_SEQUENCE,
-    }),
-  ]);
+export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap, correctSource = 'crop' }) {
+  // correctSource:
+  //  - 'crop'(기본, 행위보존): 문항별 fullCrop으로 correct_answer를 추론(문항 N개 → N호출).
+  //  - 'fullpage': correct 크롭 호출을 생략한다. 상위 processPage가 correct 결손을 감지해
+  //    full-image fallback(풀페이지 1회)으로 correct를 채운다. eval 실측상 correct_answer는
+  //    풀페이지 단일 호출로 100%라 문항별 N호출이 낭비 → 호출 수를 N→1로 절감.
+  //  user_answer(answerArea 크롭) 경로는 두 모드에서 동일하다(confident-wrong 방지 가치 유지).
+  const userPromise = detectFromCrops({
+    ai, sessionId, crops: answerAreaCrops,
+    buildPromptFn: buildCroppedUserAnswerPrompt,
+    questionContextMap,
+    temperature: 0.0,
+    // 필기 마크 '지각'은 신형 비전이 우월 → 3.5-flash 우선(2.5-flash의 인접번호 오인 회피)
+    modelSequence: USER_ANSWER_MODEL_SEQUENCE,
+  });
+  const correctPromise = correctSource === 'crop'
+    ? detectFromCrops({
+        ai, sessionId, crops: fullCrops,
+        buildPromptFn: buildCroppedCorrectAnswerPrompt,
+        questionContextMap,
+        temperature: 0.0,
+        // 정답 추론은 정확도 우선 → 최상위 모델 시퀀스 사용 (config.ANSWER_MODEL_SEQUENCE)
+        modelSequence: ANSWER_MODEL_SEQUENCE,
+      })
+    : Promise.resolve({ marks: [], usageMetadata: null });
+  const [userResult, correctResult] = await Promise.all([userPromise, correctPromise]);
 
   const mergedMarks = mergeUserAndCorrectMarks(userResult.marks, correctResult.marks);
 

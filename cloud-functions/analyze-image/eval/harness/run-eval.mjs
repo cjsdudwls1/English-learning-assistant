@@ -26,6 +26,7 @@ function parseArgs(argv) {
     else if (t === '--concurrency') a.concurrency = parseInt(argv[++i], 10);
     else if (t === '--tag') a.tag = argv[++i];
     else if (t === '--all') a.all = true;
+    else if (t === '--only') a.only = argv[++i]; // 쉼표구분 부분문자열 필터(gold 일부만 실행)
   }
   return a;
 }
@@ -64,8 +65,14 @@ async function main() {
   const { scoreMultiRun } = await import('./score.mjs');
 
   const gt = JSON.parse(fs.readFileSync(GT_PATH, 'utf8'));
-  const goldImages = gt.pages.map(p => p.image);
-  const images = args.all ? listAllImages() : goldImages;
+  const allGold = gt.pages.map(p => p.image);
+  let images = args.all ? listAllImages() : allGold;
+  if (args.only) {
+    const keys = args.only.split(',').map(s => s.trim()).filter(Boolean);
+    images = images.filter(img => keys.some(k => img.includes(k)));
+  }
+  // 채점은 '이번에 실제 돌린' gold 페이지만 대상(미실행 페이지를 0점 처리하지 않음)
+  const goldImages = allGold.filter(img => images.includes(img));
 
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
   const ai = buildAIClient();
