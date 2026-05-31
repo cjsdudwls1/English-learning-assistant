@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "exam": "정갈함 세트 (CLASS CARD Grammar 3-5형식 학습지) — 형식 고르기 객관식만",
+    "scoring": "precision-first. 형식고르기 = 선택지가 '①②③④⑤' 라벨 없이 'N형식' 텍스트 → 답은 위치가 아니라 '형식 숫자(N)' 자체로 통일.",
+    "tier": "B (claude-labeled, 형식고르기 문법판단=고신뢰; 학생 마킹/정답형식은 이미지 전수 확인)",
+    "notes": [
+      "표현 통일 결정(근본결함 fix): 형식고르기는 ①②③④⑤ 라벨이 없어 시스템이 위치/형식숫자를 혼재 추출 → user/correct 표현 불일치 → 오채점. 해법=user_answer·correct_answer 둘 다 'N형식'의 N(형식 숫자)으로 통일. prompts.js 3곳(crop user/crop correct/fullpage)에 형식고르기 예외 추가됨.",
+      "user_answer = 학생 원답(고른 형식의 숫자). 멀티마킹(동그라미 2개) 시: 정답 아닌 동그라미=학생 원답(user), 정답 동그라미=자가채점. correct_answer = 정답 형식의 숫자(문법 판단).",
+      "[2026-05-30 _09 user 라벨 오류 정정] 초확대 재판독 결과 _09는 멀티마킹. 이전엔 정답쪽 동그라미를 user로 착각했음. 정정: Q2 user 2→4, Q3 user 1→2, Q4 user 2→4. 시스템(crop+think0+fix)이 학생 원답을 정확 판독했고 내 라벨이 틀렸던 것.",
+      "이미지 확인(정정후): _04 Q69 user5(정답5) Q70 user3(오답,정답4) Q71 user5(정답5) / _05 Q57 user3(정답3) Q58 user5(정답5) / _09 Q1 user3(정답3) Q2 user4(오답,정답2;4형식+2형식멀티) Q3 user2(오답,정답1;2형식+1형식멀티) Q4 user4(정답4).",
+      "정답근거: 69 find+O+OC=5 / 70 buy+IO+DO=4 / 71 keep+O+OC=5 / 57 buy+O=3 / 58 find+O+OC=5 / 1 eat+부사구=3 / 2 be+C=2 / 3 sleep자동사=1 / 4 make+IO+DO=4."
+    ]
+  },
+  "pages": [
+    {
+      "image": "정갈함/KakaoTalk_20251201_144852014_04.jpg",
+      "page_label": "PAGE 6/10 형식고르기 Q69~71",
+      "questions": [
+        { "problem_number": "69", "type": "mc", "user_answer": { "value": "5" }, "correct_answer": { "value": "5" } },
+        { "problem_number": "70", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "4" } },
+        { "problem_number": "71", "type": "mc", "user_answer": { "value": "5" }, "correct_answer": { "value": "5" } }
+      ]
+    },
+    {
+      "image": "정갈함/KakaoTalk_20251201_144852014_05.jpg",
+      "page_label": "PAGE 5/10 형식고르기 Q57~58",
+      "questions": [
+        { "problem_number": "57", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "3" } },
+        { "problem_number": "58", "type": "mc", "user_answer": { "value": "5" }, "correct_answer": { "value": "5" } }
+      ]
+    },
+    {
+      "image": "정갈함/KakaoTalk_20251201_144852014_09.jpg",
+      "page_label": "PAGE 1/10 형식고르기 Q1~4",
+      "questions": [
+        { "problem_number": "1", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "3" } },
+        { "problem_number": "2", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "2" } },
+        { "problem_number": "3", "type": "mc", "user_answer": { "value": "2" }, "correct_answer": { "value": "1" } },
+        { "problem_number": "4", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "4" } }
+      ]
+    }
+  ]
+}

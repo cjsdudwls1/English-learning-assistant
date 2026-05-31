@@ -11,9 +11,10 @@
 import { cropRegions } from './imageCropper.js';
 import {
   executePassA, executePass0, executePassB, executePassBFullImage,
-  executePassC, detectSubjectiveUserAnswers, detectCorrectFromCrops,
+  executePassC, detectSubjectiveUserAnswers, detectCorrectFromCrops, detectFromCrops,
 } from './passes.js';
 import { USER_ANSWER_MODEL_SEQUENCE } from './config.js';
+import { buildCroppedUserAnswerPrompt } from './prompts.js';
 
 /**
  * Pass B marks를 검증하고 pageItems에 병합한다.
@@ -273,6 +274,7 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
 
   // Pass B: 크롭 기반 필기 인식 또는 전체 이미지 fallback
   let passBResult;
+  let fullCropsForSubjective = null; // 서술형 ua fullCrop-우선 변종용(try 블록 밖 서술형 경로에서 접근)
 
   if (pass0Result.bboxes.length > 0) {
     // bbox가 있으면: 서버 사이드 크롭 → Pass B 크롭 기반 분석
@@ -280,6 +282,7 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
       const cropResult = await cropRegions(imageData.imageBase64, imageData.mimeType, pass0Result.bboxes);
       const answerAreaCrops = cropResult.answerAreaCrops;
       const fullCrops = cropResult.fullCrops;
+      fullCropsForSubjective = fullCrops;
       console.log(`[handler] 크롭: ${answerAreaCrops.length} answer + ${fullCrops.length} full`, { sessionId });
 
       passBResult = await executePassB({ ai, sessionId, answerAreaCrops, fullCrops, questionContextMap, correctSource });
@@ -384,7 +387,33 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
       subjectiveProblems.push({ problem_number: pNum, instruction: ctx.instruction, questionBody: ctx.questionBody });
     }
   }
-  if (subjectiveProblems.length > 0) {
+  // 서술형 ua override 스위치(eval A/B용, 기본 on=행위보존).
+  // off: crop(answerArea) 기반 ua를 유지하고 전체이미지 재추출로 덮어쓰지 않는다.
+  //   → 부가의문문 등 '빈칸형' 서술형에서 전체이미지가 인쇄 대화문을 혼입(과추출)하는 것을 회피 검증.
+  const SUBJECTIVE_UA_OVERRIDE = process.env.SUBJECTIVE_UA_OVERRIDE !== 'off';
+  // fullCrop-우선 변종(eval A/B용): 서술형 ua를 문항별 fullCrop(문제전체+2배확대)에서 재추출.
+  //   answer_area_bbox가 다줄 손글씨 답의 상단을 놓치는 경우(실측 Q30 "Doesn't he like cats?"→"cats")를
+  //   메우되, fullCrop은 인쇄 본문도 포함하므로 혼입(과추출) 위험을 eval로 검증한다.
+  //   우선순위: fullCrop > 전체이미지(SUBJECTIVE_UA_OVERRIDE) > crop(answerArea 유지).
+  const SUBJ_UA_FROM_FULLCROP = process.env.SUBJ_UA_FROM_FULLCROP === 'on';
+  if (subjectiveProblems.length > 0 && SUBJ_UA_FROM_FULLCROP && fullCropsForSubjective) {
+    const subjNums = new Set(subjectiveProblems.map(p => String(p.problem_number)));
+    const subjFullCrops = fullCropsForSubjective.filter(fc => subjNums.has(String(fc.problem_number)));
+    console.log(`[handler] 주관식 ${subjectiveProblems.length}개 → fullCrop 기반 user_answer 재추출(${subjFullCrops.length}개 크롭)`, { sessionId });
+    const subjResult = await detectFromCrops({
+      ai, sessionId, crops: subjFullCrops,
+      buildPromptFn: (pn, ctx) => buildCroppedUserAnswerPrompt(pn, ctx, true),
+      questionContextMap,
+      temperature: 0.0,
+      modelSequence: USER_ANSWER_MODEL_SEQUENCE,
+    });
+    for (const mark of subjResult.marks) {
+      const item = pageItems.find(it => String(it.problem_number) === String(mark.problem_number));
+      if (item && mark.user_answer != null) {
+        item.user_answer = mark.user_answer;
+      }
+    }
+  } else if (subjectiveProblems.length > 0 && SUBJECTIVE_UA_OVERRIDE) {
     console.log(`[handler] 주관식 ${subjectiveProblems.length}개 문제 → 전체 이미지 기반 user_answer 감지`, { sessionId });
     const subjectiveResult = await detectSubjectiveUserAnswers({
       ai, sessionId,

@@ -11,6 +11,7 @@ import {
   MODEL_RETRY_POLICY,
   EXTRACTION_TEMPERATURE,
   API_TIMEOUT_MS,
+  THINKING_BUDGET,
 } from './config.js';
 
 function computeBackoffDelayMs(baseDelay, attempt) {
@@ -49,6 +50,10 @@ export async function generateWithRetry({
       const config = { temperature, ...(maxOutputTokens ? { maxOutputTokens } : {}) };
       if (!tools) config.responseMimeType = 'application/json';
       if (responseJsonSchema) config.responseJsonSchema = responseJsonSchema;
+      // thinking 예산 제어(전역). 기본 undefined → 모델 기본 thinking 유지(현행 보존).
+      if (THINKING_BUDGET !== undefined && !Number.isNaN(THINKING_BUDGET)) {
+        config.thinkingConfig = { thinkingBudget: THINKING_BUDGET };
+      }
 
       const timeoutMs = resolveTimeoutMs(model, !!tools);
 

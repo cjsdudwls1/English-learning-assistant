@@ -35,6 +35,18 @@ export const MODEL_RETRY_POLICY = {
 
 export const EXTRACTION_TEMPERATURE = 0.0;
 
+/** thinking 토큰 예산. 기본 undefined(=모델 기본 thinking 유지, 현행 동작 보존).
+ *  - 실측(2026-05-30, _08 Pass A): thinking이 응답시간의 ~68% 차지.
+ *    2.5-flash 24.8s→7.9s, 3.5-flash 25.0s→7.9s (thinkingBudget=0 시 3배↑).
+ *    출력 토큰(cand)은 거의 불변(1602↔1562) → 추출량 유지 기대.
+ *  - prod 타임아웃(60/90s)의 증폭기: thinking이 baseline을 25s로 높여 부하 큐잉 시
+ *    쉽게 타임아웃→폴백(약한 모델)→정확도·latency·비용 동시 악화.
+ *  - env THINKING_BUDGET=0 으로 끄되, 정확도 영향은 eval A/B 검증 후 prod 적용.
+ *    (gemini-3.x 일부는 0 미허용 가능 → eval에서 에러 관측 필요) */
+export const THINKING_BUDGET = (process.env.THINKING_BUDGET !== undefined && process.env.THINKING_BUDGET !== '')
+  ? parseInt(process.env.THINKING_BUDGET, 10)
+  : undefined;
+
 /** §4 user_answer 교차뷰 확인(consensus). 기본 OFF → prod 30명 동시부하 무영향.
  *  ON(=‘1’) 시: answerArea 기반 비-null user_answer를 fullCrop(다른 뷰)으로 1회 교차확인,
  *  불일치하면 null(기권, 정밀도 우선). 문항당 +1 호출 상한(N×아님).

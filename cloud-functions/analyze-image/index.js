@@ -26,6 +26,7 @@ import { downloadImagesFromStorage } from './shared/imageDownloader.js';
 import { generateAllProblemTypes } from './shared/generateProblems.js';
 import { verifySupabaseJWT } from './shared/jwtVerify.js';
 import { publishAnalyzeJob, decodeAnalyzeJob } from './shared/pubsub.js';
+import { dedupeProblemItems } from './shared/dedupe.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -257,64 +258,10 @@ async function validateVertexAuth(supabase, sessionId) {
 
 // mergeHandwritingMarks, processPage → shared/processPage.js로 추출 (eval/prod 단일 소스화)
 
-/**
- * 페이지 경계에서 발생하는 중복 problem_number 제거
- * - "[41~42] 다음 글을 읽고…" 같은 범위 지문 헤더가 다음(이어지는) 페이지에서
- *   선택지·본문·답이 전부 빈 껍데기 문항으로 재추출되는 노이즈를 차단한다.
- * - 같은 problem_number가 둘 이상이면 "실질 점수"(선택지>본문/지문>답>지시문)가
- *   가장 높은 항목만 남기고, 버리는 쪽의 답/지문 필드는 남는 항목에 결손 보충한다
- *   (페이지가 갈리며 한쪽에만 들어간 필기 마크/지문 유실 방지).
- * - 등장 순서(페이지 순서)는 보존한다. saveProblems/saveLabels가 배열 인덱스로
- *   매칭하므로 본 함수는 두 호출 이전에 단 한 번만 적용해야 한다.
- */
-function dedupeProblemItems(items, sessionId) {
-  const substanceScore = (it) => {
-    const choices = Array.isArray(it.choices) ? it.choices.length : 0;
-    const hasAns = (it.correct_answer != null && String(it.correct_answer).trim() !== '')
-      || (it.user_answer != null && String(it.user_answer).trim() !== '');
-    const hasBody = !!(it.question_body && String(it.question_body).trim())
-      || !!(it.passage && String(it.passage).trim())
-      || !!(it.shared_passage_ref && String(it.shared_passage_ref).trim());
-    const hasInstr = !!(it.instruction && String(it.instruction).trim());
-    return choices * 10 + (hasAns ? 5 : 0) + (hasBody ? 2 : 0) + (hasInstr ? 1 : 0);
-  };
-
-  // 버리는 항목의 비어있지 않은 답/지문 필드를 남는 항목의 결손에 보충
-  const backfill = (keep, drop) => {
-    for (const f of ['user_answer', 'correct_answer', 'user_marked_correctness', 'passage', 'shared_passage_ref', 'question_body']) {
-      const cur = keep[f];
-      const curEmpty = cur == null || (typeof cur === 'string' && cur.trim() === '');
-      if (curEmpty && drop[f] != null && String(drop[f]).trim() !== '') keep[f] = drop[f];
-    }
-  };
-
-  const byNum = new Map(); // problem_number → 채택된 item
-  const order = [];
-  let droppedCount = 0;
-  for (const it of items) {
-    const key = String(it.problem_number ?? '').trim();
-    if (!key) { order.push(it); continue; } // 번호 없는 항목은 그대로 보존
-    if (!byNum.has(key)) {
-      byNum.set(key, it);
-      order.push(it);
-      continue;
-    }
-    const prev = byNum.get(key);
-    droppedCount++;
-    if (substanceScore(it) > substanceScore(prev)) {
-      backfill(it, prev); // 새 항목 채택, 이전 항목 정보 보충 후 자리 교체
-      const idx = order.indexOf(prev);
-      if (idx >= 0) order[idx] = it;
-      byNum.set(key, it);
-    } else {
-      backfill(prev, it); // 이전 항목 유지, 새 항목 정보 보충
-    }
-  }
-  if (droppedCount > 0) {
-    console.log(`[handler] 중복 problem_number 제거: ${items.length} → ${order.length} (${droppedCount}개 병합)`, { sessionId });
-  }
-  return order;
-}
+// dedupeProblemItems → shared/dedupe.js로 추출.
+// 병합 키에 페이지 인덱스(_page_index)를 도입: 서로 다른 페이지의 같은 problem_number를
+// '다른 문제'로 보존해 cross-page backfill 오염·소실을 차단한다(워크북은 페이지마다 1번부터
+// 재시작 → 번호 충돌이 기본 시나리오. 실측 세션 4d1509b0 참조).
 
 /**
  * 백그라운드 분석 파이프라인 (응답 전송 후 실행)
@@ -356,7 +303,7 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
           ai, sessionId, imageData, pageNum: idx + 1, totalPages: images.length, taxonomyData, userLanguage,
           correctSource: CORRECT_SOURCE, // 기본 'crop'(행위보존). env CORRECT_SOURCE=fullpage 로 비용 -25% 경로.
         });
-        return { pageItems, usedModel };
+        return { pageItems, usedModel, pageIndex: idx };
       } catch (pageError) {
         console.error(`[handler] 페이지 ${idx + 1} 실패:`, pageError?.message, { sessionId });
         return null;
@@ -365,6 +312,8 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
 
     for (const result of batchResults) {
       if (!result) continue;
+      // 페이지 인덱스 태깅 → dedupeProblemItems가 다른 페이지의 같은 번호를 구분(오염·소실 방지)
+      for (const it of result.pageItems) it._page_index = result.pageIndex;
       allValidatedItems.push(...result.pageItems);
       finalUsedModel = result.usedModel;
     }
@@ -375,9 +324,11 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
     }
   }
 
-  // 페이지 경계 중복 problem_number 제거 (예: [41~42] 범위 헤더가 이어지는
-  // 페이지에서 빈 껍데기로 재추출되는 노이즈 차단)
+  // 다중 페이지 결과 병합: (페이지,번호) 키로 페이지 '내' 중복만 제거하고, 다른 페이지의
+  // 같은 번호는 다른 문제로 보존(cross-page 오염·소실 방지). 이후 _page_index는 불필요 →
+  // DB 페이로드 누출 방지 위해 제거.
   allValidatedItems = dedupeProblemItems(allValidatedItems, sessionId);
+  for (const it of allValidatedItems) delete it._page_index;
 
   if (allValidatedItems.length === 0) {
     if (images.length > 0) {

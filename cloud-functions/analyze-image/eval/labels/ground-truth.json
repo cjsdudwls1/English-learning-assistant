@@ -5,9 +5,10 @@
     "tier": "A (human-labeled, gold)",
     "notes": [
       "precision-first: 'value'가 단일이면 정확값. null 반환은 miss(=recall 손실, 허용) 이고, 다른 값 반환은 confident-wrong(=가장 해로움).",
-      "user_answer.ambiguous=true 면 학생이 흐릿/복수 마킹한 문항. accept 집합 ∈ → correct, null → abstain(허용), 그 외 → wrong.",
+      "user_answer.ambiguous=true 면 학생이 흐릿/복수 마킹한 문항. accept 집합 ∈ → correct, null → abstain(허용), 그 외 → wrong. (mc·text 공통: classifyText도 ambiguous/accept 지원)",
       "type=text 는 서술형 손글씨. 정규화 fuzzy 매칭으로 별도 채점(주요 정밀도 지표에서 제외).",
-      "correct_answer 는 항상 단일값, null_ok=false (null=miss)."
+      "correct_answer 는 항상 단일값, null_ok=false (null=miss).",
+      "[2026-05-31 라벨 정정] 초확대 재판독 결과 두 confident-wrong이 모두 내 라벨 오류였고 시스템이 옳았음: (1) _06 Q31 user 4→5 (X마킹이 ④아닌 ⑤worries에 명확. 정답=①desires). (2) 134039 Q8 user='clear'→ambiguous accept['clean','clear'] (필기 r/n 최대배율·디스큐에도 판독불가=진성모호. 'clean the streets'=관용 정답이고 학생이 Q6·7·9 서술형 전부 정답=유능→'clean'이 거의 확실. 시스템 'clean' 판독을 confident-wrong으로 오처벌 않도록 accept-집합 처리). 패턴: 모호 마킹에서 내가 반복적으로 과독, 시스템이 정확."
     ]
   },
   "pages": [
@@ -22,8 +23,8 @@
         { "problem_number": "5", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "3" } },
         { "problem_number": "6", "type": "text", "user_answer": { "value": "cutting" }, "correct_answer": { "value": "cutting" } },
         { "problem_number": "7", "type": "text", "user_answer": { "value": "Are" }, "correct_answer": { "value": "Are" } },
-        { "problem_number": "8", "type": "text", "user_answer": { "value": "aren't going to clear the streets after school" }, "correct_answer": { "value": "aren't going to clean the streets after school" } },
-        { "problem_number": "9", "type": "text", "user_answer": { "value": "We planning lot of events for children" }, "correct_answer": { "value": "We are planning a lot of events for children" } }
+        { "problem_number": "8", "type": "text", "user_answer": { "ambiguous": true, "accept": ["aren't going to clean the streets after school", "aren't going to clear the streets after school"], "null_ok": true }, "correct_answer": { "value": "aren't going to clean the streets after school" } },
+        { "problem_number": "9", "type": "text", "user_answer": { "value": "We are planning a lot of events for children" }, "correct_answer": { "value": "We are planning a lot of events for children" } }
       ]
     },
     {
@@ -33,7 +34,7 @@
         { "problem_number": "28", "type": "mc", "user_answer": { "ambiguous": true, "accept": ["1", "2"], "null_ok": true }, "correct_answer": { "value": "4" } },
         { "problem_number": "29", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "5" } },
         { "problem_number": "30", "type": "mc", "user_answer": { "value": "3" }, "correct_answer": { "value": "3" } },
-        { "problem_number": "31", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "1" } }
+        { "problem_number": "31", "type": "mc", "user_answer": { "value": "5" }, "correct_answer": { "value": "1" } }
       ]
     },
     {
@@ -62,6 +63,70 @@
         { "problem_number": "19", "type": "mc", "user_answer": { "value": "2" }, "correct_answer": { "value": "3" } },
         { "problem_number": "20", "type": "mc", "user_answer": { "ambiguous": true, "accept": ["3", "4"], "null_ok": true }, "correct_answer": { "value": "1" } },
         { "problem_number": "21", "type": "mc", "user_answer": { "value": "1" }, "correct_answer": { "value": "3" } }
+      ]
+    },
+    {
+      "image": "정갈함/KakaoTalk_20251201_144852014_16.jpg",
+      "page_label": "부가/부정의문문 학습지 1쪽 (Q1~10)",
+      "questions": [
+        { "problem_number": "1", "type": "text", "user_answer": { "value": "Weren't you / No I wasn't" }, "correct_answer": { "value": "Weren't you / No I wasn't" }, "expected_is_correct": true },
+        { "problem_number": "2", "type": "text", "user_answer": { "value": "do they / they do" }, "correct_answer": { "value": "do they / they do" }, "expected_is_correct": true },
+        { "problem_number": "3", "type": "text", "user_answer": { "value": "isn't he / Yes he is" }, "correct_answer": { "value": "isn't he / Yes he is" }, "expected_is_correct": true },
+        { "problem_number": "4", "type": "text", "user_answer": { "value": "isn't she" }, "correct_answer": { "value": "won't she" }, "expected_is_correct": false },
+        { "problem_number": "5", "type": "text", "user_answer": { "value": "isn't she" }, "correct_answer": { "value": "isn't she" }, "expected_is_correct": true },
+        { "problem_number": "6", "type": "text", "user_answer": { "value": "isn't it / it is" }, "correct_answer": { "value": "isn't it / it is" }, "expected_is_correct": true },
+        { "problem_number": "7", "type": "text", "user_answer": { "value": "Doesn't he work / No he doesn't" }, "correct_answer": { "value": "Doesn't he work / No he doesn't" }, "expected_is_correct": true },
+        { "problem_number": "8", "type": "text", "user_answer": { "value": "Isn't Jessica American?" }, "correct_answer": { "value": "Isn't Jessica American?" }, "expected_is_correct": true },
+        { "problem_number": "9", "type": "text", "user_answer": { "value": "Aren't you writing a report?" }, "correct_answer": { "value": "Aren't you writing a report?" }, "expected_is_correct": true },
+        { "problem_number": "10", "type": "text", "user_answer": { "value": "won't they" }, "correct_answer": { "value": "won't they" }, "expected_is_correct": true }
+      ]
+    },
+    {
+      "image": "정갈함/KakaoTalk_20251201_144852014_15.jpg",
+      "page_label": "부가/부정의문문 학습지 2쪽 (Q11~19)",
+      "questions": [
+        { "problem_number": "11", "type": "text", "user_answer": { "value": "Can't I sleep / Yes you can" }, "correct_answer": { "value": "Can't I sleep / Yes you can" }, "expected_is_correct": true },
+        { "problem_number": "12", "type": "text", "user_answer": { "value": "can you / I can't" }, "correct_answer": { "value": "can you / I can't" }, "expected_is_correct": true },
+        { "problem_number": "13", "type": "text", "user_answer": { "value": "Didn't you clean the classroom?" }, "correct_answer": { "value": "Didn't you clean the classroom?" }, "expected_is_correct": true },
+        { "problem_number": "14", "type": "text", "user_answer": { "value": "No I won't" }, "correct_answer": { "value": "No I won't" }, "expected_is_correct": true },
+        { "problem_number": "15", "type": "text", "user_answer": { "value": "He can't send messages, can he?" }, "correct_answer": { "value": "He can't send messages, can he?" }, "expected_is_correct": true },
+        { "problem_number": "16", "type": "text", "user_answer": { "value": "Yes she does" }, "correct_answer": { "value": "Yes she does" }, "expected_is_correct": true },
+        { "problem_number": "17", "type": "text", "user_answer": { "value": "liked the English class didn't he" }, "correct_answer": { "value": "liked the English class didn't he" }, "expected_is_correct": true },
+        { "problem_number": "18", "type": "text", "user_answer": { "value": "Can't I apply to the dance team?" }, "correct_answer": { "value": "Can't I apply to the dance team?" }, "expected_is_correct": true },
+        { "problem_number": "19", "type": "text", "user_answer": { "value": "doesn't he" }, "correct_answer": { "value": "doesn't he" }, "expected_is_correct": true }
+      ]
+    },
+    {
+      "image": "정갈함/KakaoTalk_20251201_144852014_14.jpg",
+      "page_label": "부가/부정의문문 학습지 3쪽 (Q20~29)",
+      "questions": [
+        { "problem_number": "20", "type": "text", "user_answer": { "value": "Won't my grandma cook for me tonight?" }, "correct_answer": { "value": "Won't my grandma cook for me tonight?" }, "expected_is_correct": true },
+        { "problem_number": "21", "type": "text", "user_answer": { "value": "shall we" }, "correct_answer": { "value": "shall we" }, "expected_is_correct": true },
+        { "problem_number": "22", "type": "text", "user_answer": { "value": "Can't students study outside?" }, "correct_answer": { "value": "Can't students study outside?" }, "expected_is_correct": true },
+        { "problem_number": "23", "type": "text", "user_answer": { "value": "Didn't she go / Yes she did" }, "correct_answer": { "value": "Didn't she go / Yes she did" }, "expected_is_correct": true },
+        { "problem_number": "24", "type": "text", "user_answer": { "value": "Let's have lunch / shall we" }, "correct_answer": { "value": "Let's have lunch / shall we" }, "expected_is_correct": true },
+        { "problem_number": "25", "type": "text", "user_answer": { "value": "Open the door" }, "correct_answer": { "value": "Open the door will you?" }, "expected_is_correct": false },
+        { "problem_number": "26", "type": "text", "user_answer": { "value": "Doesn't she sell this car?" }, "correct_answer": { "value": "Doesn't she sell this car?" }, "expected_is_correct": true },
+        { "problem_number": "27", "type": "text", "user_answer": { "value": "they will" }, "correct_answer": { "value": "they will" }, "expected_is_correct": true },
+        { "problem_number": "28", "type": "text", "user_answer": { "value": "can I" }, "correct_answer": { "value": "can I" }, "expected_is_correct": true },
+        { "problem_number": "29", "type": "text", "user_answer": { "value": "His sister isn't tall, is she?" }, "correct_answer": { "value": "His sister isn't tall, is she?" }, "expected_is_correct": true }
+      ]
+    },
+    {
+      "image": "정갈함/KakaoTalk_20251201_144852014_13.jpg",
+      "page_label": "부가/부정의문문 학습지 4쪽 (Q30~40)",
+      "questions": [
+        { "problem_number": "30", "type": "text", "user_answer": { "value": "Doesn't he like cats?" }, "correct_answer": { "value": "Doesn't he like cats?" }, "expected_is_correct": true },
+        { "problem_number": "31", "type": "text", "user_answer": { "value": "Doesn't this house have a garden?" }, "correct_answer": { "value": "Doesn't this house have a garden?" }, "expected_is_correct": true },
+        { "problem_number": "32", "type": "text", "user_answer": { "value": "Don't break the rules of the game, will you?" }, "correct_answer": { "value": "Don't break the rules of the game, will you?" }, "expected_is_correct": true },
+        { "problem_number": "33", "type": "text", "user_answer": { "value": "will you" }, "correct_answer": { "value": "will you" }, "expected_is_correct": true },
+        { "problem_number": "34", "type": "text", "user_answer": { "value": "does he / No he does" }, "correct_answer": { "value": "does he / Yes he does" }, "expected_is_correct": false },
+        { "problem_number": "35", "type": "text", "user_answer": { "value": "Isn't" }, "correct_answer": { "value": "Isn't" }, "expected_is_correct": true },
+        { "problem_number": "36", "type": "text", "user_answer": { "value": "does it" }, "correct_answer": { "value": "does it" }, "expected_is_correct": true },
+        { "problem_number": "37", "type": "text", "user_answer": { "value": "didn't you" }, "correct_answer": { "value": "didn't you" }, "expected_is_correct": true },
+        { "problem_number": "38", "type": "text", "user_answer": { "value": "Yes they did" }, "correct_answer": { "value": "Yes they did" }, "expected_is_correct": true },
+        { "problem_number": "39", "type": "text", "user_answer": { "value": "Didn't your mother teach English?" }, "correct_answer": { "value": "Didn't your mother teach English?" }, "expected_is_correct": true },
+        { "problem_number": "40", "type": "text", "user_answer": { "value": "they do" }, "correct_answer": { "value": "they do" }, "expected_is_correct": true }
       ]
     }
   ]

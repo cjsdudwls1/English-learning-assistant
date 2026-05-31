@@ -44,6 +44,9 @@ cloud-functions/analyze-image/gcf-logs-*.txt
 # eval 하네스 실행 산출물 (재생성 가능, 커밋 제외)
 cloud-functions/analyze-image/eval/results/
 
+# 일회성 조사/디버그 스크립트 (커밋 제외)
+cloud-functions/analyze-image/_*.mjs
+
 # Local test images (do not commit)
 test_image/17/
 

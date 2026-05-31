@@ -21,30 +21,34 @@ const JPEG_QUALITY = 80;
 export async function preprocessImage(imageBase64, mimeType) {
   const originalBuffer = Buffer.from(imageBase64, 'base64');
   const metadata = await sharp(originalBuffer).metadata();
-  const { width, height } = metadata;
+  const { width, height, orientation } = metadata;
 
+  // EXIF orientation이 정립(1)이 아니면 회전 필요. 카메라/일부 기기 사진은 픽셀을 '누운'
+  // 채로 저장하고 orientation 태그로만 회전을 지시한다(실측: test_image 56장 중 6장 orient=6).
+  // sharp는 .rotate() 무인자 호출 시에만 EXIF 기반 auto-rotate를 적용하며, 미적용 시 JPEG
+  // 재인코딩에서 orientation 태그가 사라져 Gemini가 '누운' 이미지를 받는다(OCR·마크·bbox 동시 저하).
+  const needsRotate = orientation != null && orientation !== 1;
   const needsResize = width > MAX_DIMENSION || height > MAX_DIMENSION;
 
-  if (!needsResize) {
-    console.log(`[imagePreprocessor] 리사이즈 불필요 (${width}x${height}), 원본 유지`);
+  // 회전·리사이즈 모두 불필요 → 원본 유지(무손실, 기존 행위 보존: orient=1/none + 작은 이미지)
+  if (!needsResize && !needsRotate) {
+    console.log(`[imagePreprocessor] 변환 불필요 (${width}x${height}, orient=${orientation ?? 'none'}), 원본 유지`);
     return { imageBase64, mimeType };
   }
 
-  const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
-  const newWidth = Math.round(width * ratio);
-  const newHeight = Math.round(height * ratio);
-
-  const resizedBuffer = await sharp(originalBuffer)
-    .resize(newWidth, newHeight, { fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: JPEG_QUALITY })
-    .toBuffer();
-
-  const resizedBase64 = resizedBuffer.toString('base64');
+  let pipeline = sharp(originalBuffer).rotate(); // EXIF auto-rotate (orient=1/none이면 픽셀 무변화 no-op)
+  if (needsResize) {
+    // 긴 변을 MAX_DIMENSION으로. rotate로 W/H가 스왑돼도 fit:inside가 자동 처리하며,
+    // orient=1에서는 기존 resize(newW,newH)와 동일 결과(긴변=MAX, 비율유지) → 회귀 없음.
+    pipeline = pipeline.resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true });
+  }
+  const outBuffer = await pipeline.jpeg({ quality: JPEG_QUALITY }).toBuffer();
+  const outBase64 = outBuffer.toString('base64');
 
   console.log(
-    `[imagePreprocessor] 리사이즈: ${width}x${height} → ${newWidth}x${newHeight}, ` +
-    `${Math.round(originalBuffer.length / 1024)}KB → ${Math.round(resizedBuffer.length / 1024)}KB`
+    `[imagePreprocessor] ${needsRotate ? '정립' : '재인코딩'}${needsResize ? '+리사이즈' : ''}: ` +
+    `${width}x${height} orient=${orientation ?? 'none'} → ${Math.round(originalBuffer.length / 1024)}KB → ${Math.round(outBuffer.length / 1024)}KB`
   );
 
-  return { imageBase64: resizedBase64, mimeType: 'image/jpeg' };
+  return { imageBase64: outBase64, mimeType: 'image/jpeg' };
 }

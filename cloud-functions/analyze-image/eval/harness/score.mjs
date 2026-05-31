@@ -28,10 +28,24 @@ export function normalizeProblemNum(v) {
   return m ? m[0] : s;
 }
 
-/** 텍스트 정규화: 소문자 + 영숫자/공백만 + 공백압축 */
+// 영어 not-축약 정규화: "aren't"↔"are not" 처럼 의미동일·표면상이를 통일.
+// 서술형 정답은 형식이 다양("be going to 부정문" = "They aren't going to..." 또는
+// "They are not going to..." 둘 다 정답)하므로, gold가 한 형식만 담아 생기는 측정
+// 아티팩트(둘 다 정답인데 wrong 처리)를 제거한다. not-축약만 처리(소유격 's·'d 등은
+// 의미가 애매하여 제외) → 의미보존이라 false-positive 위험 없음.
+const CONTRACTIONS = [
+  [/\bwon't\b/g, 'will not'], [/\bshan't\b/g, 'shall not'], [/\bcan't\b/g, 'can not'],
+  [/\bain't\b/g, 'is not'],
+  [/\b(are|is|was|were|do|does|did|would|could|should|must|might|have|has|had|need|dare|ought)n't\b/g, '$1 not'],
+];
+
+/** 텍스트 정규화: 소문자 + not-축약 확장 + 영숫자/공백만 + 공백압축 */
 export function normalizeText(v) {
   if (v === null || v === undefined) return null;
-  const s = String(v).toLowerCase().replace(/[^a-z0-9\s']/g, ' ').replace(/\s+/g, ' ').trim();
+  let s = String(v).toLowerCase();
+  for (const [re, rep] of CONTRACTIONS) s = s.replace(re, rep);
+  s = s.replace(/\bcannot\b/g, 'can not'); // cannot ↔ can't 표면 통일
+  s = s.replace(/[^a-z0-9\s']/g, ' ').replace(/\s+/g, ' ').trim();
   return s === '' ? null : s;
 }
 
@@ -60,14 +74,23 @@ export function classifyMC(gtField, predRaw) {
 
 /** text 한 필드 채점 → 'correct' | 'abstain' | 'wrong' (loose 매칭 포함) */
 export function classifyText(gtField, predRaw) {
-  const gt = normalizeText(gtField.value);
   const pred = normalizeText(predRaw);
   if (pred === null) return 'abstain';
+  // 비대칭 매칭(precision-first): 정확일치 또는 pred가 gt를 '포함'(superset, 주어/군더더기 허용)할 때만 correct.
+  // gt.includes(pred)는 의도적으로 제외 — 정답의 '부분문자열'(불완전 부분답)을 만점 처리하면
+  // 짧은 오답이 긴 정답에 흡수되어 confident-wrong 을 은폐한다(예: pred="clean"이 긴 정답에 흡수).
+  const looseMatch = (gt) => gt !== null && (gt === pred || pred.includes(gt));
+  // 모호 라벨(흐릿/판독불가 손글씨): accept 집합 중 하나라도 loose 매칭이면 correct.
+  // 손글씨 r/n 등 진성 모호로 gt 단정 불가 시, 가능한 판독을 모두 accept 에 담아
+  // 그럴듯한 판독을 confident-wrong 으로 오처벌하지 않는다(precision-first).
+  if (gtField.ambiguous) {
+    const accepts = (gtField.accept || []).map(normalizeText);
+    return accepts.some(looseMatch) ? 'correct' : 'wrong';
+  }
+  const gt = normalizeText(gtField.value);
   if (gt === null) return 'wrong';
-  if (gt === pred) return 'correct';
-  // loose: 한쪽이 다른쪽을 포함하면 부분정답으로 correct 취급
-  if (gt.includes(pred) || pred.includes(gt)) return 'correct';
-  return 'wrong';
+  // loose: pred가 gt 이상(정확일치 또는 superset)일 때만 correct. 부분답은 wrong.
+  return looseMatch(gt) ? 'correct' : 'wrong';
 }
 
 const EMPTY = () => ({ correct: 0, abstain: 0, wrong: 0, missing: 0 });

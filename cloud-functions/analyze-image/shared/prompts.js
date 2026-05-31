@@ -113,17 +113,41 @@ The student's mark may sit directly ON a choice number (a circle/check/underline
 This image is zoomed into ONLY the answer marking region. Look very carefully for any handwritten marks.`;
 
   if (questionContext?.isSubjective) {
-    return `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.
+    const instruction = questionContext.instruction || '';
+    const questionBody = questionContext.questionBody || '';
+    const subjScope = isFullCrop
+      ? `You are analyzing a CROPPED and ZOOMED image showing the FULL problem (question text + answer area) for exam question Q${problemNumber}.
+The handwritten answer may span MULTIPLE lines anywhere in this crop — scan the ENTIRE image top-to-bottom and transcribe EVERY handwritten line in reading order (do not stop after the first line).`
+      : `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.`;
+    return `${subjScope}
 This is a SHORT ANSWER / ESSAY type question (not multiple choice).
+${instruction ? `\nInstruction: ${instruction}` : ''}
+${questionBody ? `\nQuestion: ${questionBody}` : ''}
 
-Your task: Read the HANDWRITTEN answer text exactly as the student wrote it.
+Your task: Transcribe ONLY what the student HANDWROTE to answer this question.
 
-Rules:
-- Transcribe the handwritten text VERBATIM, including any spelling mistakes or grammatical errors the student made
-- Do NOT correct the student's answer — report exactly what they wrote
-- If the student crossed out text and rewrote it, report only the final version
-- If you see an arrow (→) indicating a correction (e.g., "cuting → cutting"), report ONLY the corrected word/phrase after the arrow
-- If no handwritten answer is found, return null
+## Transcribe the student's HANDWRITING only (not printed text)
+- Report ONLY the text the student wrote BY HAND (pen/pencil) in the blank/answer space.
+- Do NOT include PRINTED text that was already on the page around the blank — e.g. printed dialogue tags "A:" / "B:", a printed "Yes," / "No," lead-in, the given part of the sentence, the instruction, or word-bank tokens. Those are NOT the student's answer.
+- Test is handwritten-vs-printed, NOT the word itself: if the student wrote "Yes"/"No" (or any such word) BY HAND, DO include it; if it was already printed, exclude it.
+- The student's answer is SHORT — just the word(s)/phrase they filled into the blank. A long printed sentence or printed dialogue line around the blank (e.g. "But I can play violin.", "at your house?", "the bank?") is part of the QUESTION, not the answer — never transcribe it.
+- The blank is often a short gap in the MIDDLE of a printed line (e.g. "____ at the bank?", "You can't play piano ____."). Transcribe ONLY what the student inserted INTO the gap — do NOT carry over the printed words sitting just before or after the gap on the same line (here: exclude printed "at the bank?", "You can't play piano").
+- Handwriting vs print is a VISUAL distinction: handwritten strokes are irregular, usually blue/black pen or pencil, often slanted or cursive; printed text is a uniform typeface. Transcribe ONLY the handwritten strokes. If the crop shows a 2-line A/B dialogue and BOTH lines contain handwriting, transcribe each line's handwriting in reading order — but NEVER the printed (typeface) portion of either line, and NEVER the other speaker's printed line.
+
+## Worked examples — the exact mistake to avoid (study these)
+- Printed line "A: ____ at the bank?" with handwriting "Doesn't he work" in the gap → user_answer is "Doesn't he work". WRONG: "Doesn't he work at the bank?" (the printed "at the bank?" was glued on). The single biggest error is attaching the FIRST printed word right after the gap (here "at") onto the handwriting — do NOT.
+- Printed line "You can't play piano ____. But I can play violin." with handwriting "can you" → user_answer is "can you". WRONG: "can you. But I can play violin." (the printed tail was included).
+- Dialogue "A: ____ ?  B: Yes, ____ ." where the student handwrote "Isn't I sleep" on A and "you can" on B → user_answer is "Isn't I sleep you can". WRONG: copying the printed "A:", "B:", "Yes," or the printed remainder of either line.
+- Printed "Yes, ____ ____ . They are my classmates." with handwriting "they do" → user_answer is "they do". WRONG: "Yes, they do" (the printed "Yes," was included).
+
+## Format & completeness
+- Transcribe VERBATIM, preserving the student's own spelling/grammar mistakes. Do NOT correct them.
+- Write it as ONE natural word/phrase/sentence with normal spaces between words, exactly as the student wrote it. NEVER break it into separate tokens divided by commas OR slashes (NOT "Can't / I / apply", NOT "they, do").
+- Transcribe the FULL answer through to its end; do NOT stop partway (no truncation).
+- If this question has multiple blanks (or A/B dialogue turns), transcribe each blank's handwriting in reading order joined by a single space — do NOT insert slashes between them.
+- If the student crossed out text and rewrote it, report only the final version.
+- If you see a correction arrow (→) (e.g., "cuting → cutting"), report ONLY the text after the arrow.
+- If no handwritten answer is found, return null.
 
 Output JSON only:
 { "problem_number": "${problemNumber}", "user_answer": "the student's handwritten answer" }`;
@@ -136,6 +160,7 @@ Your main goal is to find which choice number (1-5) the student marked/selected.
 - Look for: circled numbers, checkmarks, underlines, pen strokes, pencil marks on or near a choice number
 - Faint pencil marks, light circles, and small tick marks all count as valid marks
 - For multiple choice (①②③④⑤): return the choice number ("1"-"5")
+- EXCEPTION — sentence-PATTERN questions (문장 형식 고르기, choices written as "1형식".."5형식"): return the PATTERN NUMBER the student marked — if they circled "4형식", return "4" — NOT the slot/position index.
 
 ## Secondary Rule: Korean Exam Grading Marks (apply ONLY when clearly visible)
 After exams, students sometimes mark their papers during answer-checking:
@@ -165,11 +190,19 @@ This is a SHORT ANSWER / ESSAY type question (not multiple choice).
 ${instruction ? `\nInstruction: ${instruction}` : ''}
 ${questionBody ? `\nQuestion: ${questionBody}` : ''}
 
-Your task: Read the question from the image and solve it to determine the correct answer.
+Your task: Solve the question and give the correct answer in the SAME UNIT the student is expected to write.
 
-Rules:
-- For grammar correction questions (find and fix errors): provide ONLY the corrected word or phrase, not the full sentence
-- For sentence transformation questions (rewrite in a given form): provide the COMPLETE transformed sentence
+## CRITICAL: match the answer UNIT to what the student fills in
+The correct_answer must line up with the student's handwriting so the two can be compared directly.
+- BLANK-FILLING type (a printed sentence/dialogue with an underline / parentheses / ____ blank the student fills): give ONLY the text that goes INTO the blank. Do NOT repeat the printed words around the blank (dialogue tags "A:" / "B:", a printed "Yes," / "No," lead-in, the given part of the sentence). If there are multiple blanks, give each in reading order joined by a single space — do NOT insert slashes.
+- WORD-ARRANGEMENT / SENTENCE-WRITING / TRANSFORMATION type (arrange the given words, or rewrite the sentence in a required form): give the COMPLETE finished sentence, correctly ordered.
+  - NEVER output the word-bank tokens as a separate list divided by commas OR slashes (NOT "they, do", NOT "Didn't / she / go") — arrange them into the actual finished sentence. For example: write "Yes, they do" (not the tokens), or "Didn't she go home late yesterday?" (not "Didn't / she / go").
+- GRAMMAR CORRECTION type (find and fix the error): give ONLY the corrected word or phrase, not the full sentence. If a correction arrow (→) is shown (e.g., "cuting → cutting"), give ONLY the text AFTER the arrow — never the pre-correction (misspelled) form, and never both joined together.
+
+## Format & completeness
+- Write ONE natural English word/phrase/sentence with normal spaces between words — NEVER a list of separate tokens divided by commas or slashes (NOT "Won't / my / grandma / cook"; write "Won't my grandma cook for me tonight?").
+- Give the COMPLETE answer through to its end; do NOT truncate mid-phrase.
+- Use the same surface form the student would write (do not prepend scaffolding the student wouldn't write).
 - You MUST provide a correct_answer. Never return null.
 
 Output JSON only:
@@ -205,6 +238,8 @@ Korean exams often ask: "다음 글의 밑줄 친 부분 중, 문맥상 낱말�
 - For multiple choice (including underline-type): return the choice NUMBER as "1"-"5"
 - NEVER return a word, phrase, or letter — ALWAYS a single digit "1"-"5"
 - This applies to ALL numbered multiple-choice types — including sentence-insertion (문장 삽입), sentence-ordering (순서 배열), grammar (어법), and vocabulary/underline (어휘·밑줄) questions. For these, the choices ①②③④⑤ (or 1-5) indicate positions/options, and correct_answer MUST be that choice NUMBER.
+- ⚠️ EXCEPTION — sentence-PATTERN questions (문장 형식 고르기): when the question asks "문장의 형식을 고르시오" and the choices are pattern labels like "1형식","2형식","3형식","4형식","5형식" (NOT ①②③④⑤-labeled statements), correct_answer is the PATTERN NUMBER itself, NOT the choice position. If the correct pattern is 5형식, return "5" — even when "5형식" is printed in the 1st or 2nd slot. Do NOT convert to ①②③ position order; read the digit out of the "N형식" label.
+  When SOLVING for the correct pattern, apply: 1형식=S+V (자동사, e.g. sleep/go/arrive); 2형식=S+V+C (be·become·seem·감각동사 look/feel/sound + 보어 — a be-verb followed by a noun or adjective is 2형식, e.g. "She is my business partner"→2형식, NOT 3형식); 3형식=S+V+O (타동사+목적어 하나); 4형식=S+V+IO+DO (수여동사 give/buy/make/send/tell + 사람 + 사물); 5형식=S+V+O+OC (make/find/keep/call/leave + 목적어 + 목적격보어, e.g. "I found it difficult"→5형식, "keeps you healthy"→5형식).
 - NEVER copy a sentence, clause, or excerpt from the passage into correct_answer. Even if the question is about inserting or reordering a sentence, output the choice NUMBER only — NOT the sentence text.
 - The example output below uses a placeholder; do NOT copy its value. Determine the actual number by solving the question.
 - You MUST provide a correct_answer. Never return null.${choicesHint}
@@ -237,9 +272,16 @@ ${focusBlock}
 - Underline-type multiple choice (e.g., "다음 글의 밑줄 친 부분 중, 문맥상 낱말의 쓰임이 적절하지 않은 것은?"):
   - Each underlined word is labeled with ①②③④⑤ in the original text
   - correct_answer MUST be the CHOICE NUMBER (a single digit "1"-"5" that you determine by solving), NOT the underlined word (e.g., NOT "appear")
+- Sentence-PATTERN questions (문장 형식 고르기, choices written as "1형식".."5형식", NOT ①②③④⑤-labeled statements): BOTH user_answer and correct_answer are the PATTERN NUMBER itself. Student circled "4형식" → user_answer "4"; correct pattern 5형식 → correct_answer "5". Do NOT convert to a slot/position index (①②③); read the digit out of the "N형식" label.
+  When SOLVING for the correct pattern, apply: 1형식=S+V (자동사); 2형식=S+V+C (be·become·seem·감각동사+보어 — a be-verb followed by a noun or adjective is 2형식, e.g. "She is my business partner"→2형식, NOT 3형식); 3형식=S+V+O; 4형식=S+V+IO+DO (수여동사 give/buy/make/send/tell + 사람 + 사물); 5형식=S+V+O+OC (make/find/keep/call/leave + 목적어 + 목적격보어, e.g. "I found it difficult"→5형식).
 - Short answer / essay (서술형):
-  - user_answer: transcribe the student's handwritten text VERBATIM, including spelling errors. If you see a correction arrow (→), report only the text after the arrow.
-  - correct_answer: solve the question and return the correct text answer
+  - UNIT MATCHING (critical): for the SAME question, user_answer and correct_answer MUST be in the SAME unit/format so they can be compared directly (the student fills a blank → both are the blank's content; the student writes a whole sentence → both are the whole sentence).
+  - user_answer: transcribe ONLY the student's HANDWRITING in the blank/answer space, VERBATIM (keep their spelling/grammar errors). Do NOT include printed text already on the page (dialogue tags "A:" / "B:", a printed "Yes," / "No," lead-in, the given part of the sentence, word-bank tokens) — unless the student wrote it by hand. The answer is SHORT (the handwritten fill-in); a long printed sentence or dialogue line around the blank is the QUESTION, not the answer — never transcribe it. The blank is often a gap in the MIDDLE of a printed line, or one line of an A/B dialogue — transcribe ONLY the handwritten strokes inserted into the gap (irregular pen/pencil, slanted/cursive), EXCLUDING the printed words before/after the gap and the other speaker's printed line. If a correction arrow (→) is present, report only the text after it. Multiple blanks → join in reading order with a single space (no slashes).
+  - correct_answer: solve the question and answer in that SAME unit:
+    - blank-filling: ONLY the text that goes into the blank (exclude the printed surrounding words); multiple blanks → joined in reading order with a single space (no slashes).
+    - word-arrangement / sentence-writing / transformation: the COMPLETE finished sentence — NEVER the word-bank tokens as a separate list divided by commas or slashes (NOT "they, do", NOT "Can't / I / apply"; write the finished sentence like "Yes, they do").
+    - grammar correction: ONLY the corrected word/phrase.
+  - Write each answer as continuous natural text with normal spaces; give complete answers (no mid-phrase truncation), and NEVER break it into separate tokens divided by commas or slashes.
 - If no mark found: return null for user_answer
 </answer_format>
 

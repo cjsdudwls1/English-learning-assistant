@@ -53,6 +53,25 @@ function parseAnswerNumber(raw) {
   return numMatch ? parseInt(numMatch[1], 10) : null;
 }
 
+// ─── 서술형 채점용 텍스트 정규화 ────────────────────────────
+
+/**
+ * 서술형/주관식 채점 비교용 정규화: 대소문자·문장부호(.,?!;:")·중복공백 차이를 무시한다.
+ * - 어포스트로피(')·하이픈(-)은 보존: can't≠cant, well-known 등 철자 구분을 유지(과도한 관대 방지).
+ * - 채점 과민(맞는 답을 구두점/공백 차이로 오답 처리 = 학습자에게 confident-wrong 피드백) 방지.
+ *   실측 세션 4d1509b0: "Doesn't he like cats ?" vs "Doesn't he like cats",
+ *   "will You" vs "will you" 등 다수가 표면 차이만으로 오답 처리되던 문제.
+ * - 정답이 토큰 분절(예 "liked, the, English, ...")로 저장되거나 부분만 추출된 경우는
+ *   이 정규화로 해결되지 않는다(정답 추출 품질 영역, 별도).
+ */
+export function normalizeAnswerText(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .replace(/[.,?!;:"\/]/g, ' ')   // '/' 포함: 다중빈칸 답을 "A / B"로 이어 추출해도 구분자 차이로 오답처리 안 되게(ua/ca 한쪽만 / 인 경우 false-negative 방지)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // ─── 단어→번호 매핑 (객관식 채점 fallback) ──────────────────
 
 /**
@@ -97,6 +116,67 @@ function mapWordToChoiceNumber(rawAnswer, choices) {
   }
 
   return null;
+}
+
+// ─── is_correct 판정 (prod 채점 단일 진실원) ──────────────────
+
+/**
+ * 정오답 판정. saveLabels(prod 저장)와 eval 하네스가 공유하는 단일 채점 함수.
+ * 1차: 시험지의 O/X 채점 마크(user_marked_correctness) → true/false. 'Unknown'/없음이면 2차.
+ * 2차: user_answer vs correct_answer 자동 비교.
+ *   - 객관식(choices 있음): parseAnswerNumber + 단어→번호 fallback(mapWordToChoiceNumber) 후 숫자 비교.
+ *   - 서술형(choices 없음) 또는 번호 파싱 불가: normalizeAnswerText 후 정확 일치.
+ * 부분점수 없음(정확 일치만 정답).
+ * @param {{user_marked_correctness?, user_answer?, correct_answer?, choices?}} item
+ * @returns {boolean|null} true=정답, false=오답, null=판정보류(미채점)
+ */
+export function computeIsCorrect({ user_marked_correctness, user_answer, correct_answer, choices } = {}) {
+  let isCorrect = null;
+
+  // 1차: 시험지의 O/X 채점 마크
+  const rawMark = user_marked_correctness;
+  if (rawMark != null && String(rawMark).trim() !== '') {
+    const normalized = normalizeMark(rawMark);
+    if (normalized === 'O') isCorrect = true;
+    else if (normalized === 'X') isCorrect = false;
+    // 'Unknown'이면 null 유지
+  }
+
+  // 2차: user_answer vs correct_answer 자동 비교
+  if (isCorrect === null) {
+    const userAns = String(user_answer || '').trim();
+    const correctAns = String(correct_answer || '').trim();
+    const choiceArr = Array.isArray(choices) ? choices : [];
+    const isObjective = choiceArr.length > 0;
+
+    if (userAns && correctAns) {
+      let userNum = parseAnswerNumber(userAns);
+      let correctNum = parseAnswerNumber(correctAns);
+
+      // 객관식 fallback: parseAnswerNumber 실패 시 choices에서 단어 매칭으로 번호 복원
+      if (isObjective) {
+        if (userNum === null) {
+          const mapped = mapWordToChoiceNumber(userAns, choiceArr);
+          if (mapped !== null) userNum = mapped;
+        }
+        if (correctNum === null) {
+          const mapped = mapWordToChoiceNumber(correctAns, choiceArr);
+          if (mapped !== null) correctNum = mapped;
+        }
+      }
+
+      if (userNum !== null && correctNum !== null) {
+        isCorrect = userNum === correctNum;
+      } else {
+        // 서술형 등: 구두점/공백/대소문자 정규화 후 정확 일치. 정규화 후 빈 문자열이면 비교 안 함.
+        const nu = normalizeAnswerText(userAns);
+        const nc = normalizeAnswerText(correctAns);
+        isCorrect = nu !== '' && nu === nc;
+      }
+    }
+  }
+
+  return isCorrect;
 }
 
 // ─── choices 정규화 ─────────────────────────────────────────
@@ -339,58 +419,14 @@ export async function saveLabels(supabase, sessionId, savedProblems, validatedIt
       continue;
     }
 
-    // ─── is_correct 판정 ───
-    // 1차: 시험지의 O/X 채점 마크 (user_marked_correctness) 기반
-    // 2차: 마크 없으면 user_answer vs correct_answer 자동 비교
-    const rawMark = it.user_marked_correctness;
-    let isCorrect = null;
-
-    if (rawMark != null && String(rawMark).trim() !== '') {
-      // O/X 마크가 존재하는 경우
-      const normalized = normalizeMark(rawMark);
-      if (normalized === 'O') isCorrect = true;
-      else if (normalized === 'X') isCorrect = false;
-      // 'Unknown'이면 null 유지
-    }
-
-    // 자동 채점: O/X 마크가 없고, user_answer와 correct_answer가 모두 있으면 비교
-    if (isCorrect === null) {
-      const userAns = String(it.user_answer || '').trim();
-      const correctAns = String(it.correct_answer || '').trim();
-      const choices = Array.isArray(it.choices) ? it.choices : [];
-      const isObjective = choices.length > 0;
-
-      if (userAns && correctAns) {
-        let userNum = parseAnswerNumber(userAns);
-        let correctNum = parseAnswerNumber(correctAns);
-
-        // 객관식 fallback: parseAnswerNumber 실패 시 choices에서 단어 매칭으로 번호 복원
-        // 예: "다음 글의 밑줄 친 부분 중..." 문제에서 correct_answer가 "appear" 같은 단어로 들어온 경우
-        if (isObjective) {
-          if (userNum === null) {
-            const mapped = mapWordToChoiceNumber(userAns, choices);
-            if (mapped !== null) {
-              userNum = mapped;
-              console.log(`[dbOperations:saveLabels] Q${it.problem_number} user_answer "${userAns}" → choice #${mapped}`);
-            }
-          }
-          if (correctNum === null) {
-            const mapped = mapWordToChoiceNumber(correctAns, choices);
-            if (mapped !== null) {
-              correctNum = mapped;
-              console.log(`[dbOperations:saveLabels] Q${it.problem_number} correct_answer "${correctAns}" → choice #${mapped}`);
-            }
-          }
-        }
-
-        if (userNum !== null && correctNum !== null) {
-          isCorrect = userNum === correctNum;
-        } else {
-          // 숫자 파싱 불가 시 문자열 비교 (서술형 등)
-          isCorrect = userAns.toLowerCase() === correctAns.toLowerCase();
-        }
-      }
-    }
+    // ─── is_correct 판정 (computeIsCorrect 단일 진실원) ───
+    // 1차: 시험지 O/X 채점 마크, 2차: user/correct 자동 비교. eval 하네스가 동일 함수로 재현.
+    const isCorrect = computeIsCorrect({
+      user_marked_correctness: it.user_marked_correctness,
+      user_answer: it.user_answer,
+      correct_answer: it.correct_answer,
+      choices: it.choices,
+    });
 
     // ─── taxonomy 보강 ───
     const classification = it.classification || {};

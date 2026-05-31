@@ -137,7 +137,7 @@ export async function executePass0({ ai, sessionId, imageBase64, mimeType }) {
  * - 각 크롭 이미지를 개별 API 호출로 처리 (배치 3개씩 병렬)
  * - buildPromptFn에 problem_number를 전달하여 문제별 프롬프트 생성
  */
-async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionContextMap, temperature = 0.0, modelSequence }) {
+export async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, questionContextMap, temperature = 0.0, modelSequence }) {
   if (crops.length === 0) return { marks: [], usageMetadata: null };
 
   const marks = [];
