@@ -1,11 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { supabase } from './services/supabaseClient';
 import { AuthGate } from './components/AuthGate';
-import { LogoutButton } from './components/LoginButton';
-import { ThemeToggle } from './components/ThemeToggle';
-import { LanguageToggle } from './components/LanguageToggle';
-import { TopBar } from './components/TopBar';
 import { PageLayout } from './components/PageLayout';
 import { EditPage } from './pages/EditPage';
 import { StatsPage } from './pages/StatsPage';
@@ -29,436 +25,108 @@ import { AssignmentDetailPage } from './components/teacher/AssignmentDetailPage'
 import { RoleGate } from './components/RoleGate';
 import { UserRoleProvider } from './contexts/UserRoleContext';
 import { useLanguage } from './contexts/LanguageContext';
-import { useTheme } from './contexts/ThemeContext';
-import { getTranslation } from './utils/translations';
-import { ImageRotator } from './components/ImageRotator';
-import { Loader } from './components/Loader';
 import { InstallBanner } from './components/InstallBanner';
-import { CameraCapture } from './components/CameraCapture';
+import { MainPage, type ImageFile } from './pages/MainPage';
+import {
+  AIProviderId,
+  getDefaultModelId,
+  isProviderEnabled,
+  loadSavedSelection,
+  saveSelection,
+} from './config/aiProviders';
 import './styles/app.css';
 
-// eduscope-ai에만 있는 기능 (UI만 유지)
-const PIPELINE_STAGES = [
-  {
-    id: 'pre',
-    title: '노이즈 제거/전처리',
-    tech: 'OpenCV + CLAHE + Adaptive Thresholding',
-    description: '문항 대비를 높이고 조명을 보정해 안정적인 탐지를 보장합니다.',
-  },
-  {
-    id: 'detect',
-    title: '문자 검출',
-    tech: 'CRAFT + EAST',
-    description: '텍스트 라인을 감지하고 박스 형태로 시각화합니다.',
-  },
-  {
-    id: 'recognize',
-    title: '문자 인식',
-    tech: 'ViT + CNN + BiLSTM + CTC',
-    description: '문자열 시퀀스를 추론해 토큰을 생성합니다.',
-  },
-  {
-    id: 'math',
-    title: '수식 인식',
-    tech: 'Im2Latex (CNN Encoder + Transformer Decoder)',
-    description: '수식을 LaTeX 형태로 복원합니다.',
-  },
-] as const;
+const MAX_IMAGES = 10;
+const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
 
-const HIGHLIGHTS = [
-  {
-    id: 'mobile',
-    title: '모바일 중심 분석',
-    description: '모바일에서 촬영한 문제 이미지를 자동으로 분석하고 채점합니다.',
-    tag: '모바일 최적화',
-  },
-  {
-    id: 'ai-analysis',
-    title: 'AI 자동 채점',
-    description: 'Gemini AI가 문제를 자동으로 인식하고 정답/오답을 판단합니다.',
-    tag: 'AI 기반',
-  },
-  {
-    id: 'statistics',
-    title: '학습 통계 제공',
-    description: '문제 유형별, 카테고리별 상세한 학습 통계를 제공합니다.',
-    tag: '데이터 분석',
-  },
-] as const;
-
-const METRICS = [
-  { id: 'accuracy', label: '분석 정확도', value: '95%+', detail: 'AI 기반 자동 채점' },
-  { id: 'speed', label: '평균 분석 시간', value: '10-60초', detail: '이미지당 처리 시간' },
-  { id: 'coverage', label: '지원 문제 유형', value: '4가지', detail: '객관식/단답형/서술형/OX' },
-  { id: 'languages', label: '다국어 지원', value: '한/영', detail: '한국어 및 영어' },
-] as const;
-
-const USE_CASES = [
-  {
-    id: 'student',
-    title: '학생',
-    description: '문제를 촬영하면 자동으로 분석되고, 틀린 문제를 다시 풀어볼 수 있습니다.',
-    bullets: ['자동 채점', '틀린 문제 재시도', '학습 통계 확인'],
-  },
-  {
-    id: 'parent',
-    title: '학부모',
-    description: '자녀의 학습 현황을 한눈에 파악하고, 취약 영역을 확인할 수 있습니다.',
-    bullets: ['학습 통계 확인', '취약 영역 파악', '진도 추적'],
-  },
-  {
-    id: 'teacher',
-    title: '선생님',
-    description: '학생들의 문제 풀이를 빠르게 확인하고, 유사 문제를 생성할 수 있습니다.',
-    bullets: ['빠른 채점', '유사 문제 생성', '학급 통계'],
-  },
-] as const;
-
-const FAQS = [
-  {
-    q: '어떤 형식의 이미지를 업로드할 수 있나요?',
-    a: 'JPG, PNG, WEBP 등 일반적인 이미지 형식을 지원합니다. 여러 이미지를 한 번에 업로드할 수 있습니다.',
-  },
-  {
-    q: 'AI 분석은 얼마나 걸리나요?',
-    a: '이미지당 약 10-60초 정도 소요됩니다. 분석은 백그라운드에서 진행되며, 완료되면 통계 페이지에서 확인할 수 있습니다.',
-  },
-  {
-    q: '틀린 문제를 다시 풀 수 있나요?',
-    a: '네, 통계 페이지에서 틀린 문제만 필터링하여 다시 풀어볼 수 있습니다. 유사 문제도 생성할 수 있습니다.',
-  },
-  {
-    q: '데이터는 안전하게 보관되나요?',
-    a: '모든 데이터는 사용자별로 격리되어 저장되며, 다른 사용자의 데이터에 접근할 수 없습니다.',
-  },
-] as const;
-
-interface ImageFile {
-  file: File;
-  previewUrl: string;
-  id: string;
+/**
+ * Canvas API로 이미지를 리사이즈·JPEG 압축한다.
+ * 긴 변 maxDimension 이하로 축소, quality 0.8 기본.
+ */
+function compressImage(
+  file: File,
+  maxDimension = 1200,
+  quality = 0.8,
+): Promise<{ blob: Blob; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          const ratio = Math.min(maxDimension / width, maxDimension / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          reject(new Error('Canvas 2D context not available'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(url);
+          if (!blob) {
+            reject(new Error(`canvas.toBlob returned null: ${file.name}`));
+            return;
+          }
+          resolve({ blob, mimeType: 'image/jpeg' });
+        }, 'image/jpeg', quality);
+      } catch (e) {
+        URL.revokeObjectURL(url);
+        reject(e);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`Failed to load image: ${file.name}`));
+    };
+    img.src = url;
+  });
 }
 
-// 메인 페이지 컴포넌트 (eduscope-ai 스타일)
-const MainPage: React.FC<{
-  imageFiles: ImageFile[];
-  isLoading: boolean;
-  error: string | null;
-  status: 'idle' | 'loading' | 'done' | 'error';
-  isCameraOpen: boolean;
-  onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onAnalyzeClick: () => void;
-  onRemove: (index: number) => void;
-  onRotate: (index: number, blob: Blob) => void;
-  onOpenCamera: () => void;
-  onCloseCamera: () => void;
-  onCameraCapture: (files: File[]) => void;
-  onClearAll: () => void;
-}> = ({ imageFiles, isLoading, error, status, isCameraOpen, onFileChange, onAnalyzeClick, onRemove, onRotate, onOpenCamera, onCloseCamera, onCameraCapture, onClearAll }) => {
-  const { language } = useLanguage();
-  const t = getTranslation(language);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+/**
+ * Supabase Storage `analyze-uploads` bucket에 직접 업로드.
+ * RLS: `{userId}/...` 폴더 prefix가 auth.uid()와 일치해야 한다.
+ */
+async function uploadImageDirect(
+  blob: Blob,
+  userId: string,
+  index: number,
+  originalName: string,
+): Promise<string> {
+  const safeName = originalName.replace(/[^\w.-]+/g, '_').slice(0, 60);
+  const path = `${userId}/${Date.now()}_${index}_${safeName}.jpg`;
+  const { error } = await supabase.storage
+    .from('analyze-uploads')
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+  if (error) throw new Error(`Upload failed (${path}): ${error.message}`);
+  return path;
+}
 
-  return (
-    <div className="page-shell">
-      <div className="bg-grid" aria-hidden={true} />
-      <TopBar status={status} />
-
-      <main className="page-content">
-        <section className="hero" id="top">
-          <div className="hero-copy">
-            <p className="eyebrow">AI 기반 영어 문제 분석 시스템</p>
-            <h1>
-              손글씨 문제까지 <br />
-              한 번에 분석하는 <span>AI 영어 문제 분석기</span>
-            </h1>
-            <p className="lede">
-              {language === 'ko'
-                ? '문제 이미지를 업로드하면 AI가 자동으로 인식하고 채점합니다. 틀린 문제는 다시 풀어보고, 상세한 학습 통계를 확인할 수 있습니다.'
-                : 'Upload problem images and AI will automatically recognize and grade them. Review incorrect problems and check detailed learning statistics.'}
-            </p>
-            <div className="hero-actions">
-              <label className="primary" htmlFor="hero-image-input">
-                {language === 'ko' ? '지금 시작하기' : 'Get Started'}
-              </label>
-              <Link className="ghost" to="/stats">
-                {language === 'ko' ? '통계 보기' : 'View Stats'}
-              </Link>
-            </div>
-            <div className="hero-tags">
-              <span>{language === 'ko' ? '자동 채점' : 'Auto Grading'}</span>
-              <span>{language === 'ko' ? '학습 통계' : 'Statistics'}</span>
-              <span>{language === 'ko' ? '유사 문제' : 'Similar Problems'}</span>
-              <span>{language === 'ko' ? '모바일 최적화' : 'Mobile Optimized'}</span>
-            </div>
-          </div>
-          <div className="hero-panel">
-            <div className="hero-panel__header">
-              <div>
-                <p className="eyebrow">실시간 분석</p>
-                <strong>{language === 'ko' ? '간단히 업로드 → AI 분석 → 결과 확인' : 'Upload → AI Analysis → View Results'}</strong>
-              </div>
-            </div>
-
-            <div className="upload-panel-moved" style={{ marginTop: '1.5rem' }}>
-              <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  className="mobile-only-btn"
-                  onClick={onOpenCamera}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '1.5rem',
-                    border: '2px solid rgba(79,70,229,0.5)',
-                    borderRadius: 'var(--radius-md)',
-                    cursor: 'pointer',
-                    background: 'rgba(79,70,229,0.15)',
-                    color: 'var(--text-main)',
-                    fontWeight: 600,
-                    fontSize: '1rem',
-                  }}
-                >
-                  📸 {language === 'ko' ? '사진 촬영' : 'Take Photo'}
-                </button>
-                <label
-                  htmlFor="hero-image-input"
-                  className="file-label"
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '1.5rem',
-                    border: '2px dashed rgba(255,255,255,0.2)',
-                    borderRadius: 'var(--radius-md)',
-                    cursor: 'pointer',
-                    background: 'rgba(255,255,255,0.05)',
-                    color: 'var(--text-main)',
-                    fontWeight: 500
-                  }}
-                >
-                  {imageFiles.length > 0
-                    ? (language === 'ko' ? `${imageFiles.length}장 선택됨` : `${imageFiles.length} selected`)
-                    : (language === 'ko' ? '🖼️ 갤러리 선택' : '🖼️ Gallery')}
-                </label>
-                <input
-                  id="hero-image-input"
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={onFileChange}
-                  style={{ display: 'none' }}
-                />
-              </div>
-              {/* 카메라 오버레이 */}
-              <CameraCapture
-                isOpen={isCameraOpen}
-                maxImages={10}
-                currentImageCount={imageFiles.length}
-                onCapture={onCameraCapture}
-                onClose={onCloseCamera}
-              />
-
-              {imageFiles.length > 0 && (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                      {language === 'ko' ? `${imageFiles.length}장 선택됨` : `${imageFiles.length} images`}
-                    </span>
-                    <button
-                      onClick={onClearAll}
-                      style={{
-                        background: 'transparent', border: '1px solid #ff4444', color: '#ff4444',
-                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer'
-                      }}
-                    >
-                      {language === 'ko' ? '초기화' : 'Clear All'}
-                    </button>
-                  </div>
-                  <div className="image-previews" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
-                  {imageFiles.map((imageFile, index) => (
-                    <div key={imageFile.id} style={{ position: 'relative', flexShrink: 0, width: '60px', height: '60px' }}>
-                      <img
-                        src={imageFile.previewUrl}
-                        alt="preview"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }}
-                      />
-                      <button
-                        onClick={(e) => { e.preventDefault(); onRemove(index); }}
-                        style={{
-                          position: 'absolute', top: -5, right: -5,
-                          background: '#ff4444', color: 'white',
-                          borderRadius: '50%', width: '18px', height: '18px',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          border: 'none', cursor: 'pointer', fontSize: '10px'
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  </div>
-                </>
-              )}
-
-              <button
-                className="primary"
-                onClick={onAnalyzeClick}
-                disabled={imageFiles.length === 0 || isLoading}
-                style={{ width: '100%', padding: '1rem', fontSize: '1.1rem' }}
-              >
-                {isLoading
-                  ? (language === 'ko' ? '분석 중…' : 'Analyzing...')
-                  : (language === 'ko' ? 'AI 분석 시작하기' : 'Start AI Analysis')
-                }
-              </button>
-              {error && <p className="error-text" style={{ marginTop: '0.5rem', color: '#ff6b6b', fontSize: '0.9rem' }}>{error}</p>}
-            </div>
-          </div>
-        </section>
-
-        <section className="metrics">
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">{language === 'ko' ? '성능 · 정확도' : 'Performance · Accuracy'}</p>
-              <h2>{language === 'ko' ? '높은 정확도의 AI 분석' : 'High Accuracy AI Analysis'}</h2>
-            </div>
-            <p className="muted">
-              {language === 'ko'
-                ? '실제 서비스 환경에서 측정된 정확도와 성능을 제공합니다.'
-                : 'We provide accuracy and performance measured in real service environments.'}
-            </p>
-          </div>
-          <div className="metrics-grid">
-            {METRICS.map((metric) => (
-              <article key={metric.id} className="metric-card">
-                <p className="metric-value">{metric.value}</p>
-                <h3>{metric.label}</h3>
-                <p className="muted">{metric.detail}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="solutions" id="solutions">
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">{language === 'ko' ? '주요 기능' : 'Key Features'}</p>
-              <h2>{language === 'ko' ? '학습자와 교육자를 위한 솔루션' : 'Solutions for Learners and Educators'}</h2>
-            </div>
-            <p className="muted">
-              {language === 'ko'
-                ? '학생, 학부모, 선생님 모두가 활용할 수 있는 다양한 기능을 제공합니다.'
-                : 'We provide various features that students, parents, and teachers can all use.'}
-            </p>
-          </div>
-          <div className="usecase-grid">
-            {USE_CASES.map((usecase) => (
-              <article key={usecase.id} className="usecase-card">
-                <h3>{usecase.title}</h3>
-                <p>{usecase.description}</p>
-                <ul>
-                  {usecase.bullets.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </div>
-
-          <div className="highlights" id="stories">
-            <div className="section-head">
-              <div>
-                <p className="eyebrow">{language === 'ko' ? '핵심 차별화' : 'Key Differentiators'}</p>
-                <h3>{language === 'ko' ? '촬영부터 통계까지 한 번에' : 'From Capture to Statistics'}</h3>
-              </div>
-              <p className="muted">{language === 'ko' ? '모바일 최적화, AI 자동 채점, 상세한 학습 통계를 함께 제공합니다.' : 'We provide mobile optimization, AI auto-grading, and detailed learning statistics.'}</p>
-            </div>
-            <div className="highlight-grid">
-              {HIGHLIGHTS.map((card) => (
-                <article key={card.id} className="highlight-card">
-                  <span className="tag">{card.tag}</span>
-                  <h3>{card.title}</h3>
-                  <p>{card.description}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="panel pipeline" id="pipeline">
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">Tech Stack</p>
-              <h2>{language === 'ko' ? 'AI 분석 파이프라인' : 'AI Analysis Pipeline'}</h2>
-            </div>
-            <p className="muted">
-              {language === 'ko'
-                ? '이미지 업로드부터 AI 분석, 데이터 저장까지 순차적으로 실행합니다.'
-                : 'Runs sequentially from image upload to AI analysis to data storage.'}
-            </p>
-          </div>
-          <div className="timeline">
-            {PIPELINE_STAGES.map((stage, index) => (
-              <article key={stage.id} className="timeline-card">
-                <div className="timeline-step">Step {index + 1}</div>
-                <h3>{stage.title}</h3>
-                <p className="tech">{stage.tech}</p>
-                <p>{stage.description}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel faq" id="faq">
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">FAQ</p>
-              <h2>{language === 'ko' ? '자주 받는 질문' : 'Frequently Asked Questions'}</h2>
-            </div>
-            <p className="muted">{language === 'ko' ? '사용 방법, 기능, 보안에 대한 질문을 정리했습니다.' : 'We have compiled questions about usage, features, and security.'}</p>
-          </div>
-          <div className="faq-grid">
-            {FAQS.map((item, idx) => (
-              <article key={idx} className="faq-card">
-                <h3>{item.q}</h3>
-                <p>{item.a}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel cta" id="cta">
-          <div>
-            <p className="eyebrow">{language === 'ko' ? '지금 시작하기' : 'Get Started'}</p>
-            <h2>{language === 'ko' ? 'AI 영어 문제 분석을 시작하세요' : 'Start AI English Problem Analysis'}</h2>
-            <p className="muted">
-              {language === 'ko'
-                ? '이미지 업로드부터 통계 확인까지 모든 기능을 무료로 이용할 수 있습니다.'
-                : 'All features from image upload to statistics are available for free.'}
-            </p>
-          </div>
-          <div className="cta-actions">
-            <a className="primary" href="#top">
-              {language === 'ko' ? '지금 시작하기' : 'Get Started'}
-            </a>
-            <Link className="ghost muted-text" to="/stats">
-              {language === 'ko' ? '통계 보기' : 'View Statistics'}
-            </Link>
-          </div>
-        </section>
-      </main>
-    </div>
+/** File[]을 ImageFile[]로 변환 (FileReader 기반 미리보기 URL 생성). */
+function readFilesAsImageFiles(files: File[]): Promise<ImageFile[]> {
+  return Promise.all(
+    files.map(
+      (file) =>
+        new Promise<ImageFile>((resolve) => {
+          const id = `${Date.now()}_${Math.random()}_${file.name}`;
+          const reader = new FileReader();
+          reader.onloadend = () => resolve({ file, previewUrl: reader.result as string, id });
+          reader.onerror = () => resolve({ file, previewUrl: '', id });
+          reader.readAsDataURL(file);
+        }),
+    ),
   );
-};
+}
 
 const App: React.FC = () => {
   const { language } = useLanguage();
-  const location = useLocation();
   const navigate = useNavigate();
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -467,66 +135,33 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
+  const initialSelection = React.useMemo(() => loadSavedSelection(), []);
+  const [providerId, setProviderId] = useState<AIProviderId>(initialSelection.providerId);
+  const [modelId, setModelId] = useState<string>(initialSelection.modelId);
+  const providerEnabled = isProviderEnabled(providerId);
 
-  const compressImage = (file: File, maxDimension: number = 1200, quality: number = 0.8): Promise<{ blob: Blob; mimeType: string }> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        try {
-          let { width, height } = img;
-          if (width > maxDimension || height > maxDimension) {
-            const ratio = Math.min(maxDimension / width, maxDimension / height);
-            width = Math.round(width * ratio);
-            height = Math.round(height * ratio);
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            URL.revokeObjectURL(url);
-            reject(new Error('Canvas 2D context not available'));
-            return;
-          }
-          ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob((blob) => {
-            URL.revokeObjectURL(url);
-            if (!blob) {
-              reject(new Error(`canvas.toBlob returned null: ${file.name}`));
-              return;
-            }
-            console.log(`[Compress] ${file.name}: ${img.naturalWidth}x${img.naturalHeight} → ${width}x${height}, blob ${blob.size}B (원본 ${file.size}B)`);
-            resolve({ blob, mimeType: 'image/jpeg' });
-          }, 'image/jpeg', quality);
-        } catch (e) {
-          URL.revokeObjectURL(url);
-          reject(e);
-        }
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error(`Failed to load image: ${file.name}`));
-      };
-      img.src = url;
-    });
-  };
+  const handleProviderChange = useCallback((nextProviderId: AIProviderId) => {
+    const nextModelId = getDefaultModelId(nextProviderId);
+    setProviderId(nextProviderId);
+    setModelId(nextModelId);
+    saveSelection(nextProviderId, nextModelId);
+    setError(null);
+  }, []);
 
-  // Supabase Storage `analyze-uploads` bucket에 직접 업로드 → path 반환
-  // RLS: `{userId}/...` 폴더 prefix가 auth.uid()와 일치해야 함
-  const uploadImageDirect = async (blob: Blob, userId: string, index: number, originalName: string): Promise<string> => {
-    const safeName = originalName.replace(/[^\w.-]+/g, '_').slice(0, 60);
-    const path = `${userId}/${Date.now()}_${index}_${safeName}.jpg`;
-    const { error } = await supabase.storage
-      .from('analyze-uploads')
-      .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
-    if (error) throw new Error(`Upload failed (${path}): ${error.message}`);
-    return path;
-  };
+  const handleModelChange = useCallback((nextModelId: string) => {
+    setModelId(nextModelId);
+    saveSelection(providerId, nextModelId);
+  }, [providerId]);
 
   const handleAnalyzeClick = useCallback(async () => {
     if (imageFiles.length === 0) {
       setError(language === 'ko' ? '분석할 이미지를 먼저 업로드해주세요.' : 'Please upload an image to analyze first.');
+      return;
+    }
+
+    if (!isProviderEnabled(providerId)) {
+      setError(language === 'ko' ? '서비스 준비중입니다.' : 'Service coming soon.');
+      setStatus('error');
       return;
     }
 
@@ -543,8 +178,6 @@ const App: React.FC = () => {
         return;
       }
 
-      const currentLanguage = language;
-
       if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
         setError(language === 'ko' ? '환경 변수가 설정되지 않았습니다.' : 'Environment variables are not set.');
         setIsLoading(false);
@@ -552,49 +185,29 @@ const App: React.FC = () => {
         return;
       }
 
-      console.log(`Starting 2-phase analysis for ${imageFiles.length} images...`);
-      // ═══════════════════════════════════════════════════════
-      // Google Cloud Function으로 전체 분석 파이프라인 단일 호출
-      // 서버에서 Extract → Crop → Detect → Classify → DB 저장 수행
-      // 사용자는 호출 후 즉시 페이지를 떠날 수 있음
-      // ═══════════════════════════════════════════════════════
       const gcfUrl = import.meta.env.VITE_ANALYZE_GCF_URL;
-
       if (!userData.user?.id) {
         const errorMsg = language === 'ko' ? '사용자 ID를 가져올 수 없습니다. 다시 로그인해주세요.' : 'Cannot get user ID. Please login again.';
         setError(errorMsg);
         setIsLoading(false);
         setStatus('error');
-        alert(errorMsg);
         return;
       }
 
-      // 압축 + Supabase Storage Direct Upload — 무거운 base64 payload를 GCF로 보내지 않음
-      console.log(`Compressing + uploading ${imageFiles.length} files to Storage...`);
+      // 압축 + Supabase Storage Direct Upload (base64 inline payload 회피)
       const imagePaths = await Promise.all(
         imageFiles.map(async (imageFile, index) => {
-          try {
-            const { blob } = await compressImage(imageFile.file);
-            const path = await uploadImageDirect(blob, userData.user!.id, index, imageFile.file.name);
-            return path;
-          } catch (uploadErr) {
-            console.error(`[${index}] Upload failed:`, imageFile.file.name, uploadErr);
-            throw uploadErr;
-          }
-        })
+          const { blob } = await compressImage(imageFile.file);
+          return uploadImageDirect(blob, userData.user!.id, index, imageFile.file.name);
+        }),
       );
 
-      console.log(`[GCF] Sending ${imagePaths.length} imagePath(s) to Cloud Function...`);
-
-      // 인증 토큰 (JWT)을 GCF로 전달
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
       if (!accessToken) {
         throw new Error(language === 'ko' ? '세션이 만료되었습니다.' : 'Session expired.');
       }
 
-      // Cloud Function은 분석 완료 후 응답
-      const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
 
@@ -602,12 +215,14 @@ const App: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           imagePaths,
           userId: userData.user.id,
-          language: currentLanguage,
+          language,
+          aiProvider: providerId,
+          aiModel: modelId,
         }),
         signal: controller.signal,
       });
@@ -616,115 +231,94 @@ const App: React.FC = () => {
 
       if (!gcfResponse.ok) {
         const errorText = await gcfResponse.text();
+        // 백엔드 503 + code='provider_unavailable' → 사용자 친화 메시지
+        if (gcfResponse.status === 503) {
+          try {
+            const parsed = JSON.parse(errorText);
+            if (parsed?.code === 'provider_unavailable') {
+              throw new Error(language === 'ko' ? '서비스 준비중입니다.' : 'Service coming soon.');
+            }
+          } catch {
+            // JSON 파싱 실패 시 원본 에러로 폴백
+          }
+        }
         throw new Error(`Cloud Function failed: ${gcfResponse.status} - ${errorText}`);
       }
 
       const gcfResult = await gcfResponse.json();
       const createdSessionId = gcfResult?.sessionId;
-
       if (!createdSessionId) {
         throw new Error(language === 'ko' ? '세션 생성 실패' : 'Session creation failed');
       }
 
-      console.log(`[GCF] Analysis completed: ${createdSessionId}`);
-
       setIsLoading(false);
       setStatus('done');
       setImageFiles([]);
-
       navigate('/stats');
     } catch (err) {
-      console.error(err);
-      const errorMessage = language === 'ko'
+      const fallback = language === 'ko'
         ? '업로드 중 오류가 발생했습니다. 다시 시도해주세요.'
         : 'An error occurred during upload. Please try again.';
-      setError(err instanceof Error ? err.message : errorMessage);
+      setError(err instanceof Error ? err.message : fallback);
       setIsLoading(false);
       setStatus('error');
     }
-  }, [imageFiles, language]);
+  }, [imageFiles, language, providerId, modelId, navigate]);
 
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const MAX_IMAGES = 10; // Cloud Function 타임아웃 60분으로 충분히 처리 가능
+  const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
-    const imageFilesArray = Array.from(files).filter(f => f.type.startsWith('image/'));
+    const imageFilesArray = Array.from(files).filter((f) => f.type.startsWith('image/'));
     if (imageFilesArray.length === 0) {
       setError(language === 'ko' ? '이미지 파일만 선택할 수 있습니다.' : 'Only image files can be selected.');
       return;
     }
 
-    // 현재 이미지 수 + 새로 추가할 이미지 수가 최대치를 초과하는지 확인
-    const currentCount = imageFiles.length;
-    const remainingSlots = MAX_IMAGES - currentCount;
-
-    if (remainingSlots <= 0) {
-      setError(language === 'ko'
-        ? `최대 ${MAX_IMAGES}장까지만 업로드할 수 있습니다.`
-        : `You can upload up to ${MAX_IMAGES} images only.`);
-      return;
-    }
-
-    // 추가 가능한 만큼만 선택
-    const filesToAdd = imageFilesArray.slice(0, remainingSlots);
-    if (filesToAdd.length < imageFilesArray.length) {
-      setError(language === 'ko'
-        ? `최대 ${MAX_IMAGES}장까지만 업로드할 수 있습니다. ${filesToAdd.length}장만 추가됩니다.`
-        : `You can upload up to ${MAX_IMAGES} images only. Only ${filesToAdd.length} will be added.`);
-    }
-
-    // 각 파일을 Promise로 변환하여 모든 파일이 로드될 때까지 대기
-    const filePromises = filesToAdd.map((file) => {
-      return new Promise<ImageFile>((resolve) => {
-        const id = `${Date.now()}_${Math.random()}_${file.name}`;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const previewUrl = reader.result as string;
-          const imageFile: ImageFile = { file, previewUrl, id };
-          resolve(imageFile);
-        };
-        reader.onerror = () => {
-          console.error('FileReader error for', file.name);
-          // 에러가 발생해도 빈 ImageFile 객체로 처리 (나중에 필터링 가능)
-          resolve({ file, previewUrl: '', id });
-        };
-        reader.readAsDataURL(file);
-      });
-    });
-
-    // 모든 파일이 로드되면 상태 업데이트
-    Promise.all(filePromises).then((loadedFiles) => {
-      // 유효한 파일만 필터링 (previewUrl이 있는 것만)
-      const validFiles = loadedFiles.filter(f => f.previewUrl);
-      if (validFiles.length > 0) {
-        setImageFiles(prev => [...prev, ...validFiles]);
-        setError(null);
+    setImageFiles((prev) => {
+      const remainingSlots = MAX_IMAGES - prev.length;
+      if (remainingSlots <= 0) {
+        setError(language === 'ko'
+          ? `최대 ${MAX_IMAGES}장까지만 업로드할 수 있습니다.`
+          : `You can upload up to ${MAX_IMAGES} images only.`);
+        return prev;
       }
-    }).catch((error) => {
-      console.error('Error loading files:', error);
-      setError(language === 'ko' ? '파일을 읽는 중 오류가 발생했습니다.' : 'Error reading files.');
+
+      const filesToAdd = imageFilesArray.slice(0, remainingSlots);
+      if (filesToAdd.length < imageFilesArray.length) {
+        setError(language === 'ko'
+          ? `최대 ${MAX_IMAGES}장까지만 업로드할 수 있습니다. ${filesToAdd.length}장만 추가됩니다.`
+          : `You can upload up to ${MAX_IMAGES} images only. Only ${filesToAdd.length} will be added.`);
+      }
+
+      readFilesAsImageFiles(filesToAdd).then((loaded) => {
+        const valid = loaded.filter((f) => f.previewUrl);
+        if (valid.length > 0) {
+          setImageFiles((current) => [...current, ...valid]);
+          setError(null);
+        }
+      });
+
+      return prev;
     });
 
-    // input 값 초기화 (같은 파일을 다시 선택할 수 있도록)
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
+  }, [language]);
 
-  const handleRemove = (index: number) => {
-    setImageFiles(prev => {
+  const handleRemove = useCallback((index: number) => {
+    setImageFiles((prev) => {
       const removed = prev[index];
       if (removed && removed.previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(removed.previewUrl);
       }
       return prev.filter((_, i) => i !== index);
     });
-  };
+  }, []);
 
-  const handleRotate = (index: number, rotatedBlob: Blob) => {
-    setImageFiles(prev => {
+  const handleRotate = useCallback((index: number, rotatedBlob: Blob) => {
+    setImageFiles((prev) => {
       const imageFile = prev[index];
       if (!imageFile) return prev;
 
@@ -732,7 +326,6 @@ const App: React.FC = () => {
         type: rotatedBlob.type,
         lastModified: Date.now(),
       });
-
       const previewUrl = URL.createObjectURL(rotatedBlob);
 
       if (imageFile.previewUrl.startsWith('blob:')) {
@@ -743,116 +336,90 @@ const App: React.FC = () => {
       updated[index] = { ...imageFile, file: rotatedFile, previewUrl };
       return updated;
     });
-  };
+  }, []);
+
+  const handleCameraCapture = useCallback((files: File[]) => {
+    const remainingSlots = MAX_IMAGES - imageFiles.length;
+    const filesToAdd = files.slice(0, remainingSlots);
+    readFilesAsImageFiles(filesToAdd).then((loaded) => {
+      const valid = loaded.filter((f) => f.previewUrl);
+      if (valid.length > 0) setImageFiles((prev) => [...prev, ...valid]);
+    });
+  }, [imageFiles.length]);
+
+  const mainPageElement = (
+    <AuthGate>
+      <MainPage
+        imageFiles={imageFiles}
+        isLoading={isLoading}
+        error={error}
+        status={status}
+        isCameraOpen={isCameraOpen}
+        providerId={providerId}
+        modelId={modelId}
+        providerEnabled={providerEnabled}
+        onProviderChange={handleProviderChange}
+        onModelChange={handleModelChange}
+        onFileChange={handleFileChange}
+        onAnalyzeClick={handleAnalyzeClick}
+        onRemove={handleRemove}
+        onRotate={handleRotate}
+        onOpenCamera={() => setIsCameraOpen(true)}
+        onCloseCamera={() => setIsCameraOpen(false)}
+        onCameraCapture={handleCameraCapture}
+        onClearAll={() => setImageFiles([])}
+      />
+    </AuthGate>
+  );
 
   return (
     <UserRoleProvider>
-    <Routes>
-      <Route path="/upload" element={
-        <AuthGate>
-          <MainPage
-            imageFiles={imageFiles}
-            isLoading={isLoading}
-            error={error}
-            status={status}
-            isCameraOpen={isCameraOpen}
-            onFileChange={handleFileChange}
-            onAnalyzeClick={handleAnalyzeClick}
-            onRemove={handleRemove}
-            onRotate={handleRotate}
-            onOpenCamera={() => setIsCameraOpen(true)}
-            onCloseCamera={() => setIsCameraOpen(false)}
-            onCameraCapture={(files: File[]) => {
-              const MAX_IMAGES = 10;
-              const remainingSlots = MAX_IMAGES - imageFiles.length;
-              const filesToAdd = files.slice(0, remainingSlots);
-              const filePromises = filesToAdd.map((file) => {
-                return new Promise<ImageFile>((resolve) => {
-                  const id = `${Date.now()}_${Math.random()}_${file.name}`;
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve({ file, previewUrl: reader.result as string, id });
-                  reader.onerror = () => resolve({ file, previewUrl: '', id });
-                  reader.readAsDataURL(file);
-                });
-              });
-              Promise.all(filePromises).then((loaded) => {
-                const valid = loaded.filter(f => f.previewUrl);
-                if (valid.length > 0) setImageFiles(prev => [...prev, ...valid]);
-              });
-            }}
-            onClearAll={() => setImageFiles([])}
-          />
-        </AuthGate>
-      } />
-      <Route path="/" element={
-        <AuthGate>
-          <MainPage
-            imageFiles={imageFiles}
-            isLoading={isLoading}
-            error={error}
-            status={status}
-            isCameraOpen={isCameraOpen}
-            onFileChange={handleFileChange}
-            onAnalyzeClick={handleAnalyzeClick}
-            onRemove={handleRemove}
-            onRotate={handleRotate}
-            onOpenCamera={() => setIsCameraOpen(true)}
-            onCloseCamera={() => setIsCameraOpen(false)}
-            onCameraCapture={(files: File[]) => {
-              const MAX_IMAGES = 10;
-              const remainingSlots = MAX_IMAGES - imageFiles.length;
-              const filesToAdd = files.slice(0, remainingSlots);
-              const filePromises = filesToAdd.map((file) => {
-                return new Promise<ImageFile>((resolve) => {
-                  const id = `${Date.now()}_${Math.random()}_${file.name}`;
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve({ file, previewUrl: reader.result as string, id });
-                  reader.onerror = () => resolve({ file, previewUrl: '', id });
-                  reader.readAsDataURL(file);
-                });
-              });
-              Promise.all(filePromises).then((loaded) => {
-                const valid = loaded.filter(f => f.previewUrl);
-                if (valid.length > 0) setImageFiles(prev => [...prev, ...valid]);
-              });
-            }}
-            onClearAll={() => setImageFiles([])}
-          />
-        </AuthGate>
-      } />
-      <Route path="/edit/:sessionId" element={<AuthGate><PageLayout><EditPage /></PageLayout></AuthGate>} />
-      <Route path="/analyzing/:sessionId" element={<AuthGate><PageLayout><AnalyzingPage /></PageLayout></AuthGate>} />
-      <Route path="/session/:sessionId" element={<AuthGate><PageLayout><SessionDetailPage /></PageLayout></AuthGate>} />
-      <Route path="/retry" element={<AuthGate><PageLayout><RetryProblemsPage /></PageLayout></AuthGate>} />
-      <Route path="/recent" element={<AuthGate><PageLayout><RecentProblemsPage /></PageLayout></AuthGate>} />
-      <Route path="/stats" element={<AuthGate><PageLayout><StatsPage /></PageLayout></AuthGate>} />
-      <Route path="/problems" element={<AuthGate><PageLayout><AllProblemsPage /></PageLayout></AuthGate>} />
-      <Route path="/profile" element={<AuthGate><PageLayout><ProfilePage /></PageLayout></AuthGate>} />
+      <Routes>
+        <Route path="/" element={mainPageElement} />
+        <Route path="/upload" element={mainPageElement} />
+        <Route path="/edit/:sessionId" element={<AuthGate><PageLayout><EditPage /></PageLayout></AuthGate>} />
+        <Route path="/analyzing/:sessionId" element={<AuthGate><PageLayout><AnalyzingPage /></PageLayout></AuthGate>} />
+        <Route path="/session/:sessionId" element={<AuthGate><PageLayout><SessionDetailPage /></PageLayout></AuthGate>} />
+        <Route path="/retry" element={<AuthGate><PageLayout><RetryProblemsPage /></PageLayout></AuthGate>} />
+        <Route path="/recent" element={<AuthGate><PageLayout><RecentProblemsPage /></PageLayout></AuthGate>} />
+        <Route path="/stats" element={<AuthGate><PageLayout><StatsPage /></PageLayout></AuthGate>} />
+        <Route path="/problems" element={<AuthGate><PageLayout><AllProblemsPage /></PageLayout></AuthGate>} />
+        <Route path="/profile" element={<AuthGate><PageLayout><ProfilePage /></PageLayout></AuthGate>} />
 
-      {/* 학생 - 과제 */}
-      <Route path="/assignments" element={<AuthGate><PageLayout><RoleGate allowedRoles={['student']}><AssignmentsPage /></RoleGate></PageLayout></AuthGate>} />
-      <Route path="/assignments/:assignmentId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['student']}><AssignmentSolvePage /></RoleGate></PageLayout></AuthGate>} />
+        {/* 학생 - 과제 */}
+        <Route path="/assignments" element={<AuthGate><PageLayout><RoleGate allowedRoles={['student']}><AssignmentsPage /></RoleGate></PageLayout></AuthGate>} />
+        <Route path="/assignments/:assignmentId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['student']}><AssignmentSolvePage /></RoleGate></PageLayout></AuthGate>} />
 
-      {/* 선생님 */}
-      <Route path="/teacher/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher']}><TeacherDashboardPage /></RoleGate></PageLayout></AuthGate>} />
-      <Route path="/teacher/classes/:classId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><ClassDetailPage /></RoleGate></PageLayout></AuthGate>} />
-      <Route path="/teacher/assignments/create" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><AssignmentCreatePage /></RoleGate></PageLayout></AuthGate>} />
-      <Route path="/teacher/assignments/:assignmentId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><AssignmentDetailPage /></RoleGate></PageLayout></AuthGate>} />
+        {/* 선생님 */}
+        <Route path="/teacher/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher']}><TeacherDashboardPage /></RoleGate></PageLayout></AuthGate>} />
+        <Route path="/teacher/classes/:classId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><ClassDetailPage /></RoleGate></PageLayout></AuthGate>} />
+        <Route path="/teacher/assignments/create" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><AssignmentCreatePage /></RoleGate></PageLayout></AuthGate>} />
+        <Route path="/teacher/assignments/:assignmentId" element={<AuthGate><PageLayout><RoleGate allowedRoles={['teacher', 'director']}><AssignmentDetailPage /></RoleGate></PageLayout></AuthGate>} />
 
-      {/* 학부모 */}
-      <Route path="/parent/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['parent']}><ParentDashboardPage /></RoleGate></PageLayout></AuthGate>} />
+        {/* 학부모 */}
+        <Route path="/parent/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['parent']}><ParentDashboardPage /></RoleGate></PageLayout></AuthGate>} />
 
-      {/* 학원장 */}
-      <Route path="/director/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><DirectorDashboardPage /></RoleGate></PageLayout></AuthGate>} />
+        {/* 학원장 */}
+        <Route path="/director/dashboard" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><DirectorDashboardPage /></RoleGate></PageLayout></AuthGate>} />
 
-      {/* 학원 관리 */}
-      <Route path="/academies" element={<AuthGate><PageLayout><AcademyListPage /></PageLayout></AuthGate>} />
-      <Route path="/academies/new" element={<AuthGate><PageLayout><AcademyCreatePage /></PageLayout></AuthGate>} />
-      <Route path="/academies/:id/members" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><AcademyMembersPage /></RoleGate></PageLayout></AuthGate>} />
+        {/* 학원 관리 */}
+        <Route path="/academies" element={<AuthGate><PageLayout><AcademyListPage /></PageLayout></AuthGate>} />
+        <Route path="/academies/new" element={<AuthGate><PageLayout><AcademyCreatePage /></PageLayout></AuthGate>} />
+        <Route path="/academies/:id/members" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><AcademyMembersPage /></RoleGate></PageLayout></AuthGate>} />
 
-      <Route path="*" element={<AuthGate><PageLayout><div className="text-center py-10"><a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">{language === 'ko' ? '문제 업로드하러 가기' : 'Go to Upload'}</a></div></PageLayout></AuthGate>} />
-    </Routes>
-    <InstallBanner />
+        <Route path="*" element={
+          <AuthGate>
+            <PageLayout>
+              <div className="text-center py-10">
+                <a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">
+                  {language === 'ko' ? '문제 업로드하러 가기' : 'Go to Upload'}
+                </a>
+              </div>
+            </PageLayout>
+          </AuthGate>
+        } />
+      </Routes>
+      <InstallBanner />
     </UserRoleProvider>
   );
 };

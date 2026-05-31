@@ -69,8 +69,10 @@ export const UserRoleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     let mounted = true;
     const fetchRole = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !mounted) { setRole('student'); setLoading(false); return; }
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
+      if (!mounted) return;
+      if (!user) { setLoading(false); return; }
 
       setCurrentUserId(user.id);
 
@@ -80,28 +82,29 @@ export const UserRoleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (mounted) {
-        const r = data?.role as UserRole;
-        setRole(r && ['student', 'teacher', 'parent', 'director'].includes(r) ? r : 'student');
-        setLoading(false);
+      if (!mounted) return;
+      const r = data?.role as UserRole;
+      if (r && ['student', 'teacher', 'parent', 'director'].includes(r)) {
+        setRole(r);
       }
+      setLoading(false);
 
-      if (mounted) {
-        await loadAcademies(user.id);
-      }
+      await loadAcademies(user.id);
     };
     fetchRole();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-      if (session?.user) {
-        fetchRole();
-      } else {
+      if (event === 'SIGNED_OUT') {
         setRole('student');
         setAvailableAcademies([]);
         setActiveAcademyIdState(null);
         setCurrentUserId(null);
         setLoading(false);
+        return;
+      }
+      if (session?.user) {
+        fetchRole();
       }
     });
 

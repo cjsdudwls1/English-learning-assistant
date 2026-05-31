@@ -39,7 +39,12 @@ export const SolvingStatsCard: React.FC = () => {
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-5 space-y-5">
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">월별 / 일별 풀이 통계</h3>
+      <div>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">월별 / 일별 풀이 통계</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          분석한 시험지 문제 + 푼 과제를 합산한 풀이 기록입니다. '등록 문제 일람'은 분석한 시험지 문제만 표시하므로 수치가 다를 수 있습니다.
+        </p>
+      </div>
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
       <AssignmentStatsDisplay
