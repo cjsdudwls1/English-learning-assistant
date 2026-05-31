@@ -27,13 +27,6 @@ import { UserRoleProvider } from './contexts/UserRoleContext';
 import { useLanguage } from './contexts/LanguageContext';
 import { InstallBanner } from './components/InstallBanner';
 import { MainPage, type ImageFile } from './pages/MainPage';
-import {
-  AIProviderId,
-  getDefaultModelId,
-  isProviderEnabled,
-  loadSavedSelection,
-  saveSelection,
-} from './config/aiProviders';
 import './styles/app.css';
 
 const MAX_IMAGES = 10;
@@ -135,33 +128,9 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  const initialSelection = React.useMemo(() => loadSavedSelection(), []);
-  const [providerId, setProviderId] = useState<AIProviderId>(initialSelection.providerId);
-  const [modelId, setModelId] = useState<string>(initialSelection.modelId);
-  const providerEnabled = isProviderEnabled(providerId);
-
-  const handleProviderChange = useCallback((nextProviderId: AIProviderId) => {
-    const nextModelId = getDefaultModelId(nextProviderId);
-    setProviderId(nextProviderId);
-    setModelId(nextModelId);
-    saveSelection(nextProviderId, nextModelId);
-    setError(null);
-  }, []);
-
-  const handleModelChange = useCallback((nextModelId: string) => {
-    setModelId(nextModelId);
-    saveSelection(providerId, nextModelId);
-  }, [providerId]);
-
   const handleAnalyzeClick = useCallback(async () => {
     if (imageFiles.length === 0) {
       setError(language === 'ko' ? '분석할 이미지를 먼저 업로드해주세요.' : 'Please upload an image to analyze first.');
-      return;
-    }
-
-    if (!isProviderEnabled(providerId)) {
-      setError(language === 'ko' ? '서비스 준비중입니다.' : 'Service coming soon.');
-      setStatus('error');
       return;
     }
 
@@ -221,8 +190,6 @@ const App: React.FC = () => {
           imagePaths,
           userId: userData.user.id,
           language,
-          aiProvider: providerId,
-          aiModel: modelId,
         }),
         signal: controller.signal,
       });
@@ -263,7 +230,7 @@ const App: React.FC = () => {
       setIsLoading(false);
       setStatus('error');
     }
-  }, [imageFiles, language, providerId, modelId, navigate]);
+  }, [imageFiles, language, navigate]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -355,11 +322,6 @@ const App: React.FC = () => {
         error={error}
         status={status}
         isCameraOpen={isCameraOpen}
-        providerId={providerId}
-        modelId={modelId}
-        providerEnabled={providerEnabled}
-        onProviderChange={handleProviderChange}
-        onModelChange={handleModelChange}
         onFileChange={handleFileChange}
         onAnalyzeClick={handleAnalyzeClick}
         onRemove={handleRemove}

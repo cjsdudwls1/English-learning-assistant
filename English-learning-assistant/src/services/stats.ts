@@ -94,6 +94,91 @@ export async function fetchLabelsForProblems(
   return out;
 }
 
+// ===== A+B: 생성문제 기반 풀이(과제 응답 + 완료된 생성문제 풀이) 합산 =====
+// 유형별 정오답 통계를 월별/일별 풀이 통계와 정합시키기 위해, labels(이미지 분석 추출문제)
+// 외에 generated_problems 기반 풀이도 동일 통계에 합산한다.
+//  - 과제 응답(assignment_responses): student_id 기준. classification 없으면 "미분류" 버킷
+//  - 완료된 생성문제 풀이(problem_solving_sessions): completed_at not null
+// problem_id → generated_problems.classification 조인으로 유형 집계.
+// (labels와 별개 테이블이므로 중복 카운트 없음)
+
+export interface GenSolvedRow {
+  is_correct: boolean | null;
+  classification: Record<string, unknown> | null;
+}
+
+// generated_problems.id → classification 매핑 (청크 조회)
+async function fetchGeneratedClassifications(
+  problemIds: string[],
+): Promise<Map<string, Record<string, unknown> | null>> {
+  const map = new Map<string, Record<string, unknown> | null>();
+  for (let i = 0; i < problemIds.length; i += ID_CHUNK) {
+    const chunk = problemIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await supabase
+      .from('generated_problems')
+      .select('id, classification')
+      .in('id', chunk);
+    if (error) throw error;
+    for (const r of data || []) {
+      map.set(r.id, (r.classification ?? null) as Record<string, unknown> | null);
+    }
+  }
+  return map;
+}
+
+// 사용자의 과제 응답 + 완료된 생성문제 풀이를 분류 정보와 함께 조회
+export async function fetchGeneratedSolvedRowsForUser(
+  userId: string,
+  startDate?: Date,
+  endDate?: Date,
+): Promise<GenSolvedRow[]> {
+  const startIso = startDate ? startDate.toISOString() : undefined;
+  let endIso: string | undefined;
+  if (endDate) {
+    const e = new Date(endDate);
+    e.setHours(23, 59, 59, 999);
+    endIso = e.toISOString();
+  }
+
+  // 과제 응답 (student_id, submitted_at 기간)
+  let aq = supabase
+    .from('assignment_responses')
+    .select('problem_id, is_correct, submitted_at')
+    .eq('student_id', userId);
+  if (startIso) aq = aq.gte('submitted_at', startIso);
+  if (endIso) aq = aq.lte('submitted_at', endIso);
+
+  // 완료된 생성문제 풀이 (user_id, completed_at not null & 기간)
+  let sq = supabase
+    .from('problem_solving_sessions')
+    .select('problem_id, is_correct, completed_at')
+    .eq('user_id', userId)
+    .not('completed_at', 'is', null);
+  if (startIso) sq = sq.gte('completed_at', startIso);
+  if (endIso) sq = sq.lte('completed_at', endIso);
+
+  const [aRes, sRes] = await Promise.all([aq, sq]);
+  if (aRes.error) throw aRes.error;
+  if (sRes.error) throw sRes.error;
+
+  const raw: Array<{ problem_id: string; is_correct: boolean | null }> = [];
+  for (const r of (aRes.data || []) as Array<{ problem_id: string | null; is_correct: boolean | null }>) {
+    if (r.problem_id) raw.push({ problem_id: r.problem_id, is_correct: r.is_correct });
+  }
+  for (const r of (sRes.data || []) as Array<{ problem_id: string | null; is_correct: boolean | null }>) {
+    if (r.problem_id) raw.push({ problem_id: r.problem_id, is_correct: r.is_correct });
+  }
+  if (raw.length === 0) return [];
+
+  const problemIds = Array.from(new Set(raw.map((r) => r.problem_id)));
+  const clsMap = await fetchGeneratedClassifications(problemIds);
+
+  return raw.map((r) => ({
+    is_correct: r.is_correct,
+    classification: clsMap.get(r.problem_id) ?? null,
+  }));
+}
+
 // statsMap에 단일 row의 집계를 누적하는 헬퍼
 function addToStatsMap(
   statsMap: Map<string, StatsNode>,
@@ -185,20 +270,13 @@ export interface StatsNode {
 export async function fetchStatsByType(startDate?: Date, endDate?: Date, language: 'ko' | 'en' = 'ko'): Promise<TypeStatsRow[]> {
   const userId = await getCurrentUserId();
 
-  const sessions = await fetchSessionsForUser(userId, startDate, endDate);
-  if (sessions.length === 0) return [];
-  const problems = await fetchProblemsForSessions(sessions.map((s) => s.id));
-  if (problems.length === 0) return [];
-  const labels = await fetchLabelsForProblems(problems.map((p) => p.id));
-
   const maps = await buildTaxonomyMaps();
   const statsMap = new Map<string, TypeStatsRow>();
 
-  for (const row of labels) {
-    const classification = row.classification || {};
+  // 단일 분류행을 유형별 맵에 누적 (depth 없으면 "미분류" 버킷으로 key='___')
+  const accumulate = (classification: Record<string, unknown>, isCorrect: boolean | null) => {
     const { depth1, depth2, depth3, depth4 } = validateAndTranslateDepths(classification, maps, language);
     const key = `${(depth1 || '')}_${(depth2 || '')}_${(depth3 || '')}_${(depth4 || '')}`;
-
     if (!statsMap.has(key)) {
       statsMap.set(key, {
         depth1: depth1 || null,
@@ -211,11 +289,28 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date, languag
       });
     }
     const stats = statsMap.get(key)!;
-    if (row.user_mark !== null && row.user_mark !== undefined) {
-      stats.total_count++;
-      if (row.is_correct) stats.correct_count++;
-      else stats.incorrect_count++;
+    stats.total_count++;
+    if (isCorrect) stats.correct_count++;
+    else stats.incorrect_count++;
+  };
+
+  // (1) 이미지 분석 추출문제(labels)
+  const sessions = await fetchSessionsForUser(userId, startDate, endDate);
+  if (sessions.length > 0) {
+    const problems = await fetchProblemsForSessions(sessions.map((s) => s.id));
+    if (problems.length > 0) {
+      const labels = await fetchLabelsForProblems(problems.map((p) => p.id));
+      for (const row of labels) {
+        if (row.user_mark === null || row.user_mark === undefined) continue;
+        accumulate(row.classification || {}, row.is_correct);
+      }
     }
+  }
+
+  // (2) 생성문제 기반 풀이(과제 응답 + 완료된 생성문제 풀이) — 월별/일별 통계와 정합
+  const genRows = await fetchGeneratedSolvedRowsForUser(userId, startDate, endDate);
+  for (const row of genRows) {
+    accumulate(row.classification || {}, row.is_correct);
   }
 
   return Array.from(statsMap.values());
@@ -227,31 +322,45 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
   const userId = studentId ?? await getCurrentUserId();
 
   const maps = await buildTaxonomyMaps();
-
-  const sessions = await fetchSessionsForUser(userId, startDate, endDate);
-  if (sessions.length === 0) return [];
-  const problems = await fetchProblemsForSessions(sessions.map((s) => s.id));
-  if (problems.length === 0) return [];
-  const problemToSession = new Map<string, string>();
-  for (const p of problems) problemToSession.set(p.id, p.session_id);
-  const labels = await fetchLabelsForProblems(problems.map((p) => p.id));
-
   const statsMap = new Map<string, StatsNode>();
 
-  for (const flat of labels) {
-    const wrapped = wrapLabelRow(flat, problemToSession);
-    const classification = flat.classification || {};
+  // 분류행을 4개 depth 레벨에 누적 (미분류는 addToStatsMap의 !d1 가드로 자동 제외)
+  const accumulate = (wrapped: LabelRowWithProblems, classification: Record<string, unknown>) => {
     const { koDepth1, koDepth2, koDepth3, koDepth4, depth1, depth2, depth3, depth4 } = validateAndTranslateDepths(classification, maps, language);
-
     const key1 = koDepth1;
     const key2 = koDepth1 && koDepth2 ? `${koDepth1}_${koDepth2}` : '';
     const key3 = koDepth1 && koDepth2 && koDepth3 ? `${koDepth1}_${koDepth2}_${koDepth3}` : '';
     const key4 = koDepth1 && koDepth2 && koDepth3 && koDepth4 ? `${koDepth1}_${koDepth2}_${koDepth3}_${koDepth4}` : '';
-
     if (depth1) addToStatsMap(statsMap, wrapped, key1, depth1);
     if (depth1 && depth2) addToStatsMap(statsMap, wrapped, key2, depth1, depth2);
     if (depth1 && depth2 && depth3) addToStatsMap(statsMap, wrapped, key3, depth1, depth2, depth3);
     if (depth1 && depth2 && depth3 && depth4) addToStatsMap(statsMap, wrapped, key4, depth1, depth2, depth3, depth4);
+  };
+
+  // (1) 이미지 분석 추출문제(labels)
+  const sessions = await fetchSessionsForUser(userId, startDate, endDate);
+  if (sessions.length > 0) {
+    const problems = await fetchProblemsForSessions(sessions.map((s) => s.id));
+    if (problems.length > 0) {
+      const problemToSession = new Map<string, string>();
+      for (const p of problems) problemToSession.set(p.id, p.session_id);
+      const labels = await fetchLabelsForProblems(problems.map((p) => p.id));
+      for (const flat of labels) {
+        accumulate(wrapLabelRow(flat, problemToSession), flat.classification || {});
+      }
+    }
+  }
+
+  // (2) 생성문제 기반 풀이 — 분류 가능한 것만 계층에 반영(미분류는 자동 제외)
+  const genRows = await fetchGeneratedSolvedRowsForUser(userId, startDate, endDate);
+  for (const row of genRows) {
+    const wrapped: LabelRowWithProblems = {
+      classification: row.classification,
+      is_correct: row.is_correct,
+      user_mark: 'solved',
+      problems: null,
+    };
+    accumulate(wrapped, row.classification || {});
   }
 
   return buildHierarchyFromMap(statsMap);

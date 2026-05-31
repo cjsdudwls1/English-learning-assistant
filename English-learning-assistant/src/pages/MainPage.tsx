@@ -4,12 +4,6 @@ import { TopBar } from '../components/TopBar';
 import { CameraCapture } from '../components/CameraCapture';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
-  AI_PROVIDERS,
-  AIProviderId,
-  getProvider,
-  isProviderEnabled,
-} from '../config/aiProviders';
-import {
   PIPELINE_STAGES,
   HIGHLIGHTS,
   METRICS,
@@ -29,11 +23,6 @@ export interface MainPageProps {
   error: string | null;
   status: 'idle' | 'loading' | 'done' | 'error';
   isCameraOpen: boolean;
-  providerId: AIProviderId;
-  modelId: string;
-  providerEnabled: boolean;
-  onProviderChange: (providerId: AIProviderId) => void;
-  onModelChange: (modelId: string) => void;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onAnalyzeClick: () => void;
   onRemove: (index: number) => void;
@@ -50,11 +39,6 @@ export const MainPage: React.FC<MainPageProps> = ({
   error,
   status,
   isCameraOpen,
-  providerId,
-  modelId,
-  providerEnabled,
-  onProviderChange,
-  onModelChange,
   onFileChange,
   onAnalyzeClick,
   onRemove,
@@ -65,7 +49,6 @@ export const MainPage: React.FC<MainPageProps> = ({
 }) => {
   const { language } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const currentProvider = getProvider(providerId);
 
   return (
     <div className="page-shell">
@@ -212,68 +195,15 @@ export const MainPage: React.FC<MainPageProps> = ({
                 </>
               )}
 
-              <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  {language === 'ko' ? 'AI 모델 선택' : 'AI Model'}
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <select
-                    value={providerId}
-                    onChange={(e) => onProviderChange(e.target.value as AIProviderId)}
-                    disabled={isLoading}
-                    style={{
-                      flex: 1, minWidth: 120, padding: '0.5rem 0.75rem',
-                      border: '1px solid rgba(255,255,255,0.15)', borderRadius: 'var(--radius-md)',
-                      background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.9rem',
-                    }}
-                  >
-                    {AI_PROVIDERS.map((p) => {
-                      const enabled = isProviderEnabled(p.id);
-                      const suffix = enabled
-                        ? ''
-                        : (language === 'ko' ? ' (준비중)' : ' (Coming soon)');
-                      return (
-                        <option key={p.id} value={p.id}>{p.label}{suffix}</option>
-                      );
-                    })}
-                  </select>
-                  <select
-                    value={modelId}
-                    onChange={(e) => onModelChange(e.target.value)}
-                    disabled={isLoading || !currentProvider}
-                    style={{
-                      flex: 1, minWidth: 140, padding: '0.5rem 0.75rem',
-                      border: '1px solid rgba(255,255,255,0.15)', borderRadius: 'var(--radius-md)',
-                      background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.9rem',
-                    }}
-                  >
-                    {currentProvider?.models.map((m) => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </select>
-                </div>
-                {!providerEnabled && (
-                  <p style={{
-                    margin: 0, padding: '0.5rem 0.75rem',
-                    background: 'rgba(255,180,0,0.12)', border: '1px solid rgba(255,180,0,0.35)',
-                    borderRadius: 'var(--radius-md)', color: '#ffc857', fontSize: '0.85rem',
-                  }}>
-                    {language === 'ko' ? '서비스 준비중입니다.' : 'Service coming soon.'}
-                  </p>
-                )}
-              </div>
-
               <button
                 className="primary"
                 onClick={onAnalyzeClick}
-                disabled={imageFiles.length === 0 || isLoading || !providerEnabled}
+                disabled={imageFiles.length === 0 || isLoading}
                 style={{ width: '100%', padding: '1rem', fontSize: '1.1rem' }}
               >
                 {isLoading
                   ? (language === 'ko' ? '분석 중…' : 'Analyzing...')
-                  : !providerEnabled
-                    ? (language === 'ko' ? '서비스 준비중입니다' : 'Service coming soon')
-                    : (language === 'ko' ? 'AI 분석 시작하기' : 'Start AI Analysis')
+                  : (language === 'ko' ? 'AI 분석 시작하기' : 'Start AI Analysis')
                 }
               </button>
               {error && <p className="error-text" style={{ marginTop: '0.5rem', color: '#ff6b6b', fontSize: '0.9rem' }}>{error}</p>}
