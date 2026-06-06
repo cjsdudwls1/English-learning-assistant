@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { MonthlyStatsSelector } from '../stats/MonthlyStatsSelector';
 import { AssignmentStatsDisplay } from '../stats/AssignmentStatsDisplay';
 import type { ClassInfo, MonthlyStats } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 
 interface Props {
   classes: ClassInfo[];
@@ -15,6 +17,8 @@ interface Props {
 
 export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClassId, classStats, year, onSelectClass, onYearChange, onDeleteClass }) => {
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+  const { language } = useLanguage();
+  const t = getTranslation(language);
 
   const selectedMonthStats = selectedMonth
     ? classStats.find((s) => s.month === selectedMonth)
@@ -32,7 +36,7 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
-      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">학급별 통계</h2>
+      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '학급별 통계' : 'Statistics by Class'}</h2>
 
       <div className="flex flex-wrap gap-2">
         {classes.map((cls) => (
@@ -41,7 +45,7 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
             onClick={() => { onSelectClass(cls.id); setSelectedMonth(null); }}
             className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${selectedClassId === cls.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200'}`}
           >
-            {cls.name} ({cls.student_count ?? 0}명)
+            {cls.name} ({cls.student_count ?? 0}{language === 'ko' ? '명' : ' students'})
           </button>
         ))}
       </div>
@@ -52,13 +56,15 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
             {onDeleteClass && (
               <button
                 onClick={() => {
-                  if (window.confirm('정말로 이 학급을 삭제하시겠습니까? 학급에 포함된 모든 과제 및 기록이 함께 삭제됩니다.')) {
+                  if (window.confirm(language === 'ko'
+                    ? '정말로 이 학급을 삭제하시겠습니까? 학급에 포함된 모든 과제 및 기록이 함께 삭제됩니다.'
+                    : 'Are you sure you want to delete this class? All assignments and records in this class will be deleted as well.')) {
                     onDeleteClass(selectedClassId);
                   }
                 }}
                 className="px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800/50 rounded-lg text-sm font-medium transition-colors"
               >
-                현재 학급 삭제
+                {language === 'ko' ? '현재 학급 삭제' : 'Delete Current Class'}
               </button>
             )}
           </div>
@@ -68,7 +74,7 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
             correctCount={totals.correct}
             incorrectCount={totals.incorrect}
             avgTimeSeconds={totals.total > 0 ? Math.round(totals.time / totals.total) : 0}
-            label={`${year}년 전체`}
+            label={t.stats.yearTotalLabel.replace('{year}', String(year))}
           />
 
           <MonthlyStatsSelector
@@ -85,14 +91,14 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
               correctCount={selectedMonthStats.correct_count}
               incorrectCount={selectedMonthStats.incorrect_count}
               avgTimeSeconds={selectedMonthStats.avg_time_seconds}
-              label={`${selectedMonth}월 통계`}
+              label={t.stats.monthStatsLabel.replace('{month}', String(selectedMonth))}
             />
           )}
         </>
       )}
 
       {classes.length === 0 && (
-        <p className="text-slate-400 text-sm py-4 text-center">등록된 학급이 없습니다.</p>
+        <p className="text-slate-400 text-sm py-4 text-center">{language === 'ko' ? '등록된 학급이 없습니다.' : 'No classes registered.'}</p>
       )}
     </div>
   );

@@ -3,13 +3,7 @@ import { Link } from 'react-router-dom';
 import { TopBar } from '../components/TopBar';
 import { CameraCapture } from '../components/CameraCapture';
 import { useLanguage } from '../contexts/LanguageContext';
-import {
-  PIPELINE_STAGES,
-  HIGHLIGHTS,
-  METRICS,
-  USE_CASES,
-  FAQS,
-} from '../constants/landing';
+import { getTranslation } from '../utils/translations';
 
 export interface ImageFile {
   file: File;
@@ -48,7 +42,42 @@ export const MainPage: React.FC<MainPageProps> = ({
   onClearAll,
 }) => {
   const { language } = useLanguage();
+  const t = getTranslation(language);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // landing 데이터: 표시 텍스트는 translations(t.landing.*)에서, tech 스택/value 등 비번역 값은 인라인 유지
+  const PIPELINE_STAGES = [
+    { id: 'pre', title: t.landing.pipelinePreTitle, tech: 'OpenCV + CLAHE + Adaptive Thresholding', description: t.landing.pipelinePreDesc },
+    { id: 'detect', title: t.landing.pipelineDetectTitle, tech: 'CRAFT + EAST', description: t.landing.pipelineDetectDesc },
+    { id: 'recognize', title: t.landing.pipelineRecognizeTitle, tech: 'ViT + CNN + BiLSTM + CTC', description: t.landing.pipelineRecognizeDesc },
+    { id: 'math', title: t.landing.pipelineMathTitle, tech: 'Im2Latex (CNN Encoder + Transformer Decoder)', description: t.landing.pipelineMathDesc },
+  ];
+
+  const HIGHLIGHTS = [
+    { id: 'mobile', title: t.landing.highlightMobileTitle, description: t.landing.highlightMobileDesc, tag: t.landing.tagMobileOptimized },
+    { id: 'ai-analysis', title: t.landing.highlightAiTitle, description: t.landing.highlightAiDesc, tag: t.landing.tagAiPowered },
+    { id: 'statistics', title: t.landing.highlightStatsTitle, description: t.landing.highlightStatsDesc, tag: t.landing.tagDataAnalysis },
+  ];
+
+  const METRICS = [
+    { id: 'accuracy', label: t.landing.metricAccuracyLabel, value: '95%+', detail: t.landing.metricAccuracyDetail },
+    { id: 'speed', label: t.landing.metricSpeedLabel, value: t.landing.metricSpeedValue, detail: t.landing.metricSpeedDetail },
+    { id: 'coverage', label: t.landing.metricCoverageLabel, value: t.landing.metricCoverageValue, detail: t.landing.metricCoverageDetail },
+    { id: 'languages', label: t.landing.metricLanguagesLabel, value: t.landing.metricLanguagesValue, detail: t.landing.metricLanguagesDetail },
+  ];
+
+  const USE_CASES = [
+    { id: 'student', title: t.landing.useCaseStudentTitle, description: t.landing.useCaseStudentDesc, bullets: [t.landing.useCaseStudentBullet1, t.landing.useCaseStudentBullet2, t.landing.useCaseStudentBullet3] },
+    { id: 'parent', title: t.landing.useCaseParentTitle, description: t.landing.useCaseParentDesc, bullets: [t.landing.useCaseParentBullet1, t.landing.useCaseParentBullet2, t.landing.useCaseParentBullet3] },
+    { id: 'teacher', title: t.landing.useCaseTeacherTitle, description: t.landing.useCaseTeacherDesc, bullets: [t.landing.useCaseTeacherBullet1, t.landing.useCaseTeacherBullet2, t.landing.useCaseTeacherBullet3] },
+  ];
+
+  const FAQS = [
+    { q: t.landing.faq1Q, a: t.landing.faq1A },
+    { q: t.landing.faq2Q, a: t.landing.faq2A },
+    { q: t.landing.faq3Q, a: t.landing.faq3A },
+    { q: t.landing.faq4Q, a: t.landing.faq4A },
+  ];
 
   return (
     <div className="page-shell">
@@ -58,36 +87,33 @@ export const MainPage: React.FC<MainPageProps> = ({
       <main className="page-content">
         <section className="hero" id="top">
           <div className="hero-copy">
-            <p className="eyebrow">AI 기반 영어 문제 분석 시스템</p>
+            <p className="eyebrow">{t.landing.heroEyebrow}</p>
             <h1>
-              손글씨 문제까지 <br />
-              한 번에 분석하는 <span>AI 영어 문제 분석기</span>
+              {t.landing.heroTitle} <span>{t.landing.heroTitleEmphasis}</span>
             </h1>
             <p className="lede">
-              {language === 'ko'
-                ? '문제 이미지를 업로드하면 AI가 자동으로 인식하고 채점합니다. 틀린 문제는 다시 풀어보고, 상세한 학습 통계를 확인할 수 있습니다.'
-                : 'Upload problem images and AI will automatically recognize and grade them. Review incorrect problems and check detailed learning statistics.'}
+              {t.landing.heroLede}
             </p>
             <div className="hero-actions">
               <label className="primary" htmlFor="hero-image-input">
-                {language === 'ko' ? '지금 시작하기' : 'Get Started'}
+                {t.landing.getStarted}
               </label>
               <Link className="ghost" to="/stats">
-                {language === 'ko' ? '통계 보기' : 'View Stats'}
+                {t.landing.viewStats}
               </Link>
             </div>
             <div className="hero-tags">
-              <span>{language === 'ko' ? '자동 채점' : 'Auto Grading'}</span>
-              <span>{language === 'ko' ? '학습 통계' : 'Statistics'}</span>
-              <span>{language === 'ko' ? '유사 문제' : 'Similar Problems'}</span>
-              <span>{language === 'ko' ? '모바일 최적화' : 'Mobile Optimized'}</span>
+              <span>{t.landing.tagAutoGrading}</span>
+              <span>{t.landing.tagStatistics}</span>
+              <span>{t.landing.tagSimilarProblems}</span>
+              <span>{t.landing.tagMobileOptimized}</span>
             </div>
           </div>
           <div className="hero-panel">
             <div className="hero-panel__header">
               <div>
-                <p className="eyebrow">실시간 분석</p>
-                <strong>{language === 'ko' ? '간단히 업로드 → AI 분석 → 결과 확인' : 'Upload → AI Analysis → View Results'}</strong>
+                <p className="eyebrow">{t.landing.realtimeAnalysis}</p>
+                <strong>{t.landing.uploadFlow}</strong>
               </div>
             </div>
 
@@ -112,7 +138,7 @@ export const MainPage: React.FC<MainPageProps> = ({
                     fontSize: '1rem',
                   }}
                 >
-                  📸 {language === 'ko' ? '사진 촬영' : 'Take Photo'}
+                  📸 {t.camera.takePhoto}
                 </button>
                 <label
                   htmlFor="hero-image-input"
@@ -132,8 +158,8 @@ export const MainPage: React.FC<MainPageProps> = ({
                   }}
                 >
                   {imageFiles.length > 0
-                    ? (language === 'ko' ? `${imageFiles.length}장 선택됨` : `${imageFiles.length} selected`)
-                    : (language === 'ko' ? '🖼️ 갤러리 선택' : '🖼️ Gallery')}
+                    ? t.upload.countSelected.replace('{count}', String(imageFiles.length))
+                    : t.camera.gallery}
                 </label>
                 <input
                   id="hero-image-input"
@@ -157,7 +183,7 @@ export const MainPage: React.FC<MainPageProps> = ({
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                     <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                      {language === 'ko' ? `${imageFiles.length}장 선택됨` : `${imageFiles.length} images`}
+                      {t.upload.countImages.replace('{count}', String(imageFiles.length))}
                     </span>
                     <button
                       onClick={onClearAll}
@@ -166,7 +192,7 @@ export const MainPage: React.FC<MainPageProps> = ({
                         padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer'
                       }}
                     >
-                      {language === 'ko' ? '초기화' : 'Clear All'}
+                      {t.upload.clearAll}
                     </button>
                   </div>
                   <div className="image-previews" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
@@ -202,8 +228,8 @@ export const MainPage: React.FC<MainPageProps> = ({
                 style={{ width: '100%', padding: '1rem', fontSize: '1.1rem' }}
               >
                 {isLoading
-                  ? (language === 'ko' ? '분석 중…' : 'Analyzing...')
-                  : (language === 'ko' ? 'AI 분석 시작하기' : 'Start AI Analysis')
+                  ? t.analyzing.analyzing
+                  : t.landing.startAiAnalysis
                 }
               </button>
               {error && <p className="error-text" style={{ marginTop: '0.5rem', color: '#ff6b6b', fontSize: '0.9rem' }}>{error}</p>}
@@ -214,13 +240,11 @@ export const MainPage: React.FC<MainPageProps> = ({
         <section className="metrics">
           <div className="section-head">
             <div>
-              <p className="eyebrow">{language === 'ko' ? '성능 · 정확도' : 'Performance · Accuracy'}</p>
-              <h2>{language === 'ko' ? '높은 정확도의 AI 분석' : 'High Accuracy AI Analysis'}</h2>
+              <p className="eyebrow">{t.landing.metricsEyebrow}</p>
+              <h2>{t.landing.metricsHeading}</h2>
             </div>
             <p className="muted">
-              {language === 'ko'
-                ? '실제 서비스 환경에서 측정된 정확도와 성능을 제공합니다.'
-                : 'We provide accuracy and performance measured in real service environments.'}
+              {t.landing.metricsDesc}
             </p>
           </div>
           <div className="metrics-grid">
@@ -237,13 +261,11 @@ export const MainPage: React.FC<MainPageProps> = ({
         <section className="solutions" id="solutions">
           <div className="section-head">
             <div>
-              <p className="eyebrow">{language === 'ko' ? '주요 기능' : 'Key Features'}</p>
-              <h2>{language === 'ko' ? '학습자와 교육자를 위한 솔루션' : 'Solutions for Learners and Educators'}</h2>
+              <p className="eyebrow">{t.landing.solutionsEyebrow}</p>
+              <h2>{t.landing.solutionsHeading}</h2>
             </div>
             <p className="muted">
-              {language === 'ko'
-                ? '학생, 학부모, 선생님 모두가 활용할 수 있는 다양한 기능을 제공합니다.'
-                : 'We provide various features that students, parents, and teachers can all use.'}
+              {t.landing.solutionsDesc}
             </p>
           </div>
           <div className="usecase-grid">
@@ -263,10 +285,10 @@ export const MainPage: React.FC<MainPageProps> = ({
           <div className="highlights" id="stories">
             <div className="section-head">
               <div>
-                <p className="eyebrow">{language === 'ko' ? '핵심 차별화' : 'Key Differentiators'}</p>
-                <h3>{language === 'ko' ? '촬영부터 통계까지 한 번에' : 'From Capture to Statistics'}</h3>
+                <p className="eyebrow">{t.landing.highlightsEyebrow}</p>
+                <h3>{t.landing.highlightsHeading}</h3>
               </div>
-              <p className="muted">{language === 'ko' ? '모바일 최적화, AI 자동 채점, 상세한 학습 통계를 함께 제공합니다.' : 'We provide mobile optimization, AI auto-grading, and detailed learning statistics.'}</p>
+              <p className="muted">{t.landing.highlightsDesc}</p>
             </div>
             <div className="highlight-grid">
               {HIGHLIGHTS.map((card) => (
@@ -284,12 +306,10 @@ export const MainPage: React.FC<MainPageProps> = ({
           <div className="section-head">
             <div>
               <p className="eyebrow">Tech Stack</p>
-              <h2>{language === 'ko' ? 'AI 분석 파이프라인' : 'AI Analysis Pipeline'}</h2>
+              <h2>{t.landing.pipelineHeading}</h2>
             </div>
             <p className="muted">
-              {language === 'ko'
-                ? '이미지 업로드부터 AI 분석, 데이터 저장까지 순차적으로 실행합니다.'
-                : 'Runs sequentially from image upload to AI analysis to data storage.'}
+              {t.landing.pipelineDesc}
             </p>
           </div>
           <div className="timeline">
@@ -308,9 +328,9 @@ export const MainPage: React.FC<MainPageProps> = ({
           <div className="section-head">
             <div>
               <p className="eyebrow">FAQ</p>
-              <h2>{language === 'ko' ? '자주 받는 질문' : 'Frequently Asked Questions'}</h2>
+              <h2>{t.landing.faqHeading}</h2>
             </div>
-            <p className="muted">{language === 'ko' ? '사용 방법, 기능, 보안에 대한 질문을 정리했습니다.' : 'We have compiled questions about usage, features, and security.'}</p>
+            <p className="muted">{t.landing.faqDesc}</p>
           </div>
           <div className="faq-grid">
             {FAQS.map((item, idx) => (
@@ -324,20 +344,18 @@ export const MainPage: React.FC<MainPageProps> = ({
 
         <section className="panel cta" id="cta">
           <div>
-            <p className="eyebrow">{language === 'ko' ? '지금 시작하기' : 'Get Started'}</p>
-            <h2>{language === 'ko' ? 'AI 영어 문제 분석을 시작하세요' : 'Start AI English Problem Analysis'}</h2>
+            <p className="eyebrow">{t.landing.getStarted}</p>
+            <h2>{t.landing.ctaHeading}</h2>
             <p className="muted">
-              {language === 'ko'
-                ? '이미지 업로드부터 통계 확인까지 모든 기능을 무료로 이용할 수 있습니다.'
-                : 'All features from image upload to statistics are available for free.'}
+              {t.landing.ctaDesc}
             </p>
           </div>
           <div className="cta-actions">
             <a className="primary" href="#top">
-              {language === 'ko' ? '지금 시작하기' : 'Get Started'}
+              {t.landing.getStarted}
             </a>
             <Link className="ghost muted-text" to="/stats">
-              {language === 'ko' ? '통계 보기' : 'View Statistics'}
+              {t.landing.viewStats}
             </Link>
           </div>
         </section>

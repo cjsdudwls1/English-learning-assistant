@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useProblemGeneration } from './useProblemGeneration';
 import { loadProblemsWithExisting } from '../services/problemLoader';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import type { AIGenerationOptions } from '../services/problemLoader';
 import type { GeneratedProblem } from '../types';
 
@@ -145,7 +147,9 @@ export function useProblemGenerationState({
         };
         const shortageTotal = shortageEntries.reduce((sum, [, count]) => sum + count, 0);
         const shortageDetails = shortageEntries
-          .map(([type, count]) => `${typeLabels[type] || type} ${count}개`)
+          .map(([type, count]) => language === 'ko'
+            ? `${typeLabels[type] || type} ${count}개`
+            : `${typeLabels[type] || type} ${count}`)
           .join(', ');
 
         const confirmMsg = language === 'ko'
@@ -179,7 +183,7 @@ export function useProblemGenerationState({
       }
     } catch (error) {
       console.error('Error loading existing problems:', error);
-      onError(error instanceof Error ? error.message : (language === 'ko' ? '문제 불러오기 중 오류가 발생했습니다.' : 'An error occurred while loading problems.'));
+      onError(translateError(error, language, getTranslation(language), language === 'ko' ? '문제 불러오기 중 오류가 발생했습니다.' : 'An error occurred while loading problems.'));
     } finally {
       setIsLoadingExistingProblems(false);
     }

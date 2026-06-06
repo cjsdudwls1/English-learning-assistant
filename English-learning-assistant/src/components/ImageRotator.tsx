@@ -1,4 +1,6 @@
 import React, { useState, useRef } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 interface ImageRotatorProps {
   imageUrl: string;
@@ -17,6 +19,8 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
   const imgRef = useRef<HTMLImageElement>(null);
   const resetTimerRef = useRef<number | null>(null);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const t = getTranslation(language);
 
   const rotateImage = (degrees: number) => {
     // 즉시 연속 클릭 허용 (서버 업로드는 중첩 가능)
@@ -97,7 +101,7 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
       <img
         ref={imgRef}
         src={localPreviewUrl || imageUrl}
-        alt="회전할 이미지"
+        alt={t.camera.rotatableImageAlt}
         className="w-full h-auto"
         crossOrigin="anonymous"
         onLoad={() => {
@@ -117,14 +121,14 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
         <button
           onClick={handleRotateLeft}
           className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}
-          title="좌회전"
+          title={t.camera.rotateLeft}
         >
           ↶
         </button>
         <button
           onClick={handleRotateRight}
           className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}
-          title="우회전"
+          title={t.camera.rotateRight}
         >
           ↷
         </button>

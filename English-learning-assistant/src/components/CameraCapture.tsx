@@ -1,5 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 interface CameraCaptureProps {
   isOpen: boolean;
@@ -10,6 +12,8 @@ interface CameraCaptureProps {
 }
 
 export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture, onClose }: CameraCaptureProps) {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -57,14 +61,14 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
     } catch (err: any) {
       console.error('[CameraCapture] Camera error:', err);
       if (err.name === 'NotAllowedError') {
-        setError('카메라 접근 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.');
+        setError(t.camera.permissionDenied);
       } else if (err.name === 'NotFoundError') {
-        setError('카메라를 찾을 수 없습니다.');
+        setError(t.camera.notFound);
       } else {
-        setError(`카메라를 시작할 수 없습니다: ${err.message?.substring(0, 100) || '알 수 없는 오류'}`);
+        setError(t.camera.startFailed.replace('{detail}', err.message?.substring(0, 100) || t.camera.unknownError));
       }
     }
-  }, []);
+  }, [t]);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -107,7 +111,7 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
 
     const totalPhotos = capturedPhotos.length;
     if (totalPhotos >= remainingSlots) {
-      setError(`최대 ${maxImages}장까지만 촬영할 수 있습니다.`);
+      setError(t.camera.maxReached.replace('{max}', String(maxImages)));
       return;
     }
 
@@ -143,9 +147,9 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
       }
     } catch (e: any) {
       console.error("[CameraCapture] takePhoto failed:", e);
-      setError("사진을 저장하는 중 문제가 발생했습니다.");
+      setError(t.camera.saveFailed);
     }
-  }, [isCameraReady, capturedPhotos.length, remainingSlots, maxImages]);
+  }, [isCameraReady, capturedPhotos.length, remainingSlots, maxImages, t]);
 
   const removePhoto = useCallback((index: number) => {
     setCapturedPhotos(prev => {
@@ -235,7 +239,7 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
                   border: 'none', fontSize: '1rem', cursor: 'pointer',
                 }}
               >
-                닫기
+                {t.common.close}
               </button>
             </div>
           </div>
@@ -265,7 +269,7 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
             padding: '0.25rem 0.75rem', borderRadius: '1rem',
             fontSize: '0.875rem', fontWeight: 600,
           }}>
-            {capturedPhotos.length} / {remainingSlots}장
+            {capturedPhotos.length} / {remainingSlots}{language === 'ko' ? '장' : ''}
           </div>
         </div>
       </div>
@@ -288,7 +292,7 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
             }}>
               <img
                 src={photo.url}
-                alt={`촬영 ${idx + 1}`}
+                alt={t.camera.captureAlt.replace('{index}', String(idx + 1))}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
               <button
@@ -351,7 +355,7 @@ export function CameraCapture({ isOpen, maxImages, currentImageCount, onCapture,
             minWidth: '60px', flexShrink: 0,
           }}
         >
-          완료 ({capturedPhotos.length})
+          {t.camera.done.replace('{count}', String(capturedPhotos.length))}
         </button>
       </div>
     </div>,

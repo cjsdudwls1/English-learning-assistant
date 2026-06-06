@@ -5,9 +5,14 @@ import { ChildSelector } from '../components/parent/ChildSelector';
 import { ChildStatsCard } from '../components/parent/ChildStatsCard';
 import { ChildAssignmentsCard } from '../components/parent/ChildAssignmentsCard';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import type { MonthlyStats, DailyStats } from '../types';
 
 export const ParentDashboardPage: React.FC = () => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [children, setChildren] = useState<ChildInfo[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
@@ -25,20 +30,20 @@ export const ParentDashboardPage: React.FC = () => {
   useEffect(() => {
     fetchMyChildren()
       .then((c) => { setChildren(c); if (c.length > 0) setSelectedChildId(c[0].user_id); })
-      .catch((e) => setError(e instanceof Error ? e.message : '자녀 목록을 불러오지 못했습니다.'))
+      .catch((e) => setError(translateError(e, language, t, t.errors.loadChildrenFailed)))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!selectedChildId) return;
     fetchMonthlySolvingStats(year, selectedChildId)
-      .then(setMonthlyStats).catch((e) => setError(e instanceof Error ? e.message : '월별 통계를 불러오지 못했습니다.'));
+      .then(setMonthlyStats).catch((e) => setError(translateError(e, language, t, t.errors.loadMonthlyStatsFailed)));
   }, [selectedChildId, year]);
 
   useEffect(() => {
     if (!selectedChildId || !selectedMonth) { setDailyStats([]); return; }
     fetchDailySolvingStats(year, selectedMonth, selectedChildId)
-      .then(setDailyStats).catch((e) => setError(e instanceof Error ? e.message : '일별 통계를 불러오지 못했습니다.'));
+      .then(setDailyStats).catch((e) => setError(translateError(e, language, t, t.errors.loadDailyStatsFailed)));
   }, [selectedChildId, year, selectedMonth]);
 
   // 택사노미 통계 로드
@@ -57,11 +62,11 @@ export const ParentDashboardPage: React.FC = () => {
     setTaxonomyStats([]);
   }, [selectedChildId]);
 
-  if (loading) return <div className="text-center py-20 text-slate-500">불러오는 중...</div>;
+  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">학부모 대시보드</h1>
+      <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.parent.dashboardTitle}</h1>
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
       <ChildSelector
@@ -89,15 +94,15 @@ export const ParentDashboardPage: React.FC = () => {
               className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
             >
               <span>{showTaxonomy ? '▼' : '▶'}</span>
-              문제 유형(택사노미)별 통계
+              {t.stats.taxonomyStatsTitle}
             </button>
 
             {showTaxonomy && (
               <div className="mt-3">
                 {taxonomyLoading ? (
-                  <p className="text-sm text-slate-500 py-4 text-center">택사노미 통계 불러오는 중...</p>
+                  <p className="text-sm text-slate-500 py-4 text-center">{t.stats.loadingTaxonomy}</p>
                 ) : taxonomyStats.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-4 text-center">택사노미 통계 데이터가 없습니다.</p>
+                  <p className="text-sm text-slate-400 py-4 text-center">{t.stats.noTaxonomyData}</p>
                 ) : (
                   <HierarchicalStatsTable data={taxonomyStats} />
                 )}

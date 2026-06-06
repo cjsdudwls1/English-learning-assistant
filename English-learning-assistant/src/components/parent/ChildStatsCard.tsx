@@ -3,6 +3,8 @@ import { MonthlyStatsSelector } from '../stats/MonthlyStatsSelector';
 import { DailyStatsSelector } from '../stats/DailyStatsSelector';
 import { AssignmentStatsDisplay } from '../stats/AssignmentStatsDisplay';
 import type { MonthlyStats, DailyStats } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 
 interface Props {
   monthlyStats: MonthlyStats[];
@@ -15,6 +17,8 @@ interface Props {
 
 export const ChildStatsCard: React.FC<Props> = ({ monthlyStats, dailyStats, year, selectedMonth, onYearChange, onSelectMonth }) => {
   const [selectedDate, setSelectedDate] = React.useState<string | null>(null);
+  const { language } = useLanguage();
+  const t = getTranslation(language);
 
   const selectedMonthStats = selectedMonth
     ? monthlyStats.find((s) => s.month === selectedMonth)
@@ -36,14 +40,14 @@ export const ChildStatsCard: React.FC<Props> = ({ monthlyStats, dailyStats, year
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-5">
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">자녀 학습 통계</h3>
+      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '자녀 학습 통계' : 'Child Learning Statistics'}</h3>
 
       <AssignmentStatsDisplay
         totalCount={yearTotals.total}
         correctCount={yearTotals.correct}
         incorrectCount={yearTotals.incorrect}
         avgTimeSeconds={yearTotals.total > 0 ? Math.round(yearTotals.time / yearTotals.total) : 0}
-        label={`${year}년 전체`}
+        label={t.stats.yearTotalLabel.replace('{year}', String(year))}
       />
 
       <MonthlyStatsSelector
@@ -60,7 +64,7 @@ export const ChildStatsCard: React.FC<Props> = ({ monthlyStats, dailyStats, year
           correctCount={selectedMonthStats.correct_count}
           incorrectCount={selectedMonthStats.incorrect_count}
           avgTimeSeconds={selectedMonthStats.avg_time_seconds}
-          label={`${selectedMonth}월 통계`}
+          label={t.stats.monthStatsLabel.replace('{month}', String(selectedMonth))}
         />
       )}
 
@@ -80,7 +84,7 @@ export const ChildStatsCard: React.FC<Props> = ({ monthlyStats, dailyStats, year
           correctCount={selectedDayStats.correct_count}
           incorrectCount={selectedDayStats.incorrect_count}
           avgTimeSeconds={selectedDayStats.avg_time_seconds}
-          label={`${selectedDate} 통계`}
+          label={t.stats.dateStatsLabel.replace('{date}', String(selectedDate))}
         />
       )}
     </div>

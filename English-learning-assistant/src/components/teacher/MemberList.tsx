@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { addClassMember, removeClassMember, fetchClassMembers } from '../../services/db';
 import type { ClassMember } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
+import { translateError } from '../../utils/errorI18n';
 
 interface Props {
   classId: string;
@@ -11,6 +14,8 @@ interface Props {
 }
 
 export const MemberList: React.FC<Props> = ({ classId, members, onUpdate, selectedStudentId, onSelectStudent }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'teacher' | 'student'>('student');
   const [adding, setAdding] = useState(false);
@@ -26,7 +31,7 @@ export const MemberList: React.FC<Props> = ({ classId, members, onUpdate, select
       onUpdate(updated);
       setEmail('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : '멤버 추가에 실패했습니다.');
+      setError(translateError(e, language, t, t.teacher.addMemberFailed));
     } finally {
       setAdding(false);
     }
@@ -37,7 +42,7 @@ export const MemberList: React.FC<Props> = ({ classId, members, onUpdate, select
       await removeClassMember(classId, userId);
       onUpdate(members.filter((m) => m.user_id !== userId));
     } catch {
-      alert('멤버 삭제에 실패했습니다.');
+      alert(t.teacher.removeMemberFailed);
     }
   };
 
@@ -46,32 +51,32 @@ export const MemberList: React.FC<Props> = ({ classId, members, onUpdate, select
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">멤버 ({members.length}명)</h3>
+      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.membersCount.replace('{count}', String(members.length))}</h3>
 
       <div className="flex gap-2">
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일로 추가" className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.teacher.addByEmailPlaceholder} className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
         <select value={role} onChange={(e) => setRole(e.target.value as 'teacher' | 'student')} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm">
-          <option value="student">학생</option>
-          <option value="teacher">선생님</option>
+          <option value="student">{t.teacher.student}</option>
+          <option value="teacher">{t.teacher.teacher}</option>
         </select>
         <button onClick={handleAdd} disabled={adding} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">
-          {adding ? '...' : '추가'}
+          {adding ? '...' : t.teacher.add}
         </button>
       </div>
       {error && <p className="text-red-500 text-xs">{error}</p>}
 
       {teachers.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-slate-500 mb-2">선생님 ({teachers.length})</p>
+          <p className="text-xs font-semibold text-slate-500 mb-2">{t.teacher.teachersCount.replace('{count}', String(teachers.length))}</p>
           {teachers.map((m) => (
             <MemberRow key={m.id} member={m} onRemove={handleRemove} isSelected={false} />
           ))}
         </div>
       )}
       <div>
-        <p className="text-xs font-semibold text-slate-500 mb-2">학생 ({students.length})</p>
+        <p className="text-xs font-semibold text-slate-500 mb-2">{t.teacher.studentsCount.replace('{count}', String(students.length))}</p>
         {students.length === 0 ? (
-          <p className="text-slate-400 text-xs py-2">학생이 없습니다.</p>
+          <p className="text-slate-400 text-xs py-2">{t.teacher.noStudents}</p>
         ) : (
           students.map((m) => (
             <MemberRow
@@ -93,7 +98,10 @@ const MemberRow: React.FC<{
   onRemove: (userId: string) => void;
   isSelected?: boolean;
   onSelect?: () => void;
-}> = ({ member, onRemove, isSelected, onSelect }) => (
+}> = ({ member, onRemove, isSelected, onSelect }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
+  return (
   <div
     className={`flex items-center justify-between py-2 px-3 rounded-lg transition-colors ${
       isSelected
@@ -106,7 +114,7 @@ const MemberRow: React.FC<{
       <span className="text-sm text-slate-700 dark:text-slate-300">{member.email || member.user_id.slice(0, 8)}</span>
       {onSelect && (
         <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
-          {isSelected ? '(통계 보기 중)' : '클릭하여 통계 보기'}
+          {isSelected ? t.teacher.viewingStats : t.teacher.clickToViewStats}
         </span>
       )}
     </div>
@@ -114,7 +122,8 @@ const MemberRow: React.FC<{
       onClick={(e) => { e.stopPropagation(); onRemove(member.user_id); }}
       className="text-xs text-red-500 hover:underline"
     >
-      삭제
+      {t.common.delete}
     </button>
   </div>
-);
+  );
+};

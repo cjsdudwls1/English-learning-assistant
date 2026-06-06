@@ -1,20 +1,22 @@
 import React from 'react';
 import type { DirectorOverview } from '../../services/db';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface Props {
   overview: DirectorOverview;
 }
 
 export const AcademyOverviewCard: React.FC<Props> = ({ overview }) => {
+  const { language } = useLanguage();
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">학원 전체 현황</h2>
+      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">{language === 'ko' ? '학원 전체 현황' : 'Academy Overview'}</h2>
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <OverviewStat label="전체 학급" value={`${overview.totalClasses}개`} />
-        <OverviewStat label="전체 학생" value={`${overview.totalStudents}명`} />
-        <OverviewStat label="총 과제" value={`${overview.totalAssignments}개`} />
-        <OverviewStat label="총 응답" value={`${overview.totalResponses}건`} />
-        <OverviewStat label="전체 정답률" value={`${overview.overallCorrectRate}%`} highlight />
+        <OverviewStat label={language === 'ko' ? '전체 학급' : 'Total Classes'} value={language === 'ko' ? `${overview.totalClasses}개` : `${overview.totalClasses}`} />
+        <OverviewStat label={language === 'ko' ? '전체 학생' : 'Total Students'} value={language === 'ko' ? `${overview.totalStudents}명` : `${overview.totalStudents}`} />
+        <OverviewStat label={language === 'ko' ? '총 과제' : 'Total Assignments'} value={language === 'ko' ? `${overview.totalAssignments}개` : `${overview.totalAssignments}`} />
+        <OverviewStat label={language === 'ko' ? '총 응답' : 'Total Responses'} value={language === 'ko' ? `${overview.totalResponses}건` : `${overview.totalResponses}`} />
+        <OverviewStat label={language === 'ko' ? '전체 정답률' : 'Overall Accuracy'} value={`${overview.overallCorrectRate}%`} highlight />
       </div>
     </div>
   );

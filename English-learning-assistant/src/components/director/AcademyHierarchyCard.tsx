@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import type { AcademyHierarchy, StudentDetail, TeacherDetail } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 
 interface Props {
   hierarchy: AcademyHierarchy;
@@ -8,8 +10,10 @@ interface Props {
 }
 
 const RatePill: React.FC<{ rate: number; total: number }> = ({ rate, total }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   if (total === 0) {
-    return <span className="text-[10px] text-slate-400">데이터 없음</span>;
+    return <span className="text-[10px] text-slate-400">{t.charts.noData}</span>;
   }
   const color =
     rate >= 80 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' :
@@ -17,7 +21,9 @@ const RatePill: React.FC<{ rate: number; total: number }> = ({ rate, total }) =>
                  'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300';
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${color}`}>
-      정답률 {rate}% ({total}건)
+      {language === 'ko'
+        ? `정답률 ${rate}% (${total}건)`
+        : `Accuracy ${rate}% (${total} solved)`}
     </span>
   );
 };
@@ -26,7 +32,9 @@ const StudentRow: React.FC<{
   student: StudentDetail;
   onSelect?: (uid: string, email?: string) => void;
   selected?: boolean;
-}> = ({ student, onSelect, selected }) => (
+}> = ({ student, onSelect, selected }) => {
+  const { language } = useLanguage();
+  return (
   <div
     className={`flex items-start justify-between gap-2 py-1.5 px-2 rounded-md transition-colors ${
       selected ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/40'
@@ -44,15 +52,16 @@ const StudentRow: React.FC<{
       </div>
       {student.parents.length > 0 && (
         <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-          학부모: {student.parents.map(p => p.email || p.user_id.slice(0, 8)).join(', ')}
+          {language === 'ko' ? '학부모: ' : 'Parents: '}{student.parents.map(p => p.email || p.user_id.slice(0, 8)).join(', ')}
         </div>
       )}
       {student.parents.length === 0 && (
-        <div className="mt-0.5 text-[10px] text-slate-400">학부모 미등록</div>
+        <div className="mt-0.5 text-[10px] text-slate-400">{language === 'ko' ? '학부모 미등록' : 'No parent linked'}</div>
       )}
     </button>
   </div>
-);
+  );
+};
 
 const TeacherSection: React.FC<{
   teacher: TeacherDetail;
@@ -61,6 +70,7 @@ const TeacherSection: React.FC<{
   selectedStudentId?: string | null;
 }> = ({ teacher, studentsById, onSelectStudent, selectedStudentId }) => {
   const [open, setOpen] = useState(true);
+  const { language } = useLanguage();
 
   return (
     <div className="border border-slate-200 dark:border-slate-700 rounded-xl">
@@ -75,7 +85,9 @@ const TeacherSection: React.FC<{
             {teacher.email || teacher.user_id.slice(0, 8)}
           </span>
           <span className="text-[10px] text-slate-500">
-            학급 {teacher.classes.length}개 · 학생 {teacher.student_ids.length}명
+            {language === 'ko'
+              ? `학급 ${teacher.classes.length}개 · 학생 ${teacher.student_ids.length}명`
+              : `${teacher.classes.length} classes · ${teacher.student_ids.length} students`}
           </span>
         </div>
         <RatePill rate={teacher.correct_rate} total={teacher.total_count} />
@@ -84,7 +96,7 @@ const TeacherSection: React.FC<{
       {open && (
         <div className="border-t border-slate-200 dark:border-slate-700 p-3 space-y-3">
           {teacher.classes.length === 0 && (
-            <p className="text-xs text-slate-400 py-1">담당 학급 없음</p>
+            <p className="text-xs text-slate-400 py-1">{language === 'ko' ? '담당 학급 없음' : 'No assigned classes'}</p>
           )}
           {teacher.classes.map(cls => {
             const sids = teacher.student_ids.filter(sid =>
@@ -96,10 +108,10 @@ const TeacherSection: React.FC<{
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     {cls.name}
                   </p>
-                  <span className="text-[10px] text-slate-500">{cls.student_count}명</span>
+                  <span className="text-[10px] text-slate-500">{language === 'ko' ? `${cls.student_count}명` : `${cls.student_count} students`}</span>
                 </div>
                 {sids.length === 0 ? (
-                  <p className="text-[11px] text-slate-400 py-1 text-center">학생 없음</p>
+                  <p className="text-[11px] text-slate-400 py-1 text-center">{language === 'ko' ? '학생 없음' : 'No students'}</p>
                 ) : (
                   <div className="space-y-1">
                     {sids.map(sid => {
@@ -128,18 +140,21 @@ const TeacherSection: React.FC<{
 export const AcademyHierarchyCard: React.FC<Props> = ({ hierarchy, onSelectStudent, selectedStudentId }) => {
   const studentsById = new Map(hierarchy.students.map(s => [s.user_id, s]));
   const [showUnassigned, setShowUnassigned] = useState(true);
+  const { language } = useLanguage();
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">학원 조직도</h2>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '학원 조직도' : 'Academy Org Chart'}</h2>
         <span className="text-xs text-slate-500">
-          선생 {hierarchy.teachers.length}명 · 학생 {hierarchy.students.length}명
+          {language === 'ko'
+            ? `선생 ${hierarchy.teachers.length}명 · 학생 ${hierarchy.students.length}명`
+            : `${hierarchy.teachers.length} teachers · ${hierarchy.students.length} students`}
         </span>
       </div>
 
       {hierarchy.teachers.length === 0 ? (
-        <p className="text-sm text-slate-400 py-4 text-center">등록된 선생님이 없습니다.</p>
+        <p className="text-sm text-slate-400 py-4 text-center">{language === 'ko' ? '등록된 선생님이 없습니다.' : 'No teachers registered.'}</p>
       ) : (
         <div className="space-y-2">
           {hierarchy.teachers.map(t => (
@@ -164,13 +179,13 @@ export const AcademyHierarchyCard: React.FC<Props> = ({ hierarchy, onSelectStude
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400">{showUnassigned ? '▼' : '▶'}</span>
               <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                미배정 학생
+                {language === 'ko' ? '미배정 학생' : 'Unassigned Students'}
               </span>
               <span className="text-[10px] text-amber-700 dark:text-amber-400">
-                {hierarchy.unassigned_students.length}명
+                {language === 'ko' ? `${hierarchy.unassigned_students.length}명` : `${hierarchy.unassigned_students.length} students`}
               </span>
             </div>
-            <span className="text-[10px] text-amber-700 dark:text-amber-400">선생/반 미배정</span>
+            <span className="text-[10px] text-amber-700 dark:text-amber-400">{language === 'ko' ? '선생/반 미배정' : 'No teacher or class'}</span>
           </button>
           {showUnassigned && (
             <div className="border-t border-amber-200 dark:border-amber-800 p-3 space-y-1">

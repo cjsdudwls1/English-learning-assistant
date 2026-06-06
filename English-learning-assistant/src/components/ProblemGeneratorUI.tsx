@@ -148,7 +148,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
               : '✓ Problems will be generated based on selected categories.')
             : (language === 'ko'
               ? '✓ 카테고리를 선택하지 않았습니다. 정답률이 낮은 유형부터 자동으로 선택되어 문제가 생성됩니다.'
-              : '✓ No category selected. Problems will be generated based on low accuracy types, starting from the lowest.')
+              : '✓ No category selected. Problems will be generated automatically, starting with the types where your accuracy is lowest.')
           }
         </p>
       </div>
@@ -224,7 +224,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                 : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
               }`}
           >
-            {language === 'ko' ? 'AI로 시험지 생성' : 'Generate New with AI'}
+            {language === 'ko' ? 'AI로 시험지 생성' : 'Generate with AI'}
           </button>
         </div>
       )}
@@ -245,7 +245,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
               className="w-4 h-4 text-indigo-600 rounded"
             />
             <span className="text-sm text-slate-700 dark:text-slate-300">
-              {language === 'ko' ? '영어 지문 포함 생성' : 'Include English passage'}
+              {language === 'ko' ? '영어 지문 포함 생성' : 'Include an English reading passage'}
             </span>
           </label>
 
@@ -256,7 +256,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-xs text-slate-600 dark:text-slate-400">{language === 'ko' ? '지문 길이' : 'Passage length'}</span>
                   <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400">
-                    {passageLength}{language === 'ko' ? '자' : ' chars'}
+                    {passageLength}{language === 'ko' ? '자' : ' characters'}
                   </span>
                 </div>
                 <input
@@ -458,7 +458,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
         >
           {isGenerating
             ? (language === 'ko' ? '생성 중...' : 'Generating...')
-            : (language === 'ko' ? 'AI로 시험지 생성 (새로운 문제 생성)' : 'Generate New Problems with AI')}
+            : (language === 'ko' ? 'AI로 시험지 생성 (새로운 문제 생성)' : 'Generate New Test Sheet with AI')}
         </button>
       </div>
 

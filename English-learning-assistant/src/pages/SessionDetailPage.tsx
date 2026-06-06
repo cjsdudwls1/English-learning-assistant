@@ -7,10 +7,15 @@ import { supabase } from '../services/supabaseClient';
 import { ImageRotator } from '../components/ImageRotator';
 import { ImageModal } from '../components/ImageModal';
 import { resolveImageUrls, resolveImageUrl, invalidateImageUrl, parseStoragePath } from '../utils/imageUrl';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 
 export const SessionDetailPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [data, setData] = useState<ProblemItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +50,7 @@ export const SessionDetailPage: React.FC = () => {
         }
 
         if (status === 'failed') {
-          setError('분석 중 오류가 발생했습니다.');
+          setError(t.session.analysisError);
           return;
         }
 
@@ -96,7 +101,7 @@ export const SessionDetailPage: React.FC = () => {
           }
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : '문제를 불러오는데 실패했습니다.');
+        setError(translateError(e, language, t, t.session.loadError));
       } finally {
         setLoading(false);
       }
@@ -113,15 +118,15 @@ export const SessionDetailPage: React.FC = () => {
       });
 
       if (!allLabeled) {
-        alert('모든 문제에 정답 또는 오답을 선택해주세요.');
+        alert(t.session.markAllPrompt);
         return;
       }
 
       await updateProblemLabels(sessionId, items);
-      alert('저장 완료! 통계에 반영되었습니다.');
+      alert(t.session.saveSuccess);
       navigate('/stats');
     } catch (e) {
-      alert(e instanceof Error ? e.message : '저장 중 오류가 발생했습니다.');
+      alert(translateError(e, language, t, t.session.saveError));
     }
   };
 
@@ -139,10 +144,10 @@ export const SessionDetailPage: React.FC = () => {
       // DB의 image_urls는 path만 유지 (signed URL 영속화 회귀 방지: CRITICAL #4)
       const rawPaths = originalImageUrlsRef.current;
       if (imageIndex < 0 || imageIndex >= rawPaths.length) {
-        throw new Error('이미지 인덱스가 유효하지 않습니다.');
+        throw new Error(t.session.invalidImageIndex);
       }
       const rawPath = rawPaths[imageIndex];
-      if (!rawPath) throw new Error('이미지 경로를 찾을 수 없습니다.');
+      if (!rawPath) throw new Error(t.session.imagePathNotFound);
 
       const parsed = parseStoragePath(rawPath);
       if (!parsed) throw new Error('스토리지 경로를 파싱할 수 없습니다.');
@@ -179,14 +184,14 @@ export const SessionDetailPage: React.FC = () => {
       setImageUrls(updatedDisplay);
     } catch (error) {
       console.error('Image rotation failed:', error);
-      alert('이미지 회전 중 오류가 발생했습니다.');
+      alert(t.session.rotateError);
     }
   };
 
   if (loading) {
     return (
       <div className="mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700 max-w-full lg:max-w-6xl">
-        <p className="text-center text-slate-600 dark:text-slate-400">불러오는 중...</p>
+        <p className="text-center text-slate-600 dark:text-slate-400">{t.common.loading}</p>
       </div>
     );
   }
@@ -194,13 +199,13 @@ export const SessionDetailPage: React.FC = () => {
   if (error || !data) {
     return (
       <div className="max-w-6xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
-        <p className="text-center text-red-600">{error || '문제를 찾을 수 없습니다.'}</p>
+        <p className="text-center text-red-600">{error || t.session.notFound}</p>
         <div className="text-center mt-4">
           <button
             onClick={() => navigate('/stats')}
             className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
           >
-            통계로 돌아가기
+            {t.session.backToStats}
           </button>
         </div>
       </div>
@@ -210,12 +215,12 @@ export const SessionDetailPage: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">세션 상세</h2>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t.session.title}</h2>
         <button
           onClick={() => navigate('/stats')}
           className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline"
         >
-          통계로 돌아가기
+          {t.session.backToStats}
         </button>
       </div>
 
@@ -223,7 +228,7 @@ export const SessionDetailPage: React.FC = () => {
         {/* 좌측: 이미지 영역 */}
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-            업로드된 이미지 {imageUrls.length > 0 ? `(${imageUrls.length}장)` : ''}
+            {t.session.uploadedImages}{imageUrls.length > 0 ? ` (${imageUrls.length})` : ''}
           </h3>
 
           {imageUrls.length > 0 ? (
@@ -232,14 +237,14 @@ export const SessionDetailPage: React.FC = () => {
                 <div key={`${index}-${url}`} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                      이미지 {index + 1}/{imageUrls.length}
+                      {t.session.imageNofM.replace('{current}', String(index + 1)).replace('{total}', String(imageUrls.length))}
                     </div>
                     <button
                       type="button"
                       onClick={() => handleImageClick(index)}
                       className="text-xs px-3 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded"
                     >
-                      확대보기
+                      {t.session.zoom}
                     </button>
                   </div>
                   <div className="max-h-[600px] overflow-auto flex items-start justify-center">
@@ -254,20 +259,20 @@ export const SessionDetailPage: React.FC = () => {
             </div>
           ) : (
             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900 flex items-center justify-center min-h-[200px]">
-              <p className="text-slate-500 dark:text-slate-400">이미지가 없습니다</p>
+              <p className="text-slate-500 dark:text-slate-400">{t.session.noImages}</p>
             </div>
           )}
 
           {imageUrls.length > 0 && (
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-              회전 버튼을 사용하여 각 이미지의 방향을 조정할 수 있습니다
+              {t.upload.rotateHint}
             </p>
           )}
         </div>
 
         {/* 우측: 분석 결과 */}
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">AI 분석 결과</h3>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{t.session.aiAnalysisResult}</h3>
           <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
             <MultiProblemEditor
               initial={{ items: data }}

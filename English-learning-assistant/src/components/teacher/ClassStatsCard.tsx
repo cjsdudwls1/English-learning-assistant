@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { MonthlyStatsSelector } from '../stats/MonthlyStatsSelector';
 import { AssignmentStatsDisplay } from '../stats/AssignmentStatsDisplay';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 import type { MonthlyStats } from '../../types';
 
 interface Props {
@@ -10,6 +12,8 @@ interface Props {
 }
 
 export const ClassStatsCard: React.FC<Props> = ({ monthlyStats, year, onYearChange }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
 
   const selectedStats = selectedMonth
@@ -28,14 +32,14 @@ export const ClassStatsCard: React.FC<Props> = ({ monthlyStats, year, onYearChan
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">학급 통계</h3>
+      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.classStats}</h3>
 
       <AssignmentStatsDisplay
         totalCount={totals.total}
         correctCount={totals.correct}
         incorrectCount={totals.incorrect}
         avgTimeSeconds={totals.total > 0 ? Math.round(totals.time / totals.total) : 0}
-        label={`${year}년 전체`}
+        label={t.stats.yearTotalLabel.replace('{year}', String(year))}
       />
 
       <MonthlyStatsSelector
@@ -52,7 +56,7 @@ export const ClassStatsCard: React.FC<Props> = ({ monthlyStats, year, onYearChan
           correctCount={selectedStats.correct_count}
           incorrectCount={selectedStats.incorrect_count}
           avgTimeSeconds={selectedStats.avg_time_seconds}
-          label={`${selectedMonth}월 통계`}
+          label={t.stats.monthStatsLabel.replace('{month}', String(selectedMonth))}
         />
       )}
     </div>

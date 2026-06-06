@@ -1,5 +1,7 @@
 import React from 'react';
 import type { MonthlyStats } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 
 interface Props {
   year: number;
@@ -9,9 +11,10 @@ interface Props {
   onYearChange: (year: number) => void;
 }
 
-const MONTH_LABELS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
-
 export const MonthlyStatsSelector: React.FC<Props> = ({ year, monthlyData, selectedMonth, onSelectMonth, onYearChange }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
+  const MONTH_LABELS = t.monthLabels;
   const dataMap = new Map(monthlyData.map((d) => [d.month, d]));
 
   return (
@@ -20,7 +23,7 @@ export const MonthlyStatsSelector: React.FC<Props> = ({ year, monthlyData, selec
         <button onClick={() => onYearChange(year - 1)} className="px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
           &larr;
         </button>
-        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">{year}년</span>
+        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.stats.yearLabel.replace('{year}', String(year))}</span>
         <button onClick={() => onYearChange(year + 1)} className="px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
           &rarr;
         </button>

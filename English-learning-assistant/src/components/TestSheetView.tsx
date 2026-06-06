@@ -95,7 +95,9 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    return `${minutes}분 ${seconds}초`;
+    return t.testSheet.timeFormat
+      .replace('{minutes}', String(minutes))
+      .replace('{seconds}', String(seconds));
   };
 
   const handleAnswerChange = (problemId: string, answer: string | number | boolean) => {

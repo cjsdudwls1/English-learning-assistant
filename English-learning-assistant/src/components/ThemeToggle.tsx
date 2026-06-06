@@ -1,15 +1,20 @@
 import React from 'react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 export const ThemeToggle: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
+  const { language } = useLanguage();
+  const t = getTranslation(language);
+  const themeToggleLabel = theme === 'light' ? t.theme.switchToDark : t.theme.switchToLight;
 
   return (
     <button
       onClick={toggleTheme}
       className="p-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
-      aria-label={theme === 'light' ? '다크모드로 전환' : '라이트모드로 전환'}
-      title={theme === 'light' ? '다크모드로 전환' : '라이트모드로 전환'}
+      aria-label={themeToggleLabel}
+      title={themeToggleLabel}
     >
       {theme === 'light' ? (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

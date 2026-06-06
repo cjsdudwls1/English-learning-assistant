@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { usePwaInstall } from '../hooks/usePwaInstall';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 export function InstallBanner() {
   const { isInstallable, isInstalled, isIOS, isAndroid, isMobile, isStandalone, promptInstall } = usePwaInstall();
   const [isVisible, setIsVisible] = useState(false);
+  const { language } = useLanguage();
+  const t = getTranslation(language);
 
   useEffect(() => {
     const dismissed = sessionStorage.getItem('pwa-install-banner-dismissed');
@@ -42,9 +46,9 @@ export function InstallBanner() {
     if (isIOS) {
       return (
         <div className="flex-1 mr-4">
-          <p className="text-sm font-bold mb-1">앱으로 설치하기</p>
+          <p className="text-sm font-bold mb-1">{t.install.installAsApp}</p>
           <p className="text-xs opacity-90">
-            Safari 하단 공유 버튼(□↑)을 눌러 "홈 화면에 추가"를 선택하세요.
+            {t.install.iosInstructions}
           </p>
         </div>
       );
@@ -54,9 +58,9 @@ export function InstallBanner() {
       // beforeinstallprompt가 안 잡혔을 때 수동 안내
       return (
         <div className="flex-1 mr-4">
-          <p className="text-sm font-bold mb-1">앱으로 설치하기</p>
+          <p className="text-sm font-bold mb-1">{t.install.installAsApp}</p>
           <p className="text-xs opacity-90">
-            Chrome 메뉴(⋮) → "홈 화면에 추가" 또는 "앱 설치"를 선택하세요.
+            {t.install.androidInstructions}
           </p>
         </div>
       );
@@ -66,7 +70,7 @@ export function InstallBanner() {
     return (
       <div className="flex-1 mr-4">
         <p className="text-sm font-medium">
-          홈 화면에 앱을 추가하여 더 빠르고 편리하게 이용하세요.
+          {t.install.installable}
         </p>
       </div>
     );
@@ -85,13 +89,13 @@ export function InstallBanner() {
               onClick={handleInstallClick}
               className="bg-white text-indigo-600 px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-indigo-50 transition-colors"
             >
-              설치
+              {t.install.install}
             </button>
           )}
           <button
             onClick={handleDismiss}
             className="text-white/80 hover:text-white px-2 py-1 rounded text-lg transition-colors"
-            aria-label="닫기"
+            aria-label={t.common.close}
           >
             ✕
           </button>

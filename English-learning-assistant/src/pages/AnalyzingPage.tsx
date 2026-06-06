@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getSessionProgress } from '../services/db';
 import { supabase } from '../services/supabaseClient';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 // ─── Phase 3: Supabase Realtime 구독 (polling 제거) ───
 // - 기존: 2초마다 getSessionProgress 폴링 → DB 부하 + 응답 지연
@@ -10,6 +12,8 @@ import { supabase } from '../services/supabaseClient';
 export const AnalyzingPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [dots, setDots] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState<string | null>(null);
@@ -37,7 +41,7 @@ export const AnalyzingPage: React.FC = () => {
         navigatedRef.current = true;
         navigate(`/session/${sessionId}`);
       } else if (status === 'failed') {
-        setError('분석 중 오류가 발생했습니다. 다시 시도해주세요.');
+        setError(t.analyzing.failedError);
       }
     };
 
@@ -99,20 +103,20 @@ export const AnalyzingPage: React.FC = () => {
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
         <div className="text-center">
           <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-red-600 mb-4">분석 실패</h2>
+          <h2 className="text-2xl font-bold text-red-600 mb-4">{t.analyzing.failedTitle}</h2>
           <p className="text-slate-700 mb-6">{error}</p>
           <div className="flex gap-4 justify-center">
             <button
               onClick={handleRetry}
               className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
             >
-              다시 시도
+              {t.analyzing.retry}
             </button>
             <button
               onClick={handleGoToStats}
               className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
             >
-              통계로 이동
+              {t.analyzing.goToStats}
             </button>
           </div>
         </div>
@@ -125,25 +129,25 @@ export const AnalyzingPage: React.FC = () => {
       <div className="text-center">
         <div className="text-6xl mb-6">🔍</div>
         <h2 className="text-3xl font-bold text-slate-800 mb-4">
-          분석중{'.'.repeat(dots)}
+          {language === 'ko' ? '분석중' : 'Analyzing'}{'.'.repeat(dots)}
         </h2>
         <p className="text-slate-600 mb-6 text-lg">
-          AI가 이미지를 분석하고 있습니다
+          {t.analyzing.subtitle}
         </p>
 
         {currentModel && (
           <div className="mb-8 inline-flex items-center px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700">
             <span className="mr-2 animate-pulse">🤖</span>
-            <span className="font-medium">분석 중인 AI: {currentModel}</span>
+            <span className="font-medium">{t.analyzing.currentModel.replace('{model}', currentModel)}</span>
           </div>
         )}
 
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-left max-w-lg mx-auto">
           <p className="text-green-800 text-sm font-medium flex items-center gap-2">
-            ✅ 분석이 백그라운드에서 진행 중입니다
+            ✅ {t.analyzing.backgroundRunning}
           </p>
           <p className="text-green-700 text-xs mt-1 pl-6">
-            💡 웹에서 나가셔도 분석이 자동으로 완료됩니다. 통계 페이지에서 결과를 확인하세요.
+            💡 {t.analyzing.backgroundHint}
           </p>
         </div>
         <div className="flex gap-4 justify-center">
@@ -151,7 +155,7 @@ export const AnalyzingPage: React.FC = () => {
             onClick={() => navigate('/stats')}
             className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
           >
-            통계 페이지로 이동
+            {t.analyzing.goToStatsPage}
           </button>
         </div>
         <div className="flex justify-center mt-6">

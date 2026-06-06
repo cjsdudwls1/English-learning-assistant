@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 
 interface UseReclassificationParams {
   language: 'ko' | 'en';
@@ -22,18 +24,19 @@ export function useReclassification({
   const [reclassificationStatus, setReclassificationStatus] = useState<string | null>(null);
 
   const handleReclassifyAll = useCallback(async () => {
-    if (!confirm('전체 문제를 새로운 분류 체계로 재분류하시겠습니까?\n이 작업은 시간이 걸릴 수 있으며, 백그라운드에서 진행됩니다.')) {
+    const t = getTranslation(language);
+    if (!confirm(t.stats.reclassifyConfirm)) {
       return;
     }
 
     try {
       setIsReclassifying(true);
-      setReclassificationStatus('재분류 작업을 시작합니다...');
+      setReclassificationStatus(t.stats.reclassifyStarting);
       setError(null);
 
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) {
-        setError('로그인이 필요합니다.');
+        setError(t.errors.loginRequired);
         return;
       }
 
@@ -62,22 +65,24 @@ export function useReclassification({
       
       if (result.success) {
         setReclassificationStatus(
-          `재분류 작업이 시작되었습니다. 처리된 문제: ${result.processed || 0}개 / 전체: ${result.total || 0}개. ` +
-          `성공: ${result.successCount || 0}개, 실패: ${result.failCount || 0}개. ` +
-          `새로고침하여 최신 통계를 확인하세요.`
+          t.stats.reclassifyResult
+            .replace('{processed}', String(result.processed || 0))
+            .replace('{total}', String(result.total || 0))
+            .replace('{successCount}', String(result.successCount || 0))
+            .replace('{failCount}', String(result.failCount || 0))
         );
-        
+
         // 3초 후 자동 새로고침
         setTimeout(() => {
           loadData(true);
           setReclassificationStatus(null);
         }, 3000);
       } else {
-        throw new Error(result.error || '재분류 작업에 실패했습니다.');
+        throw new Error(result.error || t.stats.reclassifyFailed);
       }
     } catch (error) {
       console.error('Error reclassifying problems:', error);
-      setError(error instanceof Error ? error.message : '재분류 중 오류가 발생했습니다.');
+      setError(translateError(error, language, t, t.stats.reclassifyError));
       setReclassificationStatus(null);
     } finally {
       setIsReclassifying(false);

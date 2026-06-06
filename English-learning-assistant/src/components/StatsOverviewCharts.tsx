@@ -12,6 +12,8 @@ import {
 import { Bar, Doughnut, getElementAtEvent } from 'react-chartjs-2';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import type { TypeStatsRow } from '../services/stats';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale, Title, ChartDataLabels);
 
@@ -300,6 +302,8 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
   maxCategories = 8,
 }) => {
   const palette = CHART_COLORS[theme];
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [drillDownState, setDrillDownState] = useState<DrillDownState>({ type: 'overview' });
   const [doughnutChartRef, setDoughnutChartRef] = useState<any>(null);
   const [barChartRef, setBarChartRef] = useState<any>(null);
@@ -884,25 +888,25 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
       return labels.correctVsIncorrect;
     }
     if (drillDownState.type === 'filtered') {
-      return `${drillDownState.filter === 'correct' ? labels.correct : labels.incorrect} 카테고리 구성`;
+      return `${drillDownState.filter === 'correct' ? labels.correct : labels.incorrect} ${t.charts.categoryComposition}`;
     }
     return getCurrentCategoryLabel(drillDownState, labels);
-  }, [drillDownState, labels]);
+  }, [drillDownState, labels, t]);
 
   const barTitle = useMemo(() => {
     if (drillDownState.type === 'overview') {
       return labels.categoryDistribution;
     }
     if (drillDownState.type === 'filtered') {
-      return `${drillDownState.filter === 'correct' ? labels.correct : labels.incorrect} 유형별 분포`;
+      return `${drillDownState.filter === 'correct' ? labels.correct : labels.incorrect} ${t.charts.distributionByType}`;
     }
     return getCurrentCategoryLabel(drillDownState, labels);
-  }, [drillDownState, labels]);
+  }, [drillDownState, labels, t]);
 
   // 네비게이션 경로 텍스트
   const navigationPath = useMemo(() => {
     if (drillDownState.type === 'filtered') {
-      return `${drillDownState.filter === 'correct' ? labels.correct : labels.incorrect} 필터`;
+      return `${drillDownState.filter === 'correct' ? labels.correct : labels.incorrect} ${t.charts.filter}`;
     }
     if (drillDownState.type === 'category') {
       return drillDownState.category;
@@ -915,7 +919,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
       return parts.join(' > ');
     }
     return '';
-  }, [drillDownState, labels]);
+  }, [drillDownState, labels, t]);
 
   const doughnutKey = useMemo(() => generateChartKey('doughnut', drillDownState), [drillDownState]);
   const barKey = useMemo(() => generateChartKey('bar', drillDownState), [drillDownState]);
@@ -932,7 +936,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            뒤로
+            {t.session.back}
           </button>
           <span className="text-slate-500 dark:text-slate-400">{navigationPath}</span>
         </div>
@@ -1025,7 +1029,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           {/* 클릭 안내 */}
           {drillDownState.type === 'overview' && (
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">
-              💡 차트를 클릭하여 상세 정보를 확인하세요
+              💡 {t.charts.clickChartHint}
             </p>
           )}
         </div>
@@ -1050,7 +1054,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           {/* 클릭 안내 */}
           {(drillDownState.type === 'overview' || drillDownState.type === 'filtered' || drillDownState.type === 'category' || (drillDownState.type === 'depth' && drillDownState.depth < 4)) && (
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">
-              💡 막대를 클릭하여 더 자세한 정보를 확인하세요
+              💡 {t.charts.clickBarHint}
             </p>
           )}
         </div>

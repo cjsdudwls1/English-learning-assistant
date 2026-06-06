@@ -8,6 +8,7 @@ import { FailedAnalysisCard } from '../components/FailedAnalysisCard';
 import type { SessionWithProblems } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 
 export const RecentProblemsPage: React.FC = () => {
   const { language } = useLanguage();
@@ -55,7 +56,7 @@ export const RecentProblemsPage: React.FC = () => {
       const recentlyHadAnalyzing = lastAnalyzingSeenAtRef.current > 0 && now - lastAnalyzingSeenAtRef.current < 60_000;
       setPollingActive(analyzing.length > 0 || pendingSessions.length > 0 || recentlyHadAnalyzing);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '조회 실패');
+      setError(translateError(e, language, t, t.errors.fetchFailed));
     } finally {
       setLoading(false);
     }
@@ -86,7 +87,7 @@ export const RecentProblemsPage: React.FC = () => {
       await deleteSession(sessionId);
       await loadData();
     } catch (e) {
-      alert(e instanceof Error ? e.message : (language === 'ko' ? '삭제 실패' : 'Delete failed'));
+      alert(translateError(e, language, t, language === 'ko' ? '삭제 실패' : 'Delete failed'));
     }
   };
 
@@ -106,7 +107,7 @@ export const RecentProblemsPage: React.FC = () => {
       setSelectedSessions(new Set());
       await loadData();
     } catch (e) {
-      alert(e instanceof Error ? e.message : '삭제 실패');
+      alert(translateError(e, language, t, t.common.deleteFailed));
     }
   };
 
@@ -187,21 +188,21 @@ export const RecentProblemsPage: React.FC = () => {
               onClick={toggleSelectAll}
               className="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700"
             >
-              {selectedSessions.size === sessions.length && sessions.length > 0 ? '전체 해제' : '전체 선택'}
+              {selectedSessions.size === sessions.length && sessions.length > 0 ? t.recent.deselectAll : t.recent.selectAll}
             </button>
             {selectedSessions.size > 0 && (
               <button
                 onClick={handleBulkDelete}
                 className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
               >
-                선택 삭제 ({selectedSessions.size})
+                {t.recent.deleteSelected} ({selectedSessions.size})
               </button>
             )}
             <button
               onClick={loadData}
               className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
             >
-              새로고침
+              {t.recent.refresh}
             </button>
           </div>
         </div>
@@ -236,7 +237,7 @@ export const RecentProblemsPage: React.FC = () => {
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-slate-500">
-                      {new Date(session.created_at).toLocaleString('ko-KR', {
+                      {new Date(session.created_at).toLocaleString(language === 'ko' ? 'ko-KR' : 'en-US', {
                         year: 'numeric',
                         month: 'long',
                         day: 'numeric',
@@ -252,7 +253,10 @@ export const RecentProblemsPage: React.FC = () => {
                       <p className="text-slate-700 mt-1">
                         {language === 'ko'
                           ? `문제 ${session.problem_count}개 | 정답 ${session.correct_count}개 | 오답 ${session.incorrect_count}개`
-                          : `${t.recent.problemCount} ${session.problem_count} | ${t.stats.correct}: ${session.correct_count} | ${t.stats.incorrect}: ${session.incorrect_count}`}
+                          : t.recent.sessionSummary
+                              .replace('{count}', String(session.problem_count))
+                              .replace('{correct}', String(session.correct_count))
+                              .replace('{incorrect}', String(session.incorrect_count))}
                       </p>
                     )}
                     {sessionImageUrls.length > 1 && (

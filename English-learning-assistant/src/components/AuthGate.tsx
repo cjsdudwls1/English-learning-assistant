@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { LoginButton } from './LoginButton';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -9,6 +11,8 @@ interface AuthGateProps {
 export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthed, setIsAuthed] = useState(false);
+  const { language } = useLanguage();
+  const t = getTranslation(language);
 
   useEffect(() => {
     let mounted = true;
@@ -31,7 +35,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       <div className="flex items-center justify-center py-20 text-slate-600 dark:text-slate-400">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
-          <span>로딩 중...</span>
+          <span>{t.common.loading}</span>
         </div>
       </div>
     );
@@ -49,10 +53,10 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-              AI 영어문제 분석기
+              {t.app.title}
             </h1>
             <p className="text-slate-500 dark:text-slate-400">
-              로그인하여 AI 기반 학습 분석을 시작하세요
+              {t.login.startPrompt}
             </p>
           </div>
 
@@ -63,7 +67,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
 
           {/* 푸터 */}
           <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
-            로그인 시 서비스 이용약관 및 개인정보 처리방침에 동의하게 됩니다
+            {t.login.termsNotice}
           </p>
         </div>
       </div>

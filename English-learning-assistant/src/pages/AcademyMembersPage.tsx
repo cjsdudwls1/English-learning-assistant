@@ -10,18 +10,24 @@ import {
 } from '../services/db/academies';
 import { fetchAllClasses, fetchClassMembers, addClassMember, removeClassMember } from '../services/db/classes';
 import type { ClassInfo, ClassMember } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation, type Translations } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 
 type MemberRole = 'director' | 'teacher' | 'student';
 
-const ROLE_LABELS: Record<MemberRole, string> = {
-  director: '학원장',
-  teacher: '선생님',
-  student: '학생',
+// 역할 라벨을 번역 객체에서 조회 (모듈 상수 → 함수화: useLanguage 접근을 위해)
+const roleLabel = (t: Translations, role: MemberRole): string => {
+  if (role === 'director') return t.academy.roleDirector;
+  if (role === 'teacher') return t.academy.roleTeacher;
+  return t.academy.roleStudent;
 };
 
 export const AcademyMembersPage: React.FC = () => {
   const { id: academyId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const t = getTranslation(language);
 
   const [academyName, setAcademyName] = useState('');
   const [members, setMembers] = useState<AcademyMember[]>([]);
@@ -57,7 +63,7 @@ export const AcademyMembersPage: React.FC = () => {
         setSelectedClassId(academyClasses[0].id);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '데이터를 불러오지 못했습니다.');
+      setError(translateError(e, language, t, t.academy.loadError));
     } finally {
       setLoading(false);
     }
@@ -85,16 +91,16 @@ export const AcademyMembersPage: React.FC = () => {
     setMessage(null);
     try {
       const user = await searchUserByEmail(searchEmail.trim());
-      if (!user) throw new Error('해당 이메일의 사용자가 존재하지 않습니다.');
+      if (!user) throw new Error(t.academy.userNotFound);
       if (members.some(m => m.user_id === user.user_id && m.role === addingRole)) {
-        throw new Error('이미 같은 역할로 학원에 소속되어 있습니다.');
+        throw new Error(t.academy.alreadyMember);
       }
       await addAcademyMember(academyId, user.user_id, addingRole);
-      setMessage(`${user.email}을(를) ${ROLE_LABELS[addingRole]}로 추가했습니다.`);
+      setMessage(t.academy.addedMember.replace('{email}', user.email).replace('{role}', roleLabel(t, addingRole)));
       setSearchEmail('');
       await loadMembers();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '추가에 실패했습니다.');
+      setError(translateError(e, language, t, t.academy.addFailed));
     } finally {
       setAdding(false);
     }
@@ -102,15 +108,15 @@ export const AcademyMembersPage: React.FC = () => {
 
   const handleRemove = async (userId: string, role: MemberRole, email: string) => {
     if (!academyId) return;
-    if (!confirm(`${email || userId}을(를) ${ROLE_LABELS[role]}에서 제거하시겠습니까?`)) return;
+    if (!confirm(t.academy.removeConfirm.replace('{target}', email || userId).replace('{role}', roleLabel(t, role)))) return;
     setError(null);
     setMessage(null);
     try {
       await removeAcademyMember(academyId, userId, role);
-      setMessage(`${email || userId} 제거 완료.`);
+      setMessage(t.academy.removedMember.replace('{target}', email || userId));
       await loadMembers();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '제거에 실패했습니다.');
+      setError(translateError(e, language, t, t.academy.removeFailed));
     }
   };
 
@@ -122,12 +128,12 @@ export const AcademyMembersPage: React.FC = () => {
     setMessage(null);
     try {
       await addClassMember(selectedClassId, classMemberAddEmail.trim(), classMemberAddRole);
-      setMessage(`${classMemberAddEmail.trim()}을(를) 반에 추가했습니다.`);
+      setMessage(t.academy.addedToClass.replace('{email}', classMemberAddEmail.trim()));
       setClassMemberAddEmail('');
       const updated = await fetchClassMembers(selectedClassId);
       setClassMembers(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '반 추가에 실패했습니다.');
+      setError(translateError(e, language, t, t.academy.addToClassFailed));
     } finally {
       setClassBusy(false);
     }
@@ -135,16 +141,16 @@ export const AcademyMembersPage: React.FC = () => {
 
   const handleRemoveClassMember = async (userId: string, email: string) => {
     if (!selectedClassId) return;
-    if (!confirm(`${email || userId}을(를) 반에서 제거하시겠습니까?`)) return;
+    if (!confirm(t.academy.removeFromClassConfirm.replace('{target}', email || userId))) return;
     setError(null);
     setMessage(null);
     try {
       await removeClassMember(selectedClassId, userId);
       const updated = await fetchClassMembers(selectedClassId);
       setClassMembers(updated);
-      setMessage('반 멤버 제거 완료.');
+      setMessage(t.academy.removedFromClass);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '반 제거에 실패했습니다.');
+      setError(translateError(e, language, t, t.academy.removeFromClassFailed));
     }
   };
 
@@ -154,13 +160,13 @@ export const AcademyMembersPage: React.FC = () => {
     student: members.filter(m => m.role === 'student'),
   };
 
-  if (loading) return <div className="text-center py-20 text-slate-500">불러오는 중...</div>;
+  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">학원 멤버 관리</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.academy.membersTitle}</h1>
           {academyName && <p className="text-sm text-slate-500 mt-0.5">{academyName}</p>}
         </div>
         <button
@@ -168,7 +174,7 @@ export const AcademyMembersPage: React.FC = () => {
           onClick={() => navigate('/academies')}
           className="text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline"
         >
-          돌아가기
+          {t.academy.back}
         </button>
       </div>
 
@@ -185,23 +191,23 @@ export const AcademyMembersPage: React.FC = () => {
 
       {/* 학원 멤버 추가 */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-4">멤버 추가</h2>
+        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-4">{t.academy.addMember}</h2>
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              이메일 <span className="text-red-500">*</span>
+              {t.academy.email} <span className="text-red-500">*</span>
             </label>
             <input
               type="email"
               value={searchEmail}
               onChange={e => setSearchEmail(e.target.value)}
-              placeholder="이미 가입한 사용자 이메일"
+              placeholder={t.academy.emailPlaceholder}
               required
               className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">역할</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t.academy.role}</label>
             <div className="flex gap-2">
               {(['director', 'teacher', 'student'] as MemberRole[]).map(r => (
                 <button
@@ -214,7 +220,7 @@ export const AcademyMembersPage: React.FC = () => {
                       : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                   }`}
                 >
-                  {ROLE_LABELS[r]}
+                  {roleLabel(t, r)}
                 </button>
               ))}
             </div>
@@ -224,7 +230,7 @@ export const AcademyMembersPage: React.FC = () => {
             disabled={adding || !searchEmail.trim()}
             className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
-            {adding ? '추가 중...' : '학원에 추가'}
+            {adding ? t.academy.adding : t.academy.addToAcademy}
           </button>
         </form>
       </div>
@@ -233,10 +239,10 @@ export const AcademyMembersPage: React.FC = () => {
       {(['director', 'teacher', 'student'] as MemberRole[]).map(role => (
         <div key={role} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-3">
-            {ROLE_LABELS[role]} <span className="text-sm text-slate-400 ml-1">({grouped[role].length}명)</span>
+            {roleLabel(t, role)} <span className="text-sm text-slate-400 ml-1">({t.academy.peopleCount.replace('{count}', String(grouped[role].length))})</span>
           </h2>
           {grouped[role].length === 0 ? (
-            <p className="text-sm text-slate-400 py-2 text-center">없음</p>
+            <p className="text-sm text-slate-400 py-2 text-center">{t.academy.none}</p>
           ) : (
             <div className="space-y-1.5">
               {grouped[role].map(m => (
@@ -246,7 +252,7 @@ export const AcademyMembersPage: React.FC = () => {
                     onClick={() => handleRemove(m.user_id, m.role, m.email)}
                     className="text-xs text-red-500 hover:text-red-700 px-2 py-1"
                   >
-                    제거
+                    {t.academy.remove}
                   </button>
                 </div>
               ))}
@@ -258,10 +264,10 @@ export const AcademyMembersPage: React.FC = () => {
       {/* 반 배정 */}
       {classes.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
-          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200">반 배정</h2>
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200">{t.academy.classAssignment}</h2>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">반 선택</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t.academy.selectClass}</label>
             <div className="flex flex-wrap gap-2">
               {classes.map(c => (
                 <button
@@ -283,13 +289,13 @@ export const AcademyMembersPage: React.FC = () => {
           {selectedClassId && (
             <>
               <form onSubmit={handleAddClassMember} className="space-y-3 border-t border-slate-200 dark:border-slate-700 pt-4">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">반에 멤버 추가</p>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.academy.addClassMember}</p>
                 <div className="flex gap-2">
                   <input
                     type="email"
                     value={classMemberAddEmail}
                     onChange={e => setClassMemberAddEmail(e.target.value)}
-                    placeholder="학원 멤버 이메일"
+                    placeholder={t.academy.classMemberEmailPlaceholder}
                     required
                     className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-slate-200"
                   />
@@ -298,25 +304,25 @@ export const AcademyMembersPage: React.FC = () => {
                     onChange={e => setClassMemberAddRole(e.target.value as 'teacher' | 'student')}
                     className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-slate-200"
                   >
-                    <option value="student">학생</option>
-                    <option value="teacher">선생님</option>
+                    <option value="student">{t.academy.roleStudent}</option>
+                    <option value="teacher">{t.academy.roleTeacher}</option>
                   </select>
                   <button
                     type="submit"
                     disabled={classBusy || !classMemberAddEmail.trim()}
                     className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    추가
+                    {t.academy.add}
                   </button>
                 </div>
               </form>
 
               <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  반 멤버 ({classMembers.length}명)
+                  {t.academy.classMembersCount.replace('{count}', String(classMembers.length))}
                 </p>
                 {classMembers.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-2 text-center">멤버 없음</p>
+                  <p className="text-sm text-slate-400 py-2 text-center">{t.academy.noMembers}</p>
                 ) : (
                   <div className="space-y-1.5 max-h-64 overflow-y-auto">
                     {classMembers.map(cm => (
@@ -328,14 +334,14 @@ export const AcademyMembersPage: React.FC = () => {
                               ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
                               : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                           }`}>
-                            {cm.role === 'teacher' ? '선생님' : '학생'}
+                            {cm.role === 'teacher' ? t.academy.roleTeacher : t.academy.roleStudent}
                           </span>
                         </div>
                         <button
                           onClick={() => handleRemoveClassMember(cm.user_id, cm.email || '')}
                           className="text-xs text-red-500 hover:text-red-700 px-2 py-1"
                         >
-                          제거
+                          {t.academy.remove}
                         </button>
                       </div>
                     ))}

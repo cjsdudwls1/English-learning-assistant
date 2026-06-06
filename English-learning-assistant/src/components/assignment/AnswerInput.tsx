@@ -1,5 +1,7 @@
 import React from 'react';
 import type { GeneratedProblem } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 
 interface Props {
   problem: GeneratedProblem;
@@ -8,6 +10,8 @@ interface Props {
 }
 
 export const AnswerInput: React.FC<Props> = ({ problem, selectedAnswer, onSelect }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const type = problem.problem_type ?? 'multiple_choice';
 
   if (type === 'multiple_choice') {
@@ -41,7 +45,7 @@ export const AnswerInput: React.FC<Props> = ({ problem, selectedAnswer, onSelect
       <textarea
         value={selectedAnswer}
         onChange={(e) => onSelect(e.target.value)}
-        placeholder="답변을 입력하세요..."
+        placeholder={t.assignments.essayPlaceholder}
         rows={4}
         className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm resize-none"
       />
@@ -54,7 +58,7 @@ export const AnswerInput: React.FC<Props> = ({ problem, selectedAnswer, onSelect
       type="text"
       value={selectedAnswer}
       onChange={(e) => onSelect(e.target.value)}
-      placeholder="답을 입력하세요..."
+      placeholder={t.assignments.shortAnswerPlaceholder}
       className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
     />
   );

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchMonthlySolvingStats, fetchDailySolvingStats } from '../services/db';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import type { MonthlyStats, DailyStats } from '../types';
 
 function isAuthLockError(e: unknown): boolean {
@@ -27,6 +30,7 @@ async function withAuthLockRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs 
 }
 
 export function useSolvingStats() {
+  const { language } = useLanguage();
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -51,11 +55,11 @@ export function useSolvingStats() {
           return;
         }
         setMonthlyStats([]);
-        setError(e instanceof Error ? e.message : '월별 통계를 불러오지 못했습니다.');
+        setError(translateError(e, language, getTranslation(language), getTranslation(language).stats.monthlyLoadError));
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [year]);
+  }, [year, language]);
 
   useEffect(() => {
     if (!selectedMonth) { setDailyStats([]); return; }
@@ -71,10 +75,10 @@ export function useSolvingStats() {
           return;
         }
         setDailyStats([]);
-        setError(e instanceof Error ? e.message : '일별 통계를 불러오지 못했습니다.');
+        setError(translateError(e, language, getTranslation(language), getTranslation(language).stats.dailyLoadError));
       });
     return () => { cancelled = true; };
-  }, [year, selectedMonth]);
+  }, [year, selectedMonth, language]);
 
   const handleYearChange = useCallback((y: number) => setYear(y), []);
   const handleSelectMonth = useCallback((m: number) => setSelectedMonth(m), []);

@@ -27,6 +27,7 @@ interface StatsRowProps {
 
 const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumberClick, selectedNodes, onNodeSelect, onQuestionClick }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { language } = useLanguage();
   const hasChildren = node.children && node.children.length > 0;
   const indent = level * 20;
 
@@ -119,7 +120,7 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
                   onQuestionClick(node);
                 }}
                 className="ml-2 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600 flex items-center justify-center text-sm font-bold transition-colors"
-                title="분류 정보 보기"
+                title={language === 'ko' ? '분류 정보 보기' : 'View Classification Details'}
               >
                 ?
               </button>

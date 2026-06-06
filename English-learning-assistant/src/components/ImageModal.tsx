@@ -1,4 +1,6 @@
 import React, { useEffect } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 interface ImageModalProps {
   isOpen: boolean;
@@ -7,12 +9,14 @@ interface ImageModalProps {
   sessionId?: string;
 }
 
-export const ImageModal: React.FC<ImageModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  imageUrl, 
-  sessionId 
+export const ImageModal: React.FC<ImageModalProps> = ({
+  isOpen,
+  onClose,
+  imageUrl,
+  sessionId
 }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -58,19 +62,19 @@ export const ImageModal: React.FC<ImageModalProps> = ({
       <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden">
         {/* 헤더 */}
         <div className="flex items-center justify-between p-4 bg-slate-100 border-b">
-          <h3 className="text-lg font-semibold">이미지 확대보기</h3>
+          <h3 className="text-lg font-semibold">{t.problems.imageZoomTitle}</h3>
           <div className="flex gap-2">
             <button
               onClick={handleDownload}
               className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
             >
-              다운로드
+              {t.problems.download}
             </button>
             <button
               onClick={onClose}
               className="px-4 py-2 bg-slate-600 text-white text-sm rounded hover:bg-slate-700"
             >
-              닫기
+              {t.common.close}
             </button>
           </div>
         </div>
@@ -79,7 +83,7 @@ export const ImageModal: React.FC<ImageModalProps> = ({
         <div className="p-4">
           <img
             src={imageUrl}
-            alt="확대된 이미지"
+            alt={t.problems.enlargedImageAlt}
             className="max-w-full max-h-[70vh] object-contain mx-auto"
           />
         </div>

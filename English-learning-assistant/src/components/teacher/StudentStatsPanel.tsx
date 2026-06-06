@@ -6,6 +6,9 @@ import { DailyStatsSelector } from '../stats/DailyStatsSelector';
 import { AssignmentStatsDisplay } from '../stats/AssignmentStatsDisplay';
 import { HierarchicalStatsTable } from '../HierarchicalStatsTable';
 import type { MonthlyStats, DailyStats } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
+import { translateError } from '../../utils/errorI18n';
 
 interface Props {
   studentId: string;
@@ -14,6 +17,8 @@ interface Props {
 }
 
 export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, onClose }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -31,7 +36,7 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
     setError(null);
     fetchMonthlySolvingStats(year, studentId)
       .then(setMonthlyStats)
-      .catch((e) => setError(e instanceof Error ? e.message : '통계를 불러오지 못했습니다.'))
+      .catch((e) => setError(translateError(e, language, t, t.teacher.statsLoadFailed)))
       .finally(() => setLoading(false));
   }, [studentId, year]);
 
@@ -74,7 +79,7 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
   if (loading) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 text-center text-slate-500">
-        학생 통계 불러오는 중...
+        {t.teacher.loadingStudentStats}
       </div>
     );
   }
@@ -83,14 +88,14 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-5">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
-          {studentEmail ? `${studentEmail}` : '학생'} 통계
+          {studentEmail ? `${studentEmail}` : t.teacher.student}{t.teacher.statisticsSuffix}
         </h3>
         {onClose && (
           <button
             onClick={onClose}
             className="text-xs px-3 py-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
           >
-            닫기
+            {t.common.close}
           </button>
         )}
       </div>
@@ -102,7 +107,7 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
         correctCount={yearTotals.correct}
         incorrectCount={yearTotals.incorrect}
         avgTimeSeconds={yearTotals.total > 0 ? Math.round(yearTotals.time / yearTotals.total) : 0}
-        label={`${year}년 전체`}
+        label={t.stats.yearTotalLabel.replace('{year}', String(year))}
       />
 
       {/* 월별 선택 */}
@@ -120,7 +125,7 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
           correctCount={selectedMonthStats.correct_count}
           incorrectCount={selectedMonthStats.incorrect_count}
           avgTimeSeconds={selectedMonthStats.avg_time_seconds}
-          label={`${selectedMonth}월 통계`}
+          label={t.stats.monthStatsLabel.replace('{month}', String(selectedMonth))}
         />
       )}
 
@@ -141,7 +146,7 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
           correctCount={selectedDayStats.correct_count}
           incorrectCount={selectedDayStats.incorrect_count}
           avgTimeSeconds={selectedDayStats.avg_time_seconds}
-          label={`${selectedDate} 통계`}
+          label={t.stats.dateStatsLabel.replace('{date}', String(selectedDate))}
         />
       )}
 
@@ -152,15 +157,15 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
           className="flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
         >
           <span>{showTaxonomy ? '▼' : '▶'}</span>
-          문제 유형(택사노미)별 통계
+          {t.teacher.statsByProblemType}
         </button>
 
         {showTaxonomy && (
           <div className="mt-3">
             {taxonomyLoading ? (
-              <p className="text-sm text-slate-500 py-4 text-center">택사노미 통계 불러오는 중...</p>
+              <p className="text-sm text-slate-500 py-4 text-center">{t.stats.loadingTaxonomy}</p>
             ) : taxonomyStats.length === 0 ? (
-              <p className="text-sm text-slate-400 py-4 text-center">택사노미 통계 데이터가 없습니다.</p>
+              <p className="text-sm text-slate-400 py-4 text-center">{t.stats.noTaxonomyData}</p>
             ) : (
               <HierarchicalStatsTable data={taxonomyStats} />
             )}

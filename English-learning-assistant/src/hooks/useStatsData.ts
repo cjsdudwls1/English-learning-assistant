@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
 import { fetchAnalyzingSessions, fetchPendingLabelingSessions, fetchFailedSessions } from '../services/db';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import type { SessionWithProblems } from '../types';
 
 // Supabase Auth SDK의 navigator.locks 충돌 에러는 무시
@@ -92,7 +94,8 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
         console.warn('[Stats] Auth lock conflict, retrying on next poll:', msg);
         return;
       }
-      setError(msg);
+      // 서비스 레이어 한글 throw가 en 모드에 누출되지 않도록 번역/차단(fallback=normalizeError 결과)
+      setError(translateError(e, language, getTranslation(language), msg));
     } finally {
       if (showLoading) {
         setLoading(false);

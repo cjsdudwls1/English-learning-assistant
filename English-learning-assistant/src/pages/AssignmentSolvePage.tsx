@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchAssignmentProblems, submitAssignmentResponse, fetchAssignmentResponses } from '../services/db';
 import { AnswerInput, checkAnswer } from '../components/assignment/AnswerInput';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 import type { GeneratedProblem, AssignmentResponse } from '../types';
 
 interface ProblemWithOrder {
@@ -12,6 +14,8 @@ interface ProblemWithOrder {
 
 export const AssignmentSolvePage: React.FC = () => {
   const { assignmentId } = useParams<{ assignmentId: string }>();
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [problems, setProblems] = useState<ProblemWithOrder[]>([]);
   const [responses, setResponses] = useState<AssignmentResponse[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -62,29 +66,29 @@ export const AssignmentSolvePage: React.FC = () => {
       setSelectedAnswer('');
       setStartTime(Date.now());
     } catch {
-      alert('응답 제출에 실패했습니다.');
+      alert(t.assignments.submitFailed);
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <div className="text-center py-20 text-slate-500">불러오는 중...</div>;
-  if (problems.length === 0) return <div className="text-center py-20 text-slate-400">문제가 없습니다.</div>;
+  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+  if (problems.length === 0) return <div className="text-center py-20 text-slate-400">{t.assignments.noProblems}</div>;
 
   const allDone = problems.every((p) => isAnswered(p.problem_id));
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link to="/assignments" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">&larr; 과제 목록</Link>
+        <Link to="/assignments" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">&larr; {t.assignments.assignmentList}</Link>
         <span className="text-sm text-slate-500">{currentIdx + 1} / {problems.length}</span>
       </div>
 
       {allDone ? (
         <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-          <p className="text-2xl font-bold text-green-600 mb-2">모든 문제를 풀었습니다!</p>
-          <p className="text-slate-500">정답: {responses.filter((r) => r.is_correct).length} / {problems.length}</p>
-          <Link to="/assignments" className="inline-block mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">과제 목록으로</Link>
+          <p className="text-2xl font-bold text-green-600 mb-2">{t.assignments.allSolved}</p>
+          <p className="text-slate-500">{t.assignments.correctCount.replace('{correct}', String(responses.filter((r) => r.is_correct).length)).replace('{total}', String(problems.length))}</p>
+          <Link to="/assignments" className="inline-block mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">{t.assignments.backToList}</Link>
         </div>
       ) : currentProblem ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
@@ -92,7 +96,7 @@ export const AssignmentSolvePage: React.FC = () => {
           {currentProblem.passage && (
             <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
               <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
-                지문 (Passage)
+                {t.assignments.passage}
               </div>
               <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
                 {currentProblem.passage}
@@ -100,19 +104,19 @@ export const AssignmentSolvePage: React.FC = () => {
             </div>
           )}
           {isAnswered(currentProblem.id) ? (
-            <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm">이미 답변한 문제입니다.</div>
+            <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm">{t.assignments.alreadyAnswered}</div>
           ) : (
             <>
               <AnswerInput problem={currentProblem} selectedAnswer={selectedAnswer} onSelect={setSelectedAnswer} />
               <button onClick={handleSubmit} disabled={!selectedAnswer || submitting}
                 className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50">
-                {submitting ? '제출 중...' : '답변 제출'}
+                {submitting ? t.assignments.submitting : t.assignments.submitAnswer}
               </button>
             </>
           )}
           <div className="flex justify-between">
-            <button onClick={() => { setCurrentIdx((i) => Math.max(0, i - 1)); setSelectedAnswer(''); }} disabled={currentIdx === 0} className="text-sm text-slate-500 hover:underline disabled:opacity-30">&larr; 이전</button>
-            <button onClick={() => { setCurrentIdx((i) => Math.min(problems.length - 1, i + 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === problems.length - 1} className="text-sm text-slate-500 hover:underline disabled:opacity-30">다음 &rarr;</button>
+            <button onClick={() => { setCurrentIdx((i) => Math.max(0, i - 1)); setSelectedAnswer(''); }} disabled={currentIdx === 0} className="text-sm text-slate-500 hover:underline disabled:opacity-30">&larr; {t.assignments.previous}</button>
+            <button onClick={() => { setCurrentIdx((i) => Math.min(problems.length - 1, i + 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === problems.length - 1} className="text-sm text-slate-500 hover:underline disabled:opacity-30">{t.assignments.next} &rarr;</button>
           </div>
         </div>
       ) : null}

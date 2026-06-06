@@ -9,10 +9,15 @@ import { StudentStatsPanel } from '../components/teacher/StudentStatsPanel';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { fetchClassHierarchicalStats, type StatsNode } from '../services/stats';
 import { useUserRole } from '../contexts/UserRoleContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import type { AcademyHierarchy, ClassInfo, ClassMember, MonthlyStats } from '../types';
 
 export const DirectorDashboardPage: React.FC = () => {
   const { activeAcademyId } = useUserRole();
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const [overview, setOverview] = useState<DirectorOverview | null>(null);
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -52,7 +57,7 @@ export const DirectorDashboardPage: React.FC = () => {
         setHierarchy(h);
         setSelectedClassId(filteredClasses.length > 0 ? filteredClasses[0].id : null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : '데이터를 불러오지 못했습니다.');
+        setError(translateError(e, language, t, t.errors.loadFailed));
       } finally {
         setLoading(false);
       }
@@ -63,7 +68,7 @@ export const DirectorDashboardPage: React.FC = () => {
   useEffect(() => {
     if (!selectedClassId) return;
     fetchClassAssignmentStats(selectedClassId, year)
-      .then(setClassStats).catch((e) => setError(e instanceof Error ? e.message : '학급 통계를 불러오지 못했습니다.'));
+      .then(setClassStats).catch((e) => setError(translateError(e, language, t, t.errors.loadClassStatsFailed)));
 
     // 학급 학생 목록 로드
     fetchClassMembers(selectedClassId)
@@ -113,15 +118,15 @@ export const DirectorDashboardPage: React.FC = () => {
       // 통계 업데이트
       fetchDirectorOverview(activeAcademyId).then(setOverview).catch(console.error);
     } catch (e) {
-      alert(e instanceof Error ? e.message : '학급 삭제에 실패했습니다.');
+      alert(translateError(e, language, t, t.errors.deleteClassFailed));
     }
   };
 
-  if (loading) return <div className="text-center py-20 text-slate-500">불러오는 중...</div>;
+  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">학원장 대시보드</h1>
+      <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.director.dashboardTitle}</h1>
       {error && <p className="text-red-500 text-sm">{error}</p>}
       {overview && <AcademyOverviewCard overview={overview} />}
       <TeacherPerformanceCard teachers={teachers} />
@@ -152,15 +157,15 @@ export const DirectorDashboardPage: React.FC = () => {
             className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
           >
             <span>{showClassTaxonomy ? '\u25BC' : '\u25B6'}</span>
-            학급 전체 문제 유형(택사노미)별 통계
+            {t.teacher.classTaxonomyStats}
           </button>
 
           {showClassTaxonomy && (
             <div className="mt-3">
               {taxonomyLoading ? (
-                <p className="text-sm text-slate-500 py-4 text-center">택사노미 통계 불러오는 중...</p>
+                <p className="text-sm text-slate-500 py-4 text-center">{t.stats.loadingTaxonomy}</p>
               ) : classTaxonomy.length === 0 ? (
-                <p className="text-sm text-slate-400 py-4 text-center">택사노미 통계 데이터가 없습니다.</p>
+                <p className="text-sm text-slate-400 py-4 text-center">{t.stats.noTaxonomyData}</p>
               ) : (
                 <HierarchicalStatsTable data={classTaxonomy} />
               )}
@@ -172,8 +177,8 @@ export const DirectorDashboardPage: React.FC = () => {
       {/* 학급 내 학생 목록 및 개별 통계 */}
       {selectedClassId && students.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-3">
-          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">학생별 통계</h3>
-          <p className="text-xs text-slate-500">학생을 클릭하여 개별 통계를 확인하세요.</p>
+          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.statsByStudent}</h3>
+          <p className="text-xs text-slate-500">{t.teacher.clickStudentHint}</p>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {students.map((s) => (
               <button
@@ -187,7 +192,7 @@ export const DirectorDashboardPage: React.FC = () => {
               >
                 <span>{s.email || s.user_id.slice(0, 8)}</span>
                 <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
-                  {selectedStudentId === s.user_id ? '(보기 중)' : '통계 보기'}
+                  {selectedStudentId === s.user_id ? `(${t.teacher.viewing})` : t.teacher.viewStats}
                 </span>
               </button>
             ))}

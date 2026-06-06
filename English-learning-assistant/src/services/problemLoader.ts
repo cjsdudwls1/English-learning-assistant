@@ -4,6 +4,7 @@ import {
   fetchExistingProblems
 } from './db/generatedProblems';
 import { supabase } from './supabaseClient';
+import { getTranslation } from '../utils/translations';
 
 export interface AIGenerationOptions {
   includePassage?: boolean;
@@ -288,7 +289,7 @@ async function generateMissingProblems(
     const result = await response.json();
 
     if (!result.success) {
-      throw new Error(result.error || '문제 생성 실패');
+      throw new Error(result.error || getTranslation(language).generator.generationFailed);
     }
 
     // 생성된 문제를 폴링으로 기다림

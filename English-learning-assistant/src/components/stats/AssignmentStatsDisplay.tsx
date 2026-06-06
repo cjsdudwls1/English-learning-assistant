@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface Props {
   totalCount: number;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const AssignmentStatsDisplay: React.FC<Props> = ({ totalCount, correctCount, incorrectCount, avgTimeSeconds, label }) => {
+  const { language } = useLanguage();
   const correctRate = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
   const minutes = Math.floor(avgTimeSeconds / 60);
   const seconds = avgTimeSeconds % 60;
@@ -16,7 +18,7 @@ export const AssignmentStatsDisplay: React.FC<Props> = ({ totalCount, correctCou
   if (totalCount === 0) {
     return (
       <div className="text-center py-8 text-slate-400 dark:text-slate-500">
-        {label ? `${label}: ` : ''}데이터가 없습니다.
+        {label ? `${label}: ` : ''}{language === 'ko' ? '데이터가 없습니다.' : 'No data available.'}
       </div>
     );
   }
@@ -25,10 +27,10 @@ export const AssignmentStatsDisplay: React.FC<Props> = ({ totalCount, correctCou
     <div className="space-y-4">
       {label && <h4 className="text-sm font-semibold text-slate-600 dark:text-slate-400">{label}</h4>}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard title="총 문제" value={`${totalCount}문제`} color="slate" />
-        <StatCard title="정답률" value={`${correctRate}%`} color="green" />
-        <StatCard title="정답/오답" value={`${correctCount}/${incorrectCount}`} color="blue" />
-        <StatCard title="평균 시간" value={minutes > 0 ? `${minutes}분 ${seconds}초` : `${seconds}초`} color="purple" />
+        <StatCard title={language === 'ko' ? '총 문제' : 'Total Problems'} value={language === 'ko' ? `${totalCount}문제` : `${totalCount}`} color="slate" />
+        <StatCard title={language === 'ko' ? '정답률' : 'Accuracy'} value={`${correctRate}%`} color="green" />
+        <StatCard title={language === 'ko' ? '정답/오답' : 'Correct / Incorrect'} value={`${correctCount}/${incorrectCount}`} color="blue" />
+        <StatCard title={language === 'ko' ? '평균 시간' : 'Avg. Time'} value={minutes > 0 ? (language === 'ko' ? `${minutes}분 ${seconds}초` : `${minutes}m ${seconds}s`) : (language === 'ko' ? `${seconds}초` : `${seconds}s`)} color="purple" />
       </div>
       <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden">
         <div
@@ -37,8 +39,8 @@ export const AssignmentStatsDisplay: React.FC<Props> = ({ totalCount, correctCou
         />
       </div>
       <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-        <span>정답 {correctCount}개</span>
-        <span>오답 {incorrectCount}개</span>
+        <span>{language === 'ko' ? `정답 ${correctCount}개` : `${correctCount} correct`}</span>
+        <span>{language === 'ko' ? `오답 ${incorrectCount}개` : `${incorrectCount} incorrect`}</span>
       </div>
     </div>
   );

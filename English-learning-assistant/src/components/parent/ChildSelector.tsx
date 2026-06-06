@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { linkChild, unlinkChild, fetchMyChildren, type ChildInfo } from '../../services/db';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
+import { translateError } from '../../utils/errorI18n';
 
 interface Props {
   children: ChildInfo[];
@@ -12,6 +15,8 @@ export const ChildSelector: React.FC<Props> = ({ children, selectedId, onSelect,
   const [email, setEmail] = useState('');
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const t = getTranslation(language);
 
   const handleLink = async () => {
     if (!email.trim()) return;
@@ -24,7 +29,7 @@ export const ChildSelector: React.FC<Props> = ({ children, selectedId, onSelect,
       if (updated.length > 0 && !selectedId) onSelect(updated[0].user_id);
       setEmail('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : '자녀 연결에 실패했습니다.');
+      setError(translateError(e, language, t, language === 'ko' ? '자녀 연결에 실패했습니다.' : 'Failed to link child.'));
     } finally {
       setAdding(false);
     }
@@ -37,24 +42,24 @@ export const ChildSelector: React.FC<Props> = ({ children, selectedId, onSelect,
       onChildrenUpdate(updated);
       if (selectedId === childId) onSelect(updated[0]?.user_id ?? null);
     } catch {
-      alert('자녀 연결 해제에 실패했습니다.');
+      alert(language === 'ko' ? '자녀 연결 해제에 실패했습니다.' : 'Failed to unlink child.');
     }
   };
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
-      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">내 자녀</h2>
+      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '내 자녀' : 'My Children'}</h2>
 
       <div className="flex gap-2">
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="자녀 이메일로 연결" className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={language === 'ko' ? '자녀 이메일로 연결' : "Link by child's email"} className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
         <button onClick={handleLink} disabled={adding} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">
-          {adding ? '...' : '연결'}
+          {adding ? '...' : (language === 'ko' ? '연결' : 'Link')}
         </button>
       </div>
       {error && <p className="text-red-500 text-xs">{error}</p>}
 
       {children.length === 0 ? (
-        <p className="text-slate-400 text-sm py-2 text-center">연결된 자녀가 없습니다.</p>
+        <p className="text-slate-400 text-sm py-2 text-center">{language === 'ko' ? '연결된 자녀가 없습니다.' : 'No children linked.'}</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {children.map((child) => (

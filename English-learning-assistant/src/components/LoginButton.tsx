@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 
 export const LoginButton: React.FC = () => {
   const { language } = useLanguage();
@@ -73,7 +74,7 @@ export const LoginButton: React.FC = () => {
         window.location.href = '/upload';
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : (language === 'ko' ? '오류가 발생했습니다.' : 'An error occurred.'));
+      setError(translateError(e, language, t, language === 'ko' ? '오류가 발생했습니다.' : 'An error occurred.'));
     } finally {
       setLoading(false);
     }
@@ -209,18 +210,18 @@ export const LoginButton: React.FC = () => {
                 required={isSignUp}
               >
                 <option value="">{t.profile.selectGrade}</option>
-                <option value="초등학교 1학년">초등학교 1학년</option>
-                <option value="초등학교 2학년">초등학교 2학년</option>
-                <option value="초등학교 3학년">초등학교 3학년</option>
-                <option value="초등학교 4학년">초등학교 4학년</option>
-                <option value="초등학교 5학년">초등학교 5학년</option>
-                <option value="초등학교 6학년">초등학교 6학년</option>
-                <option value="중학교 1학년">중학교 1학년</option>
-                <option value="중학교 2학년">중학교 2학년</option>
-                <option value="중학교 3학년">중학교 3학년</option>
-                <option value="고등학교 1학년">고등학교 1학년</option>
-                <option value="고등학교 2학년">고등학교 2학년</option>
-                <option value="고등학교 3학년">고등학교 3학년</option>
+                <option value="초등학교 1학년">{t.profile.gradeElementary1}</option>
+                <option value="초등학교 2학년">{t.profile.gradeElementary2}</option>
+                <option value="초등학교 3학년">{t.profile.gradeElementary3}</option>
+                <option value="초등학교 4학년">{t.profile.gradeElementary4}</option>
+                <option value="초등학교 5학년">{t.profile.gradeElementary5}</option>
+                <option value="초등학교 6학년">{t.profile.gradeElementary6}</option>
+                <option value="중학교 1학년">{t.profile.gradeMiddle1}</option>
+                <option value="중학교 2학년">{t.profile.gradeMiddle2}</option>
+                <option value="중학교 3학년">{t.profile.gradeMiddle3}</option>
+                <option value="고등학교 1학년">{t.profile.gradeHigh1}</option>
+                <option value="고등학교 2학년">{t.profile.gradeHigh2}</option>
+                <option value="고등학교 3학년">{t.profile.gradeHigh3}</option>
               </select>
             </div>
             

@@ -1,5 +1,7 @@
 import React from 'react';
 import type { DailyStats } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 
 interface Props {
   year: number;
@@ -10,6 +12,8 @@ interface Props {
 }
 
 export const DailyStatsSelector: React.FC<Props> = ({ year, month, dailyData, selectedDate, onSelectDate }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const daysInMonth = new Date(year, month, 0).getDate();
   const dataMap = new Map(dailyData.map((d) => [d.date, d]));
 
@@ -20,7 +24,7 @@ export const DailyStatsSelector: React.FC<Props> = ({ year, month, dailyData, se
 
   return (
     <div className="space-y-2">
-      <h4 className="text-sm font-semibold text-slate-600 dark:text-slate-400">{month}월 일별 통계</h4>
+      <h4 className="text-sm font-semibold text-slate-600 dark:text-slate-400">{language === 'ko' ? `${month}월 일별 통계` : `Daily Statistics — ${t.monthLabels[month - 1]}`}</h4>
       <div className="grid grid-cols-7 gap-1">
         {days.map((date) => {
           const day = parseInt(date.slice(-2), 10);
@@ -42,7 +46,7 @@ export const DailyStatsSelector: React.FC<Props> = ({ year, month, dailyData, se
               {day}
               {hasData && (
                 <span className={`block text-[9px] mt-0.5 ${isSelected ? 'text-indigo-200' : 'text-indigo-500'}`}>
-                  {stats!.total_count}문제
+                  {language === 'ko' ? `${stats!.total_count}문제` : stats!.total_count}
                 </span>
               )}
             </button>

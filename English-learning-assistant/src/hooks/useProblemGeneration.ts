@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import type { GeneratedProblem, RealtimeSubscription } from '../types';
 import type { AIGenerationOptions } from '../services/problemLoader';
 
@@ -496,7 +498,9 @@ export function useProblemGeneration({
         // 이후 문제 수신은 Realtime 구독 + 폴링 fallback이 처리
       } catch (callError) {
         console.error('[generate-all] 호출 실패:', callError);
-        const errorMsg = callError instanceof Error ? callError.message : String(callError);
+        // 서비스/네트워크 한글 메시지가 en 모드에 누출되지 않도록 번역/차단(fallback=원시 메시지)
+        const rawMsg = callError instanceof Error ? callError.message : String(callError);
+        const errorMsg = translateError(callError, language, getTranslation(language), rawMsg);
         setErrorAndNotify(errorMsg);
 
         if (realtimeSubscription) {
@@ -508,7 +512,7 @@ export function useProblemGeneration({
         return;
       }
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : (language === 'ko' ? '문제 생성 중 오류가 발생했습니다.' : 'An error occurred while generating problems.');
+      const errorMessage = translateError(e, language, getTranslation(language), language === 'ko' ? '문제 생성 중 오류가 발생했습니다.' : 'An error occurred while generating problems.');
       setErrorAndNotify(errorMessage);
       setIsGenerating(false);
 

@@ -1,4 +1,6 @@
 import React from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 import type { ClassInfo, ClassMember } from '../../types';
 
 interface Props {
@@ -11,6 +13,8 @@ interface Props {
 }
 
 export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClassId, selectedStudentIds, onSelectClass, onSelectStudents }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const toggleStudent = (id: string) => {
     onSelectStudents(
       selectedStudentIds.includes(id)
@@ -26,10 +30,10 @@ export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClas
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-3">
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">대상 선택</h3>
+      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.assignments.selectTarget}</h3>
 
       <div>
-        <label className="text-xs font-semibold text-slate-500 mb-1 block">학급 선택</label>
+        <label className="text-xs font-semibold text-slate-500 mb-1 block">{t.teacher.selectClass}</label>
         <select
           value={selectedClassId ?? ''}
           onChange={(e) => {
@@ -39,9 +43,9 @@ export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClas
           }}
           className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
         >
-          <option value="">학급을 선택하세요</option>
+          <option value="">{t.teacher.selectClassPlaceholder}</option>
           {classes.map((c) => (
-            <option key={c.id} value={c.id}>{c.name} ({c.student_count ?? 0}명)</option>
+            <option key={c.id} value={c.id}>{t.teacher.classOptionWithCount.replace('{name}', c.name).replace('{count}', String(c.student_count ?? 0))}</option>
           ))}
         </select>
       </div>
@@ -49,9 +53,9 @@ export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClas
       {selectedClassId && members.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-semibold text-slate-500">학생 ({selectedStudentIds.length}/{members.length})</label>
+            <label className="text-xs font-semibold text-slate-500">{t.teacher.studentsSelectedRatio.replace('{selected}', String(selectedStudentIds.length)).replace('{total}', String(members.length))}</label>
             <button onClick={selectAllStudents} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-              {selectedStudentIds.length === members.length ? '전체 해제' : '전체 선택'}
+              {selectedStudentIds.length === members.length ? t.teacher.deselectAll : t.teacher.selectAll}
             </button>
           </div>
           <div className="max-h-40 overflow-y-auto space-y-1">
@@ -66,7 +70,7 @@ export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClas
       )}
 
       {selectedClassId && members.length === 0 && (
-        <p className="text-slate-400 text-xs py-2">이 학급에 학생이 없습니다.</p>
+        <p className="text-slate-400 text-xs py-2">{t.teacher.noStudentsInClass}</p>
       )}
     </div>
   );

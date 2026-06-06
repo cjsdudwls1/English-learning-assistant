@@ -15,6 +15,7 @@ import { SolvingStatsCard } from '../components/stats/SolvingStatsCard';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import { deleteSession, findTaxonomyByDepth, fetchProblemsMetadataByCorrectness, type ProblemMetadataItem } from '../services/db';
 import { ProblemMetadataModal } from '../components/ProblemMetadataModal';
 import type { StatsNode } from '../services/stats';
@@ -203,9 +204,9 @@ export const StatsPage: React.FC = () => {
       await deleteSession(sessionId);
       await statsData.loadData(false);
     } catch (e) {
-      alert(e instanceof Error ? e.message : (language === 'ko' ? '삭제 실패' : 'Delete failed'));
+      alert(translateError(e, language, t, language === 'ko' ? '삭제 실패' : 'Delete failed'));
     }
-  }, [language, statsData]);
+  }, [language, t, statsData]);
 
   const handleDeleteSession = useCallback(async (sessionId: string) => {
     const confirmText = language === 'ko'
@@ -216,9 +217,9 @@ export const StatsPage: React.FC = () => {
       await deleteSession(sessionId);
       await statsData.loadData(false);
     } catch (e) {
-      alert(e instanceof Error ? e.message : (language === 'ko' ? '삭제 실패' : 'Delete failed'));
+      alert(translateError(e, language, t, language === 'ko' ? '삭제 실패' : 'Delete failed'));
     }
-  }, [language, statsData]);
+  }, [language, t, statsData]);
 
   if (statsData.loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">{t.common.loading}</div>;
   if (statsData.error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{typeof statsData.error === 'string' ? statsData.error : JSON.stringify(statsData.error)}</div>;

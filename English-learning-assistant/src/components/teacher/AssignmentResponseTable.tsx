@@ -1,4 +1,6 @@
 import React from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 import type { AssignmentResponse } from '../../types';
 
 interface ProblemInfo {
@@ -13,6 +15,8 @@ interface Props {
 }
 
 export const AssignmentResponseTable: React.FC<Props> = ({ problems, responses }) => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   return (
     <div className="space-y-4">
       {problems.map((p, i) => {
@@ -20,10 +24,10 @@ export const AssignmentResponseTable: React.FC<Props> = ({ problems, responses }
         return (
           <div key={p.problem_id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
             <p className="font-medium text-slate-800 dark:text-slate-200 mb-3">
-              {i + 1}. {p.problem?.stem ?? '(문제 정보 없음)'}
+              {i + 1}. {p.problem?.stem ?? t.assignments.noProblemInfo}
             </p>
             {relatedResponses.length === 0 ? (
-              <p className="text-sm text-slate-400">아직 응답이 없습니다.</p>
+              <p className="text-sm text-slate-400">{t.assignments.noResponsesYet}</p>
             ) : (
               <div className="space-y-1">
                 {relatedResponses.map(r => (
@@ -31,9 +35,9 @@ export const AssignmentResponseTable: React.FC<Props> = ({ problems, responses }
                     <span className="text-slate-600 dark:text-slate-300">{r.student_id.slice(0, 8)}...</span>
                     <span className="text-slate-700 dark:text-slate-200">{r.answer}</span>
                     <span className={r.is_correct ? 'text-green-600' : r.is_correct === false ? 'text-red-500' : 'text-slate-400'}>
-                      {r.is_correct ? '정답' : r.is_correct === false ? '오답' : '채점불가'}
+                      {r.is_correct ? t.stats.correct : r.is_correct === false ? t.stats.incorrect : t.assignments.notGraded}
                     </span>
-                    <span className="text-slate-400">{r.time_spent_seconds ?? 0}초</span>
+                    <span className="text-slate-400">{t.assignments.secondsSuffix.replace('{seconds}', String(r.time_spent_seconds ?? 0))}</span>
                   </div>
                 ))}
               </div>

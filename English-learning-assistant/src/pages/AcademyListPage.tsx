@@ -1,27 +1,31 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useUserRole } from '../contexts/UserRoleContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 export const AcademyListPage: React.FC = () => {
   const { availableAcademies, activeAcademyId, setActiveAcademy } = useUserRole();
+  const { language } = useLanguage();
+  const t = getTranslation(language);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">내 학원</h1>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.academy.myAcademies}</h1>
         <Link
           to="/academies/new"
           className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
         >
-          + 학원 만들기
+          {t.academy.create}
         </Link>
       </div>
 
       {availableAcademies.length === 0 ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center">
-          <p className="text-slate-400 text-sm mb-4">소속된 학원이 없습니다.</p>
+          <p className="text-slate-400 text-sm mb-4">{t.academy.emptyTitle}</p>
           <Link to="/academies/new" className="text-indigo-600 dark:text-indigo-400 underline text-sm">
-            새 학원 만들기
+            {t.academy.createNew}
           </Link>
         </div>
       ) : (
@@ -40,11 +44,11 @@ export const AcademyListPage: React.FC = () => {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-slate-800 dark:text-slate-200">{a.name}</p>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-                      {a.role === 'director' ? '학원장' : a.role === 'teacher' ? '선생님' : '학생'}
+                      {a.role === 'director' ? t.academy.roleDirector : a.role === 'teacher' ? t.academy.roleTeacher : t.academy.roleStudent}
                     </span>
                     {activeAcademyId === a.id && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
-                        활성
+                        {t.academy.active}
                       </span>
                     )}
                   </div>
@@ -58,7 +62,7 @@ export const AcademyListPage: React.FC = () => {
                       to={`/academies/${a.id}/members`}
                       className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                     >
-                      멤버 관리
+                      {t.academy.manageMembers}
                     </Link>
                   )}
                   {activeAcademyId !== a.id && (
@@ -66,7 +70,7 @@ export const AcademyListPage: React.FC = () => {
                       onClick={() => setActiveAcademy(a.id)}
                       className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                     >
-                      활성화
+                      {t.academy.activate}
                     </button>
                   )}
                 </div>

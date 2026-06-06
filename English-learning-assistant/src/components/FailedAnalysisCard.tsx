@@ -48,6 +48,7 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
     const parts: string[] = [];
     if (msg) parts.push(msg);
     if (code || status) parts.push(`(${[code && `code=${code}`, status && `status=${status}`].filter(Boolean).join(', ')})`);
+    if (extraMsg && extraMsg.toLowerCase().includes('overloaded')) parts.push('※ Temporary failure due to model overload.');
     return parts.join(' ').trim();
   })();
 

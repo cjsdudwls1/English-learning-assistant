@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { findTaxonomyByDepth } from '../services/db';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import type { StatsNode } from '../services/stats';
 
 interface UseExampleGenerationParams {
@@ -137,7 +139,7 @@ export function useExampleGeneration({
       setShowExampleModal(true);
     } catch (e) {
       console.error('Error generating examples:', e);
-      setError(e instanceof Error ? e.message : (language === 'ko' ? '예시 문장 생성 실패' : 'Failed to generate example sentences'));
+      setError(translateError(e, language, getTranslation(language), language === 'ko' ? '예시 문장 생성 실패' : 'Failed to generate example sentences'));
     } finally {
       setIsGeneratingExamples(false);
     }

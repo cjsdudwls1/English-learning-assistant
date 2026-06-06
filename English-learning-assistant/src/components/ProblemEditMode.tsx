@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 
 type ProblemType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox';
 
@@ -67,7 +68,7 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
 
       onSave({ ...problem, ...updateData });
     } catch (e) {
-      setError(e instanceof Error ? e.message : (language === 'ko' ? '저장 중 오류가 발생했습니다.' : 'An error occurred while saving.'));
+      setError(translateError(e, language, t, language === 'ko' ? '저장 중 오류가 발생했습니다.' : 'An error occurred while saving.'));
     } finally {
       setSaving(false);
     }

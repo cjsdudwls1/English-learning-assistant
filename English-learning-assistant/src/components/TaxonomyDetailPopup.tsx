@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { fetchTaxonomyByCode } from '../services/db';
 import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
 import type { Taxonomy } from '../types';
 
 interface TaxonomyDetailPopupProps {
@@ -10,13 +11,14 @@ interface TaxonomyDetailPopupProps {
 
 export const TaxonomyDetailPopup: React.FC<TaxonomyDetailPopupProps> = ({ code, onClose }) => {
   const { language } = useLanguage();
+  const t = getTranslation(language);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!code) {
-      setError('분류 코드가 없습니다.');
+      setError(t.taxonomy.noCodeError);
       setLoading(false);
       return;
     }
@@ -29,11 +31,11 @@ export const TaxonomyDetailPopup: React.FC<TaxonomyDetailPopupProps> = ({ code, 
         if (data) {
           setTaxonomy(data);
         } else {
-          setError('분류 정보를 찾을 수 없습니다.');
+          setError(t.taxonomy.notFoundError);
         }
       } catch (err) {
         console.error('Error loading taxonomy:', err);
-        setError('분류 정보를 불러오는 중 오류가 발생했습니다.');
+        setError(t.taxonomy.loadError);
       } finally {
         setLoading(false);
       }
@@ -65,7 +67,7 @@ export const TaxonomyDetailPopup: React.FC<TaxonomyDetailPopupProps> = ({ code, 
           {loading && (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto"></div>
-              <p className="mt-4 text-slate-600 dark:text-slate-400">로딩 중...</p>
+              <p className="mt-4 text-slate-600 dark:text-slate-400">{t.common.loading}</p>
             </div>
           )}
 

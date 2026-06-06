@@ -3,8 +3,12 @@ import { MonthlyStatsSelector } from './MonthlyStatsSelector';
 import { DailyStatsSelector } from './DailyStatsSelector';
 import { AssignmentStatsDisplay } from './AssignmentStatsDisplay';
 import { useSolvingStats } from '../../hooks/useSolvingStats';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 
 export const SolvingStatsCard: React.FC = () => {
+  const { language } = useLanguage();
+  const t = getTranslation(language);
   const {
     year, selectedMonth, selectedDate,
     monthlyStats, dailyStats, loading, error,
@@ -32,7 +36,7 @@ export const SolvingStatsCard: React.FC = () => {
   if (loading) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 text-center text-slate-500">
-        통계 불러오는 중...
+        {language === 'ko' ? '통계 불러오는 중...' : 'Loading statistics...'}
       </div>
     );
   }
@@ -40,7 +44,7 @@ export const SolvingStatsCard: React.FC = () => {
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-5 space-y-5">
       <div>
-        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">월별 / 일별 풀이 통계</h3>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.stats.monthlyDailySolvingStats}</h3>
       </div>
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
@@ -49,7 +53,7 @@ export const SolvingStatsCard: React.FC = () => {
         correctCount={yearTotals.correct}
         incorrectCount={yearTotals.incorrect}
         avgTimeSeconds={yearTotals.total > 0 ? Math.round(yearTotals.time / yearTotals.total) : 0}
-        label={`${year}년 전체`}
+        label={t.stats.yearTotalLabel.replace('{year}', String(year))}
       />
 
       <MonthlyStatsSelector
@@ -66,7 +70,7 @@ export const SolvingStatsCard: React.FC = () => {
           correctCount={selectedMonthStats.correct_count}
           incorrectCount={selectedMonthStats.incorrect_count}
           avgTimeSeconds={selectedMonthStats.avg_time_seconds}
-          label={`${selectedMonth}월 통계`}
+          label={t.stats.monthStatsLabel.replace('{month}', String(selectedMonth))}
         />
       )}
 
@@ -86,7 +90,7 @@ export const SolvingStatsCard: React.FC = () => {
           correctCount={selectedDayStats.correct_count}
           incorrectCount={selectedDayStats.incorrect_count}
           avgTimeSeconds={selectedDayStats.avg_time_seconds}
-          label={`${selectedDate} 통계`}
+          label={t.stats.dateStatsLabel.replace('{date}', String(selectedDate))}
         />
       )}
     </div>

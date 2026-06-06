@@ -116,7 +116,7 @@ export const AllProblemsPage: React.FC = () => {
       setHasMore(rows.length >= 500);
     } catch (err) {
       console.error('Failed to load all problems:', err);
-      setError(language === 'ko' ? '문제를 불러오는 중 오류가 발생했습니다.' : 'Error loading problems.');
+      setError(language === 'ko' ? '문제를 불러오는 중 오류가 발생했습니다.' : 'Failed to load problems.');
     } finally {
       setLoading(false);
     }
@@ -198,7 +198,7 @@ export const AllProblemsPage: React.FC = () => {
       await loadProblems();
     } catch (err) {
       console.error('Failed to delete problems:', err);
-      setError(language === 'ko' ? '문제 삭제 중 오류가 발생했습니다.' : 'Error deleting problems.');
+      setError(language === 'ko' ? '문제 삭제 중 오류가 발생했습니다.' : 'Failed to delete problems.');
     } finally {
       setDeleting(false);
     }
@@ -222,7 +222,7 @@ export const AllProblemsPage: React.FC = () => {
       {/* 헤더 */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">
-          {language === 'ko' ? '등록 문제 일람' : 'All Registered Problems'}
+          {language === 'ko' ? '등록 문제 일람' : 'All Problems'}
         </h1>
         <p className="text-slate-600 dark:text-slate-400">
           {language === 'ko'
@@ -334,7 +334,7 @@ export const AllProblemsPage: React.FC = () => {
                   {language === 'ko' ? '분류' : 'Classification'}
                 </th>
                 <th className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
-                  {language === 'ko' ? '사용자 답안' : 'User Ans'}
+                  {language === 'ko' ? '사용자 답안' : 'Your Answer'}
                 </th>
                 <th className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '정답' : 'Correct'}
