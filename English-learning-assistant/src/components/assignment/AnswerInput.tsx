@@ -64,6 +64,16 @@ export const AnswerInput: React.FC<Props> = ({ problem, selectedAnswer, onSelect
   );
 };
 
+// OX 값 정규화: 'O'/'X' 입력과 'true'/'false'(및 흔한 변형) 정답 형식을 통일
+// O = 참(true), X = 거짓(false). 인식 불가 값은 null
+export function normalizeOX(value: string | null | undefined): 'O' | 'X' | null {
+  if (value == null) return null;
+  const v = value.trim().toLowerCase();
+  if (['o', '○', 'true', 't', 'yes', 'y', '1', '참', '맞음', '정답'].includes(v)) return 'O';
+  if (['x', '×', 'false', 'f', 'no', 'n', '0', '거짓', '틀림', '오답'].includes(v)) return 'X';
+  return null;
+}
+
 export function checkAnswer(problem: GeneratedProblem, answer: string): boolean | null {
   const type = problem.problem_type ?? 'multiple_choice';
 
@@ -76,7 +86,9 @@ export function checkAnswer(problem: GeneratedProblem, answer: string): boolean 
   }
 
   if (type === 'ox') {
-    return answer === problem.correct_answer;
+    const correct = normalizeOX(problem.correct_answer);
+    if (correct === null) return null; // 정답 미설정 → 채점 불가(미채점)
+    return normalizeOX(answer) === correct;
   }
 
   // short_answer

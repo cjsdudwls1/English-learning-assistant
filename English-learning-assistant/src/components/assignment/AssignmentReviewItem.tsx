@@ -2,6 +2,7 @@ import React from 'react';
 import type { GeneratedProblem, AssignmentResponse } from '../../types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getTranslation } from '../../utils/translations';
+import { normalizeOX } from './AnswerInput';
 
 interface Props {
   problem: GeneratedProblem;
@@ -29,6 +30,10 @@ export const AssignmentReviewItem: React.FC<Props> = ({ problem, response, index
   const type = problem.problem_type ?? 'multiple_choice';
   const myAnswer = response?.answer ?? '';
   const isCorrect = response?.is_correct;
+  // OX는 'true'/'false'로 저장될 수 있어 표시용으로 O/X 정규화(인식 불가 시 원본 유지)
+  const displayMyAnswer = type === 'ox' ? normalizeOX(myAnswer) ?? myAnswer : myAnswer;
+  const displayCorrect =
+    type === 'ox' ? normalizeOX(problem.correct_answer) ?? problem.correct_answer : problem.correct_answer;
 
   const badge =
     isCorrect === true ? (
@@ -105,13 +110,13 @@ export const AssignmentReviewItem: React.FC<Props> = ({ problem, response, index
                 isCorrect === false ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'
               }`}
             >
-              {myAnswer || t.assignments.noAnswerSubmitted}
+              {displayMyAnswer || t.assignments.noAnswerSubmitted}
             </span>
           </div>
           {type !== 'essay' && problem.correct_answer != null && (
             <div className="flex flex-wrap gap-x-2 gap-y-1">
               <span className="font-medium text-slate-500 dark:text-slate-400">{t.assignments.correctAnswer}:</span>
-              <span className="text-green-700 dark:text-green-400 whitespace-pre-wrap">{problem.correct_answer}</span>
+              <span className="text-green-700 dark:text-green-400 whitespace-pre-wrap">{displayCorrect}</span>
             </div>
           )}
           {type === 'essay' && problem.guidelines && (
