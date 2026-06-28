@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchAssignmentProblems, submitAssignmentResponse, fetchAssignmentResponses } from '../services/db';
 import { AnswerInput, checkAnswer } from '../components/assignment/AnswerInput';
+import { AssignmentReviewItem } from '../components/assignment/AssignmentReviewItem';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import type { GeneratedProblem, AssignmentResponse } from '../types';
@@ -85,40 +86,58 @@ export const AssignmentSolvePage: React.FC = () => {
       </div>
 
       {allDone ? (
-        <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-          <p className="text-2xl font-bold text-green-600 mb-2">{t.assignments.allSolved}</p>
-          <p className="text-slate-500">{t.assignments.correctCount.replace('{correct}', String(responses.filter((r) => r.is_correct).length)).replace('{total}', String(problems.length))}</p>
-          <Link to="/assignments" className="inline-block mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">{t.assignments.backToList}</Link>
+        <div className="space-y-6">
+          <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <p className="text-2xl font-bold text-green-600 mb-2">{t.assignments.allSolved}</p>
+            <p className="text-slate-500">{t.assignments.correctCount.replace('{correct}', String(responses.filter((r) => r.is_correct).length)).replace('{total}', String(problems.length))}</p>
+            <Link to="/assignments" className="inline-block mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">{t.assignments.backToList}</Link>
+          </div>
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">{t.assignments.reviewHeading}</h2>
+            {problems.map((p, i) =>
+              p.problem ? (
+                <AssignmentReviewItem
+                  key={p.problem_id}
+                  index={i}
+                  problem={p.problem}
+                  response={responses.find((r) => r.problem_id === p.problem_id)}
+                />
+              ) : null
+            )}
+          </div>
         </div>
       ) : currentProblem ? (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
-          <p className="text-lg font-medium text-slate-800 dark:text-slate-200">{currentProblem.stem}</p>
-          {currentProblem.passage && (
-            <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
-              <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
-                {t.assignments.passage}
-              </div>
-              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
-                {currentProblem.passage}
-              </p>
-            </div>
-          )}
+        <>
           {isAnswered(currentProblem.id) ? (
-            <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm">{t.assignments.alreadyAnswered}</div>
+            <AssignmentReviewItem
+              problem={currentProblem}
+              response={responses.find((r) => r.problem_id === currentProblem.id)}
+            />
           ) : (
-            <>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+              <p className="text-lg font-medium text-slate-800 dark:text-slate-200">{currentProblem.stem}</p>
+              {currentProblem.passage && (
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
+                  <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+                    {t.assignments.passage}
+                  </div>
+                  <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {currentProblem.passage}
+                  </p>
+                </div>
+              )}
               <AnswerInput problem={currentProblem} selectedAnswer={selectedAnswer} onSelect={setSelectedAnswer} />
               <button onClick={handleSubmit} disabled={!selectedAnswer || submitting}
                 className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50">
                 {submitting ? t.assignments.submitting : t.assignments.submitAnswer}
               </button>
-            </>
+            </div>
           )}
           <div className="flex justify-between">
             <button onClick={() => { setCurrentIdx((i) => Math.max(0, i - 1)); setSelectedAnswer(''); }} disabled={currentIdx === 0} className="text-sm text-slate-500 hover:underline disabled:opacity-30">&larr; {t.assignments.previous}</button>
             <button onClick={() => { setCurrentIdx((i) => Math.min(problems.length - 1, i + 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === problems.length - 1} className="text-sm text-slate-500 hover:underline disabled:opacity-30">{t.assignments.next} &rarr;</button>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );
