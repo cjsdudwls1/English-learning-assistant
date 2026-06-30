@@ -266,7 +266,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
             <p className="text-sm font-semibold text-green-800 dark:text-green-200 mb-2">
               ✓ {t.practice.explanation}:
             </p>
-            <p className="text-sm text-green-700 dark:text-green-300">
+            <p className="text-sm text-green-700 dark:text-green-300 whitespace-pre-line">
               {problem.explanation}
             </p>
           </div>
@@ -283,7 +283,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
               }`}>
               {reviewIsCorrect ? `✓ ${t.practice.selectedAnswer}:` : `✗ ${t.practice.wrongExplanation}:`}
             </p>
-            <p className={`text-sm ${reviewIsCorrect
+            <p className={`text-sm whitespace-pre-line ${reviewIsCorrect
                 ? 'text-green-700 dark:text-green-300'
                 : 'text-red-700 dark:text-red-300'
               }`}>

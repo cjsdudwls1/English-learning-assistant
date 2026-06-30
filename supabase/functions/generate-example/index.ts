@@ -96,7 +96,7 @@ Generate example sentences in the following format:
 
 1. **Wrong Sentence** (❌): A sentence showing a common error in this classification
 2. **Correct Sentence** (✅): A sentence using correct grammar
-3. **Explanation**: A 2-4 sentence explanation of which rule the wrong sentence violates and why the correct sentence follows the core rule
+3. **Explanation**: A 4-5 sentence explanation conveying distinct learning value (no repetition): (1) exactly which rule the wrong sentence violates and where, (2) why that error happens — the underlying principle, (3) why the correct sentence follows the core rule, and (4) a practical tip to avoid the same mistake or one more short example of the rule
 
 **Important Notes**:
 - Use vocabulary and difficulty level appropriate for the user's age (${userAge} years old) and grade (${userGrade})
@@ -111,7 +111,7 @@ Output in the following JSON format:
 {
   "wrong_example": "Wrong sentence in English",
   "correct_example": "Correct sentence in English",
-  "explanation": "2-4 sentence explanation in English, citing the core rule"
+  "explanation": "4-5 sentence explanation in English: (1) the violated rule and where, (2) why the error happens, (3) why the correct sentence fits the core rule, (4) a tip to avoid the mistake or another short example"
 }
 \`\`\`
 `
@@ -137,7 +137,7 @@ Output in the following JSON format:
 
 1. **틀린 문장** (❌): 이 분류에서 자주 발생하는 오류를 보여주는 문장
 2. **맞는 문장** (✅): 올바른 문법을 사용한 문장
-3. **설명**: 틀린 문장이 어떤 규칙을 위반했는지, 맞는 문장이 왜 핵심 규칙에 부합하는지 2~4문장으로 구체적으로 설명
+3. **설명**: 서로 다른 학습 정보를 담아 4~5문장으로 설명(반복 금지): ① 틀린 문장이 위반한 규칙이 정확히 무엇이고 어디인지, ② 그 오류가 왜 생기는지 원리, ③ 맞는 문장이 왜 핵심 규칙에 부합하는지, ④ 같은 실수를 피하는 실용적 팁이나 규칙을 보여주는 또 다른 짧은 예
 
 **주의사항**:
 - 사용자의 연령(${userAge}세)과 학년(${userGrade})에 맞는 어휘와 난이도 사용
@@ -151,7 +151,7 @@ Output in the following JSON format:
 {
   "wrong_example": "틀린 문장",
   "correct_example": "맞는 문장",
-  "explanation": "핵심 규칙을 인용한 2~4문장 설명"
+  "explanation": "4~5문장 설명: ① 위반한 규칙과 위치, ② 오류가 생기는 원리, ③ 맞는 문장이 핵심 규칙에 부합하는 이유, ④ 실수를 피하는 팁이나 또 다른 짧은 예"
 }
 \`\`\`
 `;

@@ -16,11 +16,24 @@ import type { AIClient, ModelResponse } from './aiClient.ts';
 
 export type UserKeyProvider = 'anthropic' | 'openai';
 
-// provider별 기본 모델 (호출부가 Gemini 모델명을 넘겨도 이 값으로 치환)
+// provider별 기본 모델 (호출부가 Gemini 모델명을 넘기고 사용자도 모델 미지정 시 이 값으로 치환)
 const DEFAULT_MODELS: Record<UserKeyProvider, string> = {
   anthropic: 'claude-haiku-4-5-20251001',
   openai: 'gpt-4o',
 };
+
+// BYOK에서 사용자가 선택 가능한 모델 화이트리스트 (전부 vision 지원 → 이미지 분석 가능).
+// 저장 게이트(manage-api-keys)에서 검증해 미지원/오타 모델 유입을 차단한다.
+// ⚠️ vision 미지원 모델을 넣으면 이미지 분석이 조용히 깨질 수 있으므로 멀티모달 모델만 등록한다.
+export const SUPPORTED_MODELS: Record<UserKeyProvider, string[]> = {
+  anthropic: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+  openai: ['gpt-4o', 'gpt-4o-mini'],
+};
+
+export function isSupportedModel(provider: UserKeyProvider, model: string | null | undefined): boolean {
+  if (!model) return true; // 미지정 → 어댑터 DEFAULT_MODELS 사용 (하위호환)
+  return SUPPORTED_MODELS[provider]?.includes(model) ?? false;
+}
 
 const DEFAULT_MAX_TOKENS = 8192;
 const HARD_TIMEOUT_MS = 110000; // generateWithRetry의 race(60~120s) 백업용 하드 캡
@@ -105,10 +118,14 @@ function wantsJson(config?: Record<string, unknown>): boolean {
   return config.responseMimeType === 'application/json' || config.responseJsonSchema != null;
 }
 
-function resolveModel(requested: string | undefined, provider: UserKeyProvider): string {
-  const r = (requested ?? '').toLowerCase();
-  if (provider === 'anthropic' && r.startsWith('claude')) return requested as string;
-  if (provider === 'openai' && (r.startsWith('gpt') || r.startsWith('o1') || r.startsWith('o3') || r.startsWith('o4'))) return requested as string;
+function resolveModel(requested: string | undefined, preferred: string | undefined, provider: UserKeyProvider): string {
+  // 사용자가 저장 시 고른 preferred 모델을 최우선. 없거나 provider와 안 맞으면 호출부 requested,
+  // 둘 다 provider 불일치(예: 호출부가 넘긴 Gemini 모델명)면 DEFAULT_MODELS로 폴백.
+  for (const cand of [preferred, requested]) {
+    const r = (cand ?? '').toLowerCase();
+    if (provider === 'anthropic' && r.startsWith('claude')) return cand as string;
+    if (provider === 'openai' && (r.startsWith('gpt') || r.startsWith('o1') || r.startsWith('o3') || r.startsWith('o4'))) return cand as string;
+  }
   return DEFAULT_MODELS[provider];
 }
 
@@ -131,12 +148,12 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
 
 // ── Anthropic 어댑터 ────────────────────────────────────────────────────
 
-function buildAnthropicClient(apiKey: string): AIClient {
+function buildAnthropicClient(apiKey: string, preferredModel?: string): AIClient {
   return {
     models: {
       generateContent: async (params): Promise<ModelResponse> => {
         const { contents, config } = params;
-        const model = resolveModel(params.model, 'anthropic');
+        const model = resolveModel(params.model, preferredModel, 'anthropic');
         const { system, messages } = normalizeContents(contents, config);
         const jsonMode = wantsJson(config);
 
@@ -194,12 +211,12 @@ function buildAnthropicClient(apiKey: string): AIClient {
 
 // ── OpenAI 어댑터 ───────────────────────────────────────────────────────
 
-function buildOpenAIClient(apiKey: string): AIClient {
+function buildOpenAIClient(apiKey: string, preferredModel?: string): AIClient {
   return {
     models: {
       generateContent: async (params): Promise<ModelResponse> => {
         const { contents, config } = params;
-        const model = resolveModel(params.model, 'openai');
+        const model = resolveModel(params.model, preferredModel, 'openai');
         const { system, messages } = normalizeContents(contents, config);
         const jsonMode = wantsJson(config);
 
@@ -264,8 +281,8 @@ function buildOpenAIClient(apiKey: string): AIClient {
 }
 
 /** provider별 BYOK 클라이언트 생성 */
-export function buildUserKeyClient(provider: UserKeyProvider, apiKey: string): AIClient {
-  if (provider === 'anthropic') return buildAnthropicClient(apiKey);
-  if (provider === 'openai') return buildOpenAIClient(apiKey);
+export function buildUserKeyClient(provider: UserKeyProvider, apiKey: string, preferredModel?: string): AIClient {
+  if (provider === 'anthropic') return buildAnthropicClient(apiKey, preferredModel);
+  if (provider === 'openai') return buildOpenAIClient(apiKey, preferredModel);
   throw new Error(`지원하지 않는 provider: ${provider}`);
 }

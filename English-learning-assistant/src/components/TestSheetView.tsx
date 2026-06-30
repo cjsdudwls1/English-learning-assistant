@@ -381,7 +381,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
             <span className="font-semibold text-blue-800 dark:text-blue-200">
               {language === 'ko' ? '해설: ' : 'Explanation: '}
             </span>
-            <span className="text-blue-700 dark:text-blue-300">{problem.explanation}</span>
+            <span className="text-blue-700 dark:text-blue-300 whitespace-pre-line">{problem.explanation}</span>
           </div>
         )}
       </div>

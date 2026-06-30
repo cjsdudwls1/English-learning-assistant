@@ -12,6 +12,7 @@ import type { UserKeyProvider } from './providerClients.ts';
 export interface UserKeyRecord {
   provider: UserKeyProvider;
   apiKey: string;
+  model?: string | null;
 }
 
 // 최소한의 Supabase 클라이언트 형태 (느슨하게 받아 함수 간 결합 최소화)
@@ -39,7 +40,7 @@ export async function getActiveUserKey(
   try {
     const { data, error } = await supabase
       .from('user_api_keys')
-      .select('provider, encrypted_key')
+      .select('provider, encrypted_key, model')
       .eq('user_id', userId)
       .eq('is_active', true)
       .limit(1);
@@ -49,7 +50,7 @@ export async function getActiveUserKey(
       return null;
     }
 
-    const rows = data as Array<{ provider: string; encrypted_key: string }> | null;
+    const rows = data as Array<{ provider: string; encrypted_key: string; model: string | null }> | null;
     if (!rows || rows.length === 0) return null;
 
     const row = rows[0];
@@ -61,7 +62,7 @@ export async function getActiveUserKey(
     const apiKey = await decryptApiKey(row.encrypted_key);
     if (!apiKey) return null;
 
-    return { provider: row.provider, apiKey };
+    return { provider: row.provider, apiKey, model: row.model ?? null };
   } catch (e) {
     // 복호화 실패(시크릿 불일치 등) 시 조용히 폴백
     console.error('[userApiKeys] 복호화/조회 예외 → 시스템 키로 폴백', {

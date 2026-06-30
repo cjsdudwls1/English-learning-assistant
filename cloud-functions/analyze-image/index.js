@@ -167,7 +167,7 @@ function buildAIClient(userKey) {
   // ⚠️ 이미지 분석 파이프라인은 Gemini 전용으로 튜닝됨(crop/bbox·모델시퀀스·thinkingBudget) →
   //    BYOK provider는 단순 경로로 동작해 정확도가 낮아질 수 있다(opt-in 전제, UI 경고 표시).
   if (userKey && userKey.apiKey) {
-    return buildUserKeyClient(userKey.provider, userKey.apiKey);
+    return buildUserKeyClient(userKey.provider, userKey.apiKey, userKey.model ?? undefined);
   }
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const aiOptions = {

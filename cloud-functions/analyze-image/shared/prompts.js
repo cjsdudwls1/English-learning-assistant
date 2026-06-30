@@ -325,7 +325,7 @@ export function buildClassificationPrompt(classificationData, itemsSummary, user
 - 4-6: 중학교 수준의 보통 어휘
 - 7-9: 고등학생 수준 이상의 어려운 어휘
 
-analysis: 문제에 대한 상세 분석 (한국어 3~5문장). 다음을 반드시 포함: (1) 이 문제가 무엇을 묻는지, (2) 정답의 근거가 되는 핵심 문법·어휘 규칙을 의미와 함께 설명, (3) 학습자가 흔히 틀리는 지점이나 주의할 점`
+analysis: 문제에 대한 상세 분석 (한국어, 4~6문장, 서로 다른 학습 정보를 담아 반복 금지). 다음을 포함: (1) 이 문제가 무엇을 묻는지, (2) 정답의 근거가 되는 핵심 문법·어휘 규칙을 의미·작동 원리와 함께 설명, (3) 학습자가 흔히 틀리는 지점이나 함정, (4) 같은 규칙을 적용하는 짧은 예나 기억 팁. 단, 이미지에서 명확히 보이는 내용에만 근거하라 — 지문·선택지가 일부만 보이거나 불확실하면 단정하지 말고 일반 원리 수준으로 설명하라(틀린 단정은 비워두는 것보다 해롭다)`
     : `Difficulty levels:
 - "high": High school level or above
 - "medium": Middle school level
@@ -336,7 +336,7 @@ Word difficulty (1-9):
 - 4-6: Middle school level vocabulary
 - 7-9: High school level or above
 
-analysis: Detailed analysis of the problem (in English, 3-5 sentences). Must include: (1) what the problem is asking, (2) the key grammar/vocabulary rule behind the correct answer explained with its meaning, (3) common mistakes or points the learner should watch out for`;
+analysis: Detailed analysis of the problem (in English, 4-6 sentences, each conveying distinct learning value — no repetition). Include: (1) what the problem is asking, (2) the key grammar/vocabulary rule behind the correct answer, explained with its meaning and how it works, (3) common mistakes or traps the learner should watch out for, (4) a short example applying the same rule or a memory tip. Base this ONLY on what is clearly visible in the image — if the passage/choices are partially shown or uncertain, do not assert specifics; explain at the general-principle level instead (a confident-wrong analysis is worse than a cautious one)`;
 
   const difficultyValues = userLanguage === 'ko' ? `"상" | "중" | "하"` : `"high" | "medium" | "low"`;
 

@@ -92,10 +92,14 @@ function wantsJson(config) {
   return config.responseMimeType === 'application/json' || config.responseJsonSchema != null;
 }
 
-function resolveModel(requested, provider) {
-  const r = (requested ?? '').toLowerCase();
-  if (provider === 'anthropic' && r.startsWith('claude')) return requested;
-  if (provider === 'openai' && (r.startsWith('gpt') || r.startsWith('o1') || r.startsWith('o3') || r.startsWith('o4'))) return requested;
+function resolveModel(requested, preferred, provider) {
+  // 사용자가 저장 시 고른 preferred 모델을 최우선. 없거나 provider와 안 맞으면 호출부 requested,
+  // 둘 다 provider 불일치(예: 호출부가 넘긴 Gemini 모델명)면 DEFAULT_MODELS로 폴백.
+  for (const cand of [preferred, requested]) {
+    const r = (cand ?? '').toLowerCase();
+    if (provider === 'anthropic' && r.startsWith('claude')) return cand;
+    if (provider === 'openai' && (r.startsWith('gpt') || r.startsWith('o1') || r.startsWith('o3') || r.startsWith('o4'))) return cand;
+  }
   return DEFAULT_MODELS[provider];
 }
 
@@ -117,12 +121,12 @@ async function fetchWithTimeout(url, init) {
 
 // ── Anthropic 어댑터 ────────────────────────────────────────────────────
 
-function buildAnthropicClient(apiKey) {
+function buildAnthropicClient(apiKey, preferredModel) {
   return {
     models: {
       generateContent: async (params) => {
         const { contents, config } = params;
-        const model = resolveModel(params.model, 'anthropic');
+        const model = resolveModel(params.model, preferredModel, 'anthropic');
         const { system, messages } = normalizeContents(contents, config);
         const jsonMode = wantsJson(config);
 
@@ -180,12 +184,12 @@ function buildAnthropicClient(apiKey) {
 
 // ── OpenAI 어댑터 ───────────────────────────────────────────────────────
 
-function buildOpenAIClient(apiKey) {
+function buildOpenAIClient(apiKey, preferredModel) {
   return {
     models: {
       generateContent: async (params) => {
         const { contents, config } = params;
-        const model = resolveModel(params.model, 'openai');
+        const model = resolveModel(params.model, preferredModel, 'openai');
         const { system, messages } = normalizeContents(contents, config);
         const jsonMode = wantsJson(config);
 
@@ -248,8 +252,8 @@ function buildOpenAIClient(apiKey) {
 }
 
 /** provider별 BYOK 클라이언트 생성 */
-export function buildUserKeyClient(provider, apiKey) {
-  if (provider === 'anthropic') return buildAnthropicClient(apiKey);
-  if (provider === 'openai') return buildOpenAIClient(apiKey);
+export function buildUserKeyClient(provider, apiKey, preferredModel) {
+  if (provider === 'anthropic') return buildAnthropicClient(apiKey, preferredModel);
+  if (provider === 'openai') return buildOpenAIClient(apiKey, preferredModel);
   throw new Error(`지원하지 않는 provider: ${provider}`);
 }

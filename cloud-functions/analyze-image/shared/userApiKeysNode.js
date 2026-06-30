@@ -12,7 +12,7 @@ import { decryptApiKey } from './cryptoKeysNode.js';
  * userId의 활성 BYOK 키를 조회·복호화하여 반환. 없거나 실패하면 null.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string|null|undefined} userId
- * @returns {Promise<{provider:'anthropic'|'openai', apiKey:string}|null>}
+ * @returns {Promise<{provider:'anthropic'|'openai', apiKey:string, model:string|null}|null>}
  */
 export async function getActiveUserKey(supabase, userId) {
   if (!userId) return null;
@@ -20,7 +20,7 @@ export async function getActiveUserKey(supabase, userId) {
   try {
     const { data, error } = await supabase
       .from('user_api_keys')
-      .select('provider, encrypted_key')
+      .select('provider, encrypted_key, model')
       .eq('user_id', userId)
       .eq('is_active', true)
       .limit(1);
@@ -40,7 +40,7 @@ export async function getActiveUserKey(supabase, userId) {
     const apiKey = decryptApiKey(row.encrypted_key);
     if (!apiKey) return null;
 
-    return { provider: row.provider, apiKey };
+    return { provider: row.provider, apiKey, model: row.model ?? null };
   } catch (e) {
     // 복호화 실패(시크릿 불일치 등) → 조용히 시스템 키로 폴백
     console.error('[userApiKeys] 복호화/조회 예외 → 시스템 키로 폴백', {

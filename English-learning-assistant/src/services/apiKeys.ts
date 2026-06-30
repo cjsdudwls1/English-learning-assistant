@@ -11,6 +11,7 @@ export interface ApiKeyInfo {
   key_hint: string | null;
   is_active: boolean;
   updated_at?: string;
+  model?: string | null;
 }
 
 async function callManageApiKeys(body: Record<string, unknown>): Promise<any> {
@@ -38,15 +39,21 @@ export async function listApiKeys(): Promise<ApiKeyInfo[]> {
   return (r.keys ?? []) as ApiKeyInfo[];
 }
 
-/** 키 저장(서버가 1회 유효성 검증 후 암호화 저장). 저장된 provider가 활성화됨. */
-export async function saveApiKey(provider: ApiKeyProvider, apiKey: string): Promise<ApiKeyInfo> {
-  const r = await callManageApiKeys({ action: 'save', provider, apiKey });
-  return { provider: r.provider, key_hint: r.key_hint, is_active: r.is_active };
+/** 키 저장(서버가 1회 유효성 검증 후 암호화 저장). 저장된 provider가 활성화됨.
+ *  model: 사용자가 고른 모델(미지정 시 서버 기본 모델 사용). 서버 화이트리스트로 검증됨. */
+export async function saveApiKey(provider: ApiKeyProvider, apiKey: string, model?: string | null): Promise<ApiKeyInfo> {
+  const r = await callManageApiKeys({ action: 'save', provider, apiKey, model: model ?? null });
+  return { provider: r.provider, key_hint: r.key_hint, is_active: r.is_active, model: r.model ?? null };
 }
 
 /** 키 삭제 */
 export async function deleteApiKey(provider: ApiKeyProvider): Promise<void> {
   await callManageApiKeys({ action: 'delete', provider });
+}
+
+/** 키 재입력 없이 모델만 변경(이미 저장된 provider 대상). 서버 화이트리스트로 검증됨. */
+export async function setApiKeyModel(provider: ApiKeyProvider, model: string): Promise<void> {
+  await callManageApiKeys({ action: 'set-model', provider, model });
 }
 
 /** 활성 provider 전환. null이면 시스템 Gemini 사용. */

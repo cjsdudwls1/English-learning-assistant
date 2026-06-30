@@ -14,6 +14,7 @@ interface GoogleGenAIConstructor {
 export interface UserKeyInput {
     provider: UserKeyProvider;
     apiKey: string;
+    model?: string | null;
 }
 
 export interface AIClientResult {
@@ -35,7 +36,7 @@ export function createAIClient(GoogleGenAI?: GoogleGenAIConstructor, userKey?: U
     if (userKey && userKey.apiKey) {
         console.log('[AIClientFactory] Using user BYOK key', { provider: userKey.provider });
         return {
-            ai: buildUserKeyClient(userKey.provider, userKey.apiKey),
+            ai: buildUserKeyClient(userKey.provider, userKey.apiKey, userKey.model ?? undefined),
             provider: userKey.provider,
         };
     }
