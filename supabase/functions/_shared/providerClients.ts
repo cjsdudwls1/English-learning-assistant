@@ -27,7 +27,7 @@ const DEFAULT_MODELS: Record<UserKeyProvider, string> = {
 // ⚠️ vision 미지원 모델을 넣으면 이미지 분석이 조용히 깨질 수 있으므로 멀티모달 모델만 등록한다.
 export const SUPPORTED_MODELS: Record<UserKeyProvider, string[]> = {
   anthropic: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-  openai: ['gpt-4o', 'gpt-4o-mini'],
+  openai: ['gpt-5.5', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-mini'],
 };
 
 export function isSupportedModel(provider: UserKeyProvider, model: string | null | undefined): boolean {
@@ -245,12 +245,19 @@ function buildOpenAIClient(apiKey: string, preferredModel?: string): AIClient {
           }
         }
 
-        const body: Record<string, unknown> = {
-          model,
-          temperature: (config?.temperature as number) ?? 0,
-          max_tokens: (config?.maxOutputTokens as number) || DEFAULT_MAX_TOKENS,
-          messages: oaMessages,
-        };
+        // GPT-5 계열·o-시리즈는 Chat Completions 파라미터 규약이 4o와 다르다:
+        //  max_tokens 미지원(→ max_completion_tokens), temperature 비기본값(0 등) 거부 가능(→ 생략).
+        // 소스 충돌(공식 문서=지원 주장 vs 개발자 실측=거부)이 있어, 거부될 수 있는 파라미터를
+        // 아예 보내지 않는 방어적 구성으로 어느 쪽이 맞든 깨지지 않게 한다. 4o 등 기존 모델은 현행 유지.
+        const isNextGenOpenAI = /^(gpt-5|o[0-9])/.test(model.toLowerCase());
+        const tokenLimit = (config?.maxOutputTokens as number) || DEFAULT_MAX_TOKENS;
+        const body: Record<string, unknown> = { model, messages: oaMessages };
+        if (isNextGenOpenAI) {
+          body.max_completion_tokens = tokenLimit; // temperature 미지정 → 모델 기본값(JSON은 response_format으로 강제)
+        } else {
+          body.temperature = (config?.temperature as number) ?? 0;
+          body.max_tokens = tokenLimit;
+        }
         if (jsonMode) body.response_format = { type: 'json_object' };
 
         const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {

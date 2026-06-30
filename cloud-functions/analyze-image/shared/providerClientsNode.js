@@ -216,12 +216,17 @@ function buildOpenAIClient(apiKey, preferredModel) {
           }
         }
 
-        const body = {
-          model,
-          temperature: (config?.temperature) ?? 0,
-          max_tokens: (config?.maxOutputTokens) || DEFAULT_MAX_TOKENS,
-          messages: oaMessages,
-        };
+        // GPT-5 계열·o-시리즈는 max_tokens 미지원(→ max_completion_tokens), temperature 비기본값 거부 가능(→ 생략).
+        // 거부될 수 있는 파라미터를 안 보내는 방어적 구성. 4o 등 기존 모델은 현행 유지. (Edge providerClients.ts와 동기화)
+        const isNextGenOpenAI = /^(gpt-5|o[0-9])/.test(model.toLowerCase());
+        const tokenLimit = (config?.maxOutputTokens) || DEFAULT_MAX_TOKENS;
+        const body = { model, messages: oaMessages };
+        if (isNextGenOpenAI) {
+          body.max_completion_tokens = tokenLimit; // temperature 미지정 → 모델 기본값
+        } else {
+          body.temperature = (config?.temperature) ?? 0;
+          body.max_tokens = tokenLimit;
+        }
         if (jsonMode) body.response_format = { type: 'json_object' };
 
         const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {

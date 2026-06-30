@@ -22,6 +22,8 @@ const MODEL_CATALOG: Record<ApiKeyProvider, ModelOption[]> = {
     { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', gradeKo: '저가 · 빠름', gradeEn: 'Cheap · fast' },
   ],
   openai: [
+    { id: 'gpt-5.5', label: 'GPT-5.5', gradeKo: '최신 · 최고 품질 · 고가', gradeEn: 'Latest · top quality · pricey' },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini', gradeKo: '최신 · 저가 · 빠름', gradeEn: 'Latest · cheap · fast' },
     { id: 'gpt-4o', label: 'GPT-4o', gradeKo: '고품질 · 권장', gradeEn: 'High quality · recommended' },
     { id: 'gpt-4o-mini', label: 'GPT-4o mini', gradeKo: '저가 · 빠름', gradeEn: 'Cheap · fast' },
   ],
