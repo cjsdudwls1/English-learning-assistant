@@ -69,6 +69,8 @@ const PROBLEM_TYPE_MAPPERS = {
       return null;
     }
     base.explanation = problem.explanation || null;
+    // 오답별 해설: AI가 wrong_explanation(단수, DB 컬럼) 또는 wrong_explanations(복수)로 반환 가능 → 정규화 후 단수 컬럼에 저장
+    base.wrong_explanation = problem.wrong_explanation || problem.wrong_explanations || null;
     return base;
   },
   short_answer: (problem, base) => {

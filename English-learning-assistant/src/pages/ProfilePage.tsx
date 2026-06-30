@@ -6,13 +6,14 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useUserRole } from '../contexts/UserRoleContext';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
+import { ApiKeySettings } from '../components/ApiKeySettings';
 
 export const ProfilePage: React.FC = () => {
   const { language } = useLanguage();
   const t = getTranslation(language);
   const { refreshRole, availableAcademies } = useUserRole();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'profile' | 'academy'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'academy' | 'apikey'>('profile');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +152,17 @@ export const ProfilePage: React.FC = () => {
         >
           {language === 'ko' ? '학원' : 'Academy'}
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('apikey')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'apikey' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+        >
+          {language === 'ko' ? 'AI 설정' : 'AI Settings'}
+        </button>
       </div>
+
+      {/* AI 설정 (API 키) 탭 */}
+      {activeTab === 'apikey' && <ApiKeySettings />}
 
       {/* 학원 탭 */}
       {activeTab === 'academy' && (

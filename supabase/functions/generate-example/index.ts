@@ -8,6 +8,7 @@ import { summarizeError } from "../_shared/errors.ts";
 import { logAiUsage } from "../_shared/usageLogger.ts";
 import { MODEL_SEQUENCE } from "../_shared/models.ts";
 import { createAIClient } from "../_shared/aiClientFactory.ts";
+import { getActiveUserKey } from "../_shared/userApiKeys.ts";
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -26,7 +27,9 @@ serve(async (req: Request) => {
     }
 
     const supabase = createServiceSupabaseClient();
-    const { ai, provider } = createAIClient(GoogleGenAI);
+    // 사용자 BYOK 키가 있으면 Claude/ChatGPT 사용, 없으면 시스템 Gemini로 폴백
+    const userKey = await getActiveUserKey(supabase, userId);
+    const { ai, provider } = createAIClient(GoogleGenAI, userKey);
 
     // 1. Taxonomy 정보 조회
     console.log('Step 1: Fetching taxonomy for code:', code);
@@ -93,7 +96,7 @@ Generate example sentences in the following format:
 
 1. **Wrong Sentence** (❌): A sentence showing a common error in this classification
 2. **Correct Sentence** (✅): A sentence using correct grammar
-3. **Explanation**: A brief explanation of why it's wrong and why it's correct
+3. **Explanation**: A 2-4 sentence explanation of which rule the wrong sentence violates and why the correct sentence follows the core rule
 
 **Important Notes**:
 - Use vocabulary and difficulty level appropriate for the user's age (${userAge} years old) and grade (${userGrade})
@@ -108,7 +111,7 @@ Output in the following JSON format:
 {
   "wrong_example": "Wrong sentence in English",
   "correct_example": "Correct sentence in English",
-  "explanation": "Brief explanation in English"
+  "explanation": "2-4 sentence explanation in English, citing the core rule"
 }
 \`\`\`
 `
@@ -134,7 +137,7 @@ Output in the following JSON format:
 
 1. **틀린 문장** (❌): 이 분류에서 자주 발생하는 오류를 보여주는 문장
 2. **맞는 문장** (✅): 올바른 문법을 사용한 문장
-3. **설명**: 왜 틀렸는지, 왜 맞는지 간단히 설명
+3. **설명**: 틀린 문장이 어떤 규칙을 위반했는지, 맞는 문장이 왜 핵심 규칙에 부합하는지 2~4문장으로 구체적으로 설명
 
 **주의사항**:
 - 사용자의 연령(${userAge}세)과 학년(${userGrade})에 맞는 어휘와 난이도 사용
@@ -148,7 +151,7 @@ Output in the following JSON format:
 {
   "wrong_example": "틀린 문장",
   "correct_example": "맞는 문장",
-  "explanation": "간단한 설명"
+  "explanation": "핵심 규칙을 인용한 2~4문장 설명"
 }
 \`\`\`
 `;

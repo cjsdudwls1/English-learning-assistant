@@ -9,6 +9,7 @@ import { logAiUsage, sumUsageMetadata } from "../_shared/usageLogger.ts";
 import type { UsageMetadata } from "../_shared/aiClient.ts";
 import { MODEL_SEQUENCE } from "../_shared/models.ts";
 import { createAIClient } from "../_shared/aiClientFactory.ts";
+import { getActiveUserKey } from "../_shared/userApiKeys.ts";
 
 function buildPrompt(classificationData: { structure: string; allValues: { depth1: string[]; depth2: string[]; depth3: string[]; depth4: string[] } }) {
   const { structure, allValues } = classificationData;
@@ -134,7 +135,8 @@ serve(async (req: Request) => {
 
     const taxonomyData = await loadTaxonomyData(supabase, userLanguage);
     const prompt = buildPrompt(taxonomyData);
-    const { ai, provider } = createAIClient(GoogleGenAI);
+    const userKey = await getActiveUserKey(supabase, userId);
+    const { ai, provider } = createAIClient(GoogleGenAI, userKey);
     const sessionId = `reclassify-${userId}-${Date.now()}`;
     const modelName = MODEL_SEQUENCE[0]; // models.ts 기본 모델 사용
 

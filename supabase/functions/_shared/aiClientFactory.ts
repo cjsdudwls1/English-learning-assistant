@@ -3,15 +3,22 @@
 
 import type { AIClient } from './aiClient.ts';
 import { createVertexAIClient, type VertexAIConfig } from './vertexClient.ts';
+import { buildUserKeyClient, type UserKeyProvider } from './providerClients.ts';
 
 // GoogleGenAI 타입 (런타임에 동적 import할 때 사용)
 interface GoogleGenAIConstructor {
     new(opts: { apiKey: string }): AIClient;
 }
 
+// 사용자 BYOK 키 입력
+export interface UserKeyInput {
+    provider: UserKeyProvider;
+    apiKey: string;
+}
+
 export interface AIClientResult {
     ai: AIClient;
-    provider: 'vertex' | 'gemini';
+    provider: 'vertex' | 'gemini' | 'anthropic' | 'openai';
 }
 
 /**
@@ -21,8 +28,18 @@ export interface AIClientResult {
  * 3) 둘 다 없으면 에러
  *
  * @param GoogleGenAI - GoogleGenAI 생성자 (ESM import 결과를 전달)
+ * @param userKey - 사용자 BYOK 키 (있으면 시스템 키보다 최우선 사용)
  */
-export function createAIClient(GoogleGenAI?: GoogleGenAIConstructor): AIClientResult {
+export function createAIClient(GoogleGenAI?: GoogleGenAIConstructor, userKey?: UserKeyInput | null): AIClientResult {
+    // 0) 사용자 BYOK 키가 있으면 최우선 사용 (Claude / ChatGPT)
+    if (userKey && userKey.apiKey) {
+        console.log('[AIClientFactory] Using user BYOK key', { provider: userKey.provider });
+        return {
+            ai: buildUserKeyClient(userKey.provider, userKey.apiKey),
+            provider: userKey.provider,
+        };
+    }
+
     const vertexProjectId = Deno.env.get('VERTEX_PROJECT_ID');
     const vertexLocation = Deno.env.get('VERTEX_LOCATION');
     const serviceAccountJSON = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');

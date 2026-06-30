@@ -325,7 +325,7 @@ export function buildClassificationPrompt(classificationData, itemsSummary, user
 - 4-6: 중학교 수준의 보통 어휘
 - 7-9: 고등학생 수준 이상의 어려운 어휘
 
-analysis: 문제에 대한 상세 분석 (한국어로 작성)`
+analysis: 문제에 대한 상세 분석 (한국어 3~5문장). 다음을 반드시 포함: (1) 이 문제가 무엇을 묻는지, (2) 정답의 근거가 되는 핵심 문법·어휘 규칙을 의미와 함께 설명, (3) 학습자가 흔히 틀리는 지점이나 주의할 점`
     : `Difficulty levels:
 - "high": High school level or above
 - "medium": Middle school level
@@ -336,7 +336,7 @@ Word difficulty (1-9):
 - 4-6: Middle school level vocabulary
 - 7-9: High school level or above
 
-analysis: Detailed analysis of the problem (in English)`;
+analysis: Detailed analysis of the problem (in English, 3-5 sentences). Must include: (1) what the problem is asking, (2) the key grammar/vocabulary rule behind the correct answer explained with its meaning, (3) common mistakes or points the learner should watch out for`;
 
   const difficultyValues = userLanguage === 'ko' ? `"상" | "중" | "하"` : `"high" | "medium" | "low"`;
 

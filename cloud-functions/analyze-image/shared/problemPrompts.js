@@ -21,12 +21,20 @@ const promptTemplates = {
       {"text": "선택지 4", "is_correct": false},
       {"text": "선택지 5", "is_correct": false}
     ],
-    "explanation": "정답 해설 (한국어로)"
+    "explanation": "정답 해설 (한국어 3~5문장): 정답이 옳은 이유를 관련 문법 규칙·의미와 함께 충분히 설명",
+    "wrong_explanation": {
+      "0": "1번 선택지가 오답인 이유 (1~2문장)",
+      "2": "3번 선택지가 오답인 이유 (1~2문장)",
+      "3": "4번 선택지가 오답인 이유 (1~2문장)",
+      "4": "5번 선택지가 오답인 이유 (1~2문장)"
+    }
   }
 ]`,
       requirements: [
         '각 문제는 정확히 5개의 선택지를 가져야 합니다 (5지선다형)',
         '정답은 하나만 있어야 합니다 (is_correct: true)',
+        'explanation은 정답의 근거(문법 규칙·의미)를 3~5문장으로 충분히 서술하세요. 한 줄로 끝내지 마세요',
+        'wrong_explanation에는 정답을 제외한 나머지 4개 선택지 각각에 대해, 그 선택지의 인덱스(0부터 시작, 정답 인덱스 제외)를 키로 왜 틀렸는지 1~2문장씩 설명을 넣으세요',
         'JSON 형식만 반환하고 다른 설명은 추가하지 마세요',
       ],
     },
@@ -43,12 +51,20 @@ const promptTemplates = {
       {"text": "Choice 4", "is_correct": false},
       {"text": "Choice 5", "is_correct": false}
     ],
-    "explanation": "Answer explanation"
+    "explanation": "Answer explanation (3-5 sentences): explain why the correct choice is right, citing the relevant grammar rule/meaning",
+    "wrong_explanation": {
+      "0": "Why choice 1 is wrong (1-2 sentences)",
+      "2": "Why choice 3 is wrong (1-2 sentences)",
+      "3": "Why choice 4 is wrong (1-2 sentences)",
+      "4": "Why choice 5 is wrong (1-2 sentences)"
+    }
   }
 ]`,
       requirements: [
         'Each problem must have exactly 5 choices',
         'Only one answer should be correct (is_correct: true)',
+        'explanation must justify the correct answer in 3-5 sentences (grammar rule/meaning). Do not give a one-line answer',
+        'wrong_explanation must include, for each of the 4 non-correct choices, a 1-2 sentence reason why it is wrong, keyed by that choice index (0-based, excluding the correct index)',
         'Return only JSON format without additional explanation',
       ],
     },
@@ -62,12 +78,13 @@ const promptTemplates = {
     "stem": "문제 본문 (빈칸 채우기, 영작 등)",
     "correct_answer": "정답",
     "acceptable_answers": ["정답", "대체 정답1", "대체 정답2"],
-    "explanation": "정답 해설 (한국어로)"
+    "explanation": "정답 해설 (한국어 3~5문장): 왜 이 답이 정답인지, 핵심 문법·표현, 흔한 오답 주의점을 포함"
   }
 ]`,
       requirements: [
         '정답과 허용 가능한 대체 정답을 모두 포함하세요',
         '빈칸은 ___로 표시하세요',
+        'explanation은 정답 근거와 핵심 표현, 오답 주의점을 3~5문장으로 서술하세요. 한 줄로 끝내지 마세요',
         'JSON 형식만 반환하고 다른 설명은 추가하지 마세요',
       ],
     },
@@ -79,12 +96,13 @@ const promptTemplates = {
     "stem": "Problem text (fill in the blank, etc.)",
     "correct_answer": "Answer",
     "acceptable_answers": ["Answer", "Alt1", "Alt2"],
-    "explanation": "Answer explanation"
+    "explanation": "Answer explanation (3-5 sentences): why this is correct, key grammar/expression, common mistakes to avoid"
   }
 ]`,
       requirements: [
         'Include correct answer and acceptable alternatives',
         'Use ___ for blanks',
+        'explanation must cover the rationale, key expression, and common mistakes in 3-5 sentences. Do not give a one-line answer',
         'Return only JSON format',
       ],
     },
@@ -99,7 +117,7 @@ const promptTemplates = {
     "guidelines": "답안 작성 가이드라인 (최소 단어 수, 포함해야 할 내용 등)",
     "sample_answer": "모범 답안",
     "grading_criteria": ["채점 기준 1", "채점 기준 2", "채점 기준 3"],
-    "explanation": "문제 해설 및 핵심 포인트"
+    "explanation": "문제 해설 및 핵심 포인트 (한국어 3~5문장): 출제 의도, 좋은 답안이 갖춰야 할 핵심 요소, 학생들이 자주 하는 실수"
   }
 ]`,
       requirements: [
@@ -117,7 +135,7 @@ const promptTemplates = {
     "guidelines": "Writing guidelines (word count, content requirements)",
     "sample_answer": "Sample answer",
     "grading_criteria": ["Criteria 1", "Criteria 2", "Criteria 3"],
-    "explanation": "Key points and explanation"
+    "explanation": "Key points and explanation (3-5 sentences): the intent, essential elements of a strong answer, and common mistakes students make"
   }
 ]`,
       requirements: [
@@ -135,14 +153,14 @@ const promptTemplates = {
   {
     "stem": "O/X 판단 문장 (영어로)",
     "correct_answer": true,
-    "explanation": "정답 해설 (한국어로, 2~3문장 이내)"
+    "explanation": "정답 해설 (한국어 3~4문장): 왜 정답이 true/false인지 명확한 근거와 관련 문법 규칙을 포함"
   }
 ]`,
       requirements: [
         'correct_answer는 true 또는 false로 작성하세요',
-        '해설은 반드시 2~3문장 이내로 간결하게 작성하세요. 장황한 설명은 금지합니다',
-        '해설에서 "하지만", "다시 생각하면" 등으로 자기 모순적인 내용을 쓰지 마세요. 결론만 명확하게 서술하세요',
-        'explanation 값에는 왜 정답이 true/false인지 핵심 근거만 포함하세요',
+        '해설은 3~4문장으로 근거를 충분히 설명하세요. 관련 규칙과 이유를 포함하되 불필요한 반복은 피하세요',
+        '해설에서 "하지만", "다시 생각하면" 등으로 자기 모순적인 내용을 쓰지 마세요. 결론을 명확하게 서술하세요',
+        'explanation에는 왜 정답이 true/false인지 근거와 관련 문법 규칙을 포함하세요',
         'JSON 형식만 반환하고 다른 설명은 추가하지 마세요',
       ],
     },
@@ -153,12 +171,12 @@ const promptTemplates = {
   {
     "stem": "Statement to judge (True/False)",
     "correct_answer": true,
-    "explanation": "Brief explanation (2-3 sentences max)"
+    "explanation": "Explanation (3-4 sentences): clear reasoning why the answer is true/false, with the relevant grammar rule"
   }
 ]`,
       requirements: [
         'correct_answer should be true or false',
-        'Keep explanation to 2-3 sentences maximum. Be concise and direct',
+        'Explain the reasoning in 3-4 sentences, including the relevant rule. Avoid unnecessary repetition',
         'Do not contradict yourself in the explanation. State the conclusion clearly',
         'Return only JSON format',
       ],

@@ -27,6 +27,9 @@ import { generateAllProblemTypes } from './shared/generateProblems.js';
 import { verifySupabaseJWT } from './shared/jwtVerify.js';
 import { publishAnalyzeJob, decodeAnalyzeJob } from './shared/pubsub.js';
 import { dedupeProblemItems } from './shared/dedupe.js';
+// BYOK(사용자 키): 활성 anthropic/openai 키가 있으면 해당 provider 어댑터로 분석.
+import { buildUserKeyClient } from './shared/providerClientsNode.js';
+import { getActiveUserKey } from './shared/userApiKeysNode.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -159,7 +162,13 @@ async function authenticateRequest(req) {
   return { ok: true, userId: jwtResult.userId };
 }
 
-function buildAIClient() {
+function buildAIClient(userKey) {
+  // BYOK: 사용자 활성 키(anthropic/openai)가 있으면 해당 provider 어댑터를 사용.
+  // ⚠️ 이미지 분석 파이프라인은 Gemini 전용으로 튜닝됨(crop/bbox·모델시퀀스·thinkingBudget) →
+  //    BYOK provider는 단순 경로로 동작해 정확도가 낮아질 수 있다(opt-in 전제, UI 경고 표시).
+  if (userKey && userKey.apiKey) {
+    return buildUserKeyClient(userKey.provider, userKey.apiKey);
+  }
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const aiOptions = {
     vertexai: true,
@@ -214,7 +223,8 @@ async function handleGenerateAll(req, res) {
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const ai = buildAIClient();
+  const userKey = await getActiveUserKey(supabase, userId);
+  const ai = buildAIClient(userKey);
   const sessionId = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   res.status(200).json({ success: true, sessionId, message: '백그라운드 생성 시작' });
@@ -437,7 +447,10 @@ functions.http('analyzeImage', async (req, res) => {
       }
     }
 
-    const ai = buildAIClient();
+    // BYOK: legacy(inline) 경로는 여기서 직접 분석 → 활성 키 조회.
+    // (Direct Upload 경로는 worker가 userId로 자체 조회하므로 publish payload에 키 미포함)
+    const userKey = await getActiveUserKey(supabase, userId);
+    const ai = buildAIClient(userKey);
 
     console.log(`[handler] ${imageCount}개 이미지 분석 시작 (userId: ${userId}, language: ${userLanguage}, mode: ${useDirectUpload ? 'direct-upload' : 'legacy-inline'})`);
 
@@ -632,7 +645,12 @@ functions.cloudEvent('analyzeWorker', async (cloudEvent) => {
   try {
     // C1 fix: validateVertexAuth를 try 블록 안으로 이동 — 인증 실패는 영구 결함이므로 markSessionFailed + ack
     await validateVertexAuth(supabase, sessionId);
-    const ai = buildAIClient();
+    // BYOK: Direct Upload 주 경로의 실제 분석은 여기(worker). userId로 활성 키 조회.
+    const userKey = await getActiveUserKey(supabase, userId);
+    if (userKey) {
+      console.log(`[worker] BYOK provider 사용: ${userKey.provider} (이미지 분석 — Gemini 전용 파이프라인 우회, 정확도 하락 가능)`, { sessionId });
+    }
+    const ai = buildAIClient(userKey);
     const pipelineImages = await downloadImagesFromStorage(supabase, imagePaths, sessionId);
     await runAnalysisPipeline(supabase, ai, sessionId, pipelineImages, userLanguage);
     console.log(`[worker] 완료: ${sessionId}`);
