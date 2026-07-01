@@ -325,7 +325,7 @@ export function buildClassificationPrompt(classificationData, itemsSummary, user
 - 4-6: 중학교 수준의 보통 어휘
 - 7-9: 고등학생 수준 이상의 어려운 어휘
 
-analysis: 문제에 대한 상세 분석 (한국어, 4~6문장, 서로 다른 학습 정보를 담아 반복 금지). 다음을 포함: (1) 이 문제가 무엇을 묻는지, (2) 정답의 근거가 되는 핵심 문법·어휘 규칙을 의미·작동 원리와 함께 설명, (3) 학습자가 흔히 틀리는 지점이나 함정, (4) 같은 규칙을 적용하는 짧은 예나 기억 팁. 단, 이미지에서 명확히 보이는 내용에만 근거하라 — 지문·선택지가 일부만 보이거나 불확실하면 단정하지 말고 일반 원리 수준으로 설명하라(틀린 단정은 비워두는 것보다 해롭다)`
+analysis: 학습자에게 그대로 보여지는 핵심 해설이다 (한국어, 5~7문장, 각 항목을 독립된 문장으로 충실히 작성하고 서로 다른 학습 정보를 담아 반복 금지). 다음 네 가지를 빠짐없이 포함하라: (1) 이 문제가 무엇을 묻는 유형인지, (2) 정답의 근거가 되는 핵심 문법·어휘·독해 규칙을, 단지 정답을 가리키는 데 그치지 말고 그 규칙이 '왜' 성립하는지 의미와 작동 원리까지 풀어서 설명, (3) 학습자가 흔히 틀리는 지점이나 함정을 구체적으로, (4) 같은 규칙을 적용하는 다른 짧은 예시나 다음에 같은 유형을 만났을 때 쓸 수 있는 일반화된 기억 팁. 특히 (2)원리와 (4)확장을 한 문장으로 뭉뚱그리거나 생략하지 말 것 — 정답 근거만 나열하고 끝내면 부실한 해설이다. 단, 이미지에서 명확히 보이는 내용에만 근거하라 — 지문·선택지가 일부만 보이거나 불확실하면 단정하지 말고 일반 원리 수준으로 설명하라(틀린 단정은 비워두는 것보다 해롭다). 분량을 채우려 이미지에 없는 사실을 지어내지 말 것 — 확신이 서는 범위에서 원리와 예시를 설명하면 된다`
     : `Difficulty levels:
 - "high": High school level or above
 - "medium": Middle school level
@@ -336,13 +336,13 @@ Word difficulty (1-9):
 - 4-6: Middle school level vocabulary
 - 7-9: High school level or above
 
-analysis: Detailed analysis of the problem (in English, 4-6 sentences, each conveying distinct learning value — no repetition). Include: (1) what the problem is asking, (2) the key grammar/vocabulary rule behind the correct answer, explained with its meaning and how it works, (3) common mistakes or traps the learner should watch out for, (4) a short example applying the same rule or a memory tip. Base this ONLY on what is clearly visible in the image — if the passage/choices are partially shown or uncertain, do not assert specifics; explain at the general-principle level instead (a confident-wrong analysis is worse than a cautious one)`;
+analysis: This is the core explanation shown directly to the learner (in English, 5-7 sentences, each conveying distinct learning value as its own sentence — no repetition). Include all four of the following: (1) what type of question this is and what it asks, (2) the key grammar/vocabulary/reading rule behind the correct answer — do not merely point at the answer, but explain WHY that rule holds, with its meaning and how it works, (3) the common mistakes or traps learners fall into, specifically, (4) a short example applying the same rule, or a generalizable memory tip for the next time this question type appears. Do NOT compress (2) the principle and (4) the extension into a single clause or omit them — listing only the answer's basis and stopping there is a poor explanation. Base this ONLY on what is clearly visible in the image — if the passage/choices are partially shown or uncertain, do not assert specifics; explain at the general-principle level instead (a confident-wrong analysis is worse than a cautious one). Never fabricate details not in the image just to reach the sentence count — explain the principle and example within what you can confidently support`;
 
   const difficultyValues = userLanguage === 'ko' ? `"상" | "중" | "하"` : `"high" | "medium" | "low"`;
 
   return `
 ## Task
-You are classifying English exam questions. Based on the text below, assign classification, metadata, and detailed analysis to each problem.
+You are classifying English exam questions. Based on the text below, assign classification and metadata to each problem, and write a thorough, learner-facing analysis for each one. The analysis is the main study explanation the learner sees — make it substantive and complete, never a one-line summary.
 
 ## Classification (MUST use EXACT values from list below)
 Each line is: depth1 > depth2 > depth3 > depth4
