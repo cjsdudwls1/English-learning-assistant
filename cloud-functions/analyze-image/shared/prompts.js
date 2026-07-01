@@ -162,6 +162,14 @@ Your main goal is to find which choice number (1-5) the student marked/selected.
 - For multiple choice (①②③④⑤): return the choice number ("1"-"5")
 - EXCEPTION — sentence-PATTERN questions (문장 형식 고르기, choices written as "1형식".."5형식"): return the PATTERN NUMBER the student marked — if they circled "4형식", return "4" — NOT the slot/position index.
 
+## Answer-change Rule: the FINAL, clearest mark wins (apply during solving)
+Students often change their choice WHILE solving: they slash / tick / strike one number, then settle on a DIFFERENT number. Decide the final user_answer using these signals IN PRIORITY ORDER:
+1. A choice number fully ENCLOSED by a hand-drawn circle/oval is the STRONGEST selection signal. It OUTWEIGHS a slash, tick, or stroke on another number. Scan EACH choice number ①②③④⑤ INDIVIDUALLY for an enclosing circle before you decide — do NOT stop at the first mark you notice (the circled number is often NOT the first one).
+2. If the student drew a connecting line/arrow FROM one number TO another (crossing out the first), the number the line ARRIVES AT (its destination) is the final answer.
+3. A slash/stroke THROUGH a number usually means the student CANCELLED it — prefer a different number that is circled or clearly chosen.
+IGNORE long STRUCTURAL lines that merely separate the left/right columns of choices (e.g. a big vertical curve running down BETWEEN the two columns) — that is a layout divider, NOT an answer mark. Do not read the number nearest such a divider as the answer just because the line passes by it.
+(This differs from post-exam self-grading below: here there is no X, just a tentative mark superseded by a firm final choice.)
+
 ## Secondary Rule: Korean Exam Grading Marks (apply ONLY when clearly visible)
 After exams, students sometimes mark their papers during answer-checking:
 - If you see BOTH an X mark on one number AND an O/circle on a different number:
@@ -294,6 +302,7 @@ ${focusBlock}
 - Do NOT copy user_answer into correct_answer
 - Do NOT copy the solved correct_answer into user_answer — user_answer must come from the physical pencil/pen mark only
 - Grading-mark disambiguation: students sometimes self-grade AFTER the exam. If for one problem you see BOTH an X mark on one number AND an O/circle on a DIFFERENT number, the X-marked number = user_answer (their original choice); the O-marked number is the correct answer they added later — do NOT report that O as user_answer. If only marks on ONE number (no X), that number IS user_answer.
+- Answer-change during solving: a student may slash / strike one number and then settle on a DIFFERENT number (no X involved). Priority for the final user_answer: (1) a choice number fully ENCLOSED by a hand-drawn circle/oval is the strongest signal and OUTWEIGHS a slash/tick/stroke on another number — scan EACH number ①②③④⑤ individually for an enclosing circle, do not stop at the first mark; (2) if a connecting line/arrow runs from one number to another, the DESTINATION number is the answer; (3) a slash THROUGH a number usually means it was cancelled. IGNORE long structural lines that merely divide the left/right choice columns (a layout divider, NOT an answer mark) — do not pick the number nearest such a line just because it passes by. (Distinct from post-exam self-grading above, which involves an X plus a separately-added O.)
 - user_answer precision: if a mark seems present but you cannot confidently tell which single choice it sits on (faint, ambiguous, or spanning two numbers), return null for user_answer — do NOT guess. A wrong answer is worse than null.
 - Report ALL problems visible
 - Phantom/cut-off guard: a problem NUMBER can appear WITHOUT its actual content — e.g. only a group header like "[11-12]" or "고난도 [11-12]", or a thin sliver sliced from an ADJACENT page at the photo's edge (number visible, but the question body/choices are not). If a number's question body and choices are NOT actually visible on the page, do NOT invent answers: return null for BOTH user_answer and correct_answer. Fabricating a correct_answer for content you cannot see is a confident-wrong error and is worse than null.

@@ -324,9 +324,26 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
   const maps = await buildTaxonomyMaps();
   const statsMap = new Map<string, StatsNode>();
 
-  // 분류행을 4개 depth 레벨에 누적 (미분류는 addToStatsMap의 !d1 가드로 자동 제외)
+  // 분류행을 4개 depth 레벨에 누적. 미분류(depth1 없음)는 '미분류' 루트 노드로 집계 →
+  // 도넛/바(fetchStatsByType)와 총계 일치(표에서 미분류가 빠져 합계 불일치하던 버그 수정).
   const accumulate = (wrapped: LabelRowWithProblems, classification: Record<string, unknown>) => {
     const { koDepth1, koDepth2, koDepth3, koDepth4, depth1, depth2, depth3, depth4 } = validateAndTranslateDepths(classification, maps, language);
+    if (!depth1) {
+      const uncKey = 'UNCLASSIFIED'; // 언더스코어 없음 → buildHierarchyFromMap에서 루트 노드로 처리
+      const uncLabel = language === 'en' ? 'Unclassified' : '미분류';
+      if (!statsMap.has(uncKey)) {
+        statsMap.set(uncKey, { depth1: uncLabel, correct_count: 0, incorrect_count: 0, total_count: 0, children: [], sessionIds: [] });
+      }
+      const s = statsMap.get(uncKey)!;
+      if (wrapped.user_mark !== null && wrapped.user_mark !== undefined) {
+        s.total_count++;
+        if (wrapped.is_correct) s.correct_count++; else s.incorrect_count++;
+        const p = Array.isArray(wrapped.problems) ? wrapped.problems[0] : wrapped.problems;
+        const sid = p?.session_id;
+        if (sid && !s.sessionIds?.includes(sid)) s.sessionIds?.push(sid);
+      }
+      return;
+    }
     const key1 = koDepth1;
     const key2 = koDepth1 && koDepth2 ? `${koDepth1}_${koDepth2}` : '';
     const key3 = koDepth1 && koDepth2 && koDepth3 ? `${koDepth1}_${koDepth2}_${koDepth3}` : '';

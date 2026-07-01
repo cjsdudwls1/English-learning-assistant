@@ -31,19 +31,43 @@ function normalizeChoiceValue(v) {
   return s;
 }
 
+// 매칭용 정규화: 대소문자·공백·구두점 제거(선택지 텍스트 ↔ 답 텍스트 정확 대조).
+function normalizeForMatch(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+}
+
 /**
- * MC 답안 범위 정합성(§3 하드닝): 객관식 답이 '한 자리 숫자인데 1~5 밖'이면 null로 무효화.
- * - 선택지 범위(1~5) 위반은 명백한 오인 → confident-wrong보다 null(기권)이 안전(정밀도 우선).
+ * MC 답안 형식 정합성(§3 하드닝 + 타입체크): 객관식 답은 반드시 선택지 번호("1"~"5")여야 한다.
  * - 서술형(isSubjective)은 텍스트 답이므로 절대 건드리지 않는다.
- * - 여러 자리/단어 등은 보존(여기서 과도하게 null하지 않음 — 상위 폴백이 처리).
+ * - 한 자리 숫자인데 1~5 밖 → null(선택지 범위 위반 = 명백한 오인).
+ * - 숫자가 아닌 텍스트(예: 선택지 문구 "him")가 객관식 답으로 온 경우 → 선택지와 대조해
+ *   일치하는 항목의 번호로 환원(형식 정합성 복원). 환원 실패 시 null.
+ *   객관식인데 번호로 환원 불가한 텍스트를 그대로 저장하면 채점이 반드시 어긋난다
+ *   (실측 12번: correct_answer가 선택지 문구 "him"으로 추출돼 정답을 오답 처리).
+ *   null이면 상위 재독해/폴백이 다시 시도하므로 confident-wrong보다 안전(정밀도 우선).
  */
-function sanitizeMcAnswer(value, isSubjective) {
+function sanitizeMcAnswer(value, isSubjective, choices) {
   if (value == null) return null;
   if (isSubjective) return value;
   const s = String(value).trim();
   if (s === '') return null;
   if (/^[0-9]$/.test(s)) return /^[1-5]$/.test(s) ? s : null;
-  return value;
+  // 숫자가 아닌 텍스트 답: 선택지와 대조해 번호로 환원 시도.
+  const list = Array.isArray(choices) ? choices : [];
+  const target = normalizeForMatch(s);
+  if (list.length > 0 && target) {
+    const idx = list.findIndex((c) => {
+      const t = typeof c === 'string' ? c : (c?.text || c?.label || '');
+      return normalizeForMatch(t) === target;
+    });
+    if (idx >= 0 && idx < 5) {
+      console.log(`[passes:sanitizeMcAnswer] 객관식 텍스트답 "${s}" → 선택지 #${idx + 1} 환원`);
+      return String(idx + 1);
+    }
+  }
+  // 환원 실패: 객관식 답을 텍스트로 둘 수 없음 → null(재시도 유도, 정밀도 우선).
+  console.warn(`[passes:sanitizeMcAnswer] 객관식 비-번호 답 "${s}" 환원 실패 → null`);
+  return null;
 }
 
 /**
@@ -168,10 +192,11 @@ export async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, que
             const text = extractTextFromResponse(response, model);
             const parsed = parseJsonResponse(text, model);
             const isSubjective = questionContext?.isSubjective;
+            const choices = questionContext?.choices;
             return {
               problem_number: parsed.problem_number || crop.problem_number,
-              user_answer: sanitizeMcAnswer(normalizeChoiceValue(parsed.user_answer ?? null), isSubjective),
-              correct_answer: sanitizeMcAnswer(normalizeChoiceValue(parsed.correct_answer ?? null), isSubjective),
+              user_answer: sanitizeMcAnswer(normalizeChoiceValue(parsed.user_answer ?? null), isSubjective, choices),
+              correct_answer: sanitizeMcAnswer(normalizeChoiceValue(parsed.correct_answer ?? null), isSubjective, choices),
             };
           } catch (err) {
             console.warn(`[passes:detectFromCrops] Q${crop.problem_number} ${model} 실패: ${err?.message}, 다음 모델로 폴백`);
@@ -254,6 +279,10 @@ export async function executePassB({ ai, sessionId, answerAreaCrops, fullCrops, 
   //    full-image fallback(풀페이지 1회)으로 correct를 채운다. eval 실측상 correct_answer는
   //    풀페이지 단일 호출로 100%라 문항별 N호출이 낭비 → 호출 수를 N→1로 절감.
   //  user_answer(answerArea 크롭) 경로는 두 모드에서 동일하다(confident-wrong 방지 가치 유지).
+  // ⚠️ user_answer를 fullCrop에서 읽으면 안 된다: fullCrop은 지문 전체가 보여 모델이
+  //   "손글씨 마크 인식" 대신 "정답 독해 추론"에 오염된다. 실측(gold Q27): 사용자 마크는 ②인데
+  //   fullCrop이 지문을 읽고 정답 ⑤를 user_answer로 반환(confident-wrong). answerArea(좁은 답칸)는
+  //   지문이 안 보여 순수 마크만 읽으므로 이 오염이 없다. 25번류(마크 누락)는 bbox 개선으로 해결한다.
   const userPromise = detectFromCrops({
     ai, sessionId, crops: answerAreaCrops,
     buildPromptFn: buildCroppedUserAnswerPrompt,

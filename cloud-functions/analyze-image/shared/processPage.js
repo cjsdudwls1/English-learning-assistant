@@ -232,22 +232,23 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
     const hasObjectiveKw = OBJECTIVE_KEYWORDS.some(kw => combinedText.includes(kw));
     const hasSubjectiveKw = SUBJECTIVE_KEYWORDS.some(kw => combinedText.includes(kw));
 
+    // 유형 판별 우선순위: 주관식 키워드 유무 → 그다음 choices 유무.
+    // 핵심 규칙: 선택지(①~⑤)가 명확히 추출됐으면(hasChoices) 객관식이다.
+    // '영작/쓰시오' 같은 주관식 키워드가 instruction에 있어도, 선택지에서 답을 고르는
+    // 유형("다음 우리말을 영작할 때 세 번째로 오는 단어는? ①a ②we ③him …")은 객관식.
+    // 이를 주관식으로 오판하면 user_answer가 손글씨 낙서로, correct_answer가 선택지
+    // 텍스트("him")로 추출돼 정답을 오답 처리하는 결함이 생긴다(실측 12번).
     let isSubjective;
-    if (hasObjectiveKw && !hasSubjectiveKw) {
-      isSubjective = false; // 명시적 객관식 (choices 추출 실패해도 객관식)
-    } else if (hasSubjectiveKw && !hasObjectiveKw) {
-      isSubjective = true; // 명시적 주관식
-    } else if (hasObjectiveKw && hasSubjectiveKw) {
-      // 양쪽 키워드 모두 있으면 choices 유무로 결정
-      isSubjective = !hasChoices;
-    } else {
-      // 키워드 없음 → 객관식 기본.
-      // choices=0이어도 주관식 키워드가 없으면 주관식으로 단정하지 않는다.
-      // 영어 시험(28~45)은 대부분 객관식이며, 묶음 문제([38~39] 등)의 후속 문항은
-      // instruction이 비고 위치마커(①~⑤)가 choices로 안 잡혀 choices=0이 되곤 한다.
-      // 이를 주관식으로 오판하면 correct_answer가 번호 대신 지문 문장으로 추출되는 결함 발생
-      // (실측: Q39 correct가 지문 문장 전체로 추출됨).
+    if (!hasSubjectiveKw) {
+      // 주관식 키워드 없음 → 객관식 기본.
+      // choices=0이어도 주관식으로 단정하지 않는다(영어 시험 28~45 대부분 객관식,
+      // 묶음문제 후속 문항은 위치마커 ①~⑤가 choices로 안 잡혀 choices=0이 되곤 함.
+      // 주관식 오판 시 correct_answer가 번호 대신 지문 문장으로 추출됨 — 실측 Q39).
       isSubjective = false;
+    } else {
+      // 주관식 키워드 존재 → 선택지가 명확히 추출됐으면 객관식, 없으면 주관식.
+      // (객관식 키워드 동시 존재 여부와 무관하게 choices가 최종 판단 기준)
+      isSubjective = !hasChoices;
     }
 
     console.log(`[handler] Q${item.problem_number} 유형 판별: isSubjective=${isSubjective}, hasChoices=${hasChoices}, hasObjKw=${hasObjectiveKw}, hasSubjKw=${hasSubjectiveKw}`, { sessionId });

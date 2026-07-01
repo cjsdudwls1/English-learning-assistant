@@ -131,12 +131,9 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
           <button
             onClick={(e) => {
               e.stopPropagation();
-              console.log('Correct button clicked', { node, onNumberClick: !!onNumberClick });
               if (onNumberClick) {
-                console.log('Calling onNumberClick with isCorrect=true');
                 onNumberClick(node, true);
               } else {
-                console.log('Calling handleCountClick');
                 handleCountClick(node.sessionIds || []);
               }
             }}
@@ -150,12 +147,9 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
           <button
             onClick={(e) => {
               e.stopPropagation();
-              console.log('Incorrect button clicked', { node, onNumberClick: !!onNumberClick });
               if (onNumberClick) {
-                console.log('Calling onNumberClick with isCorrect=false');
                 onNumberClick(node, false);
               } else {
-                console.log('Calling handleCountClick');
                 handleCountClick(node.sessionIds || []);
               }
             }}
