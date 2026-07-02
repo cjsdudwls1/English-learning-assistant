@@ -12,9 +12,60 @@ import { cropRegions } from './imageCropper.js';
 import {
   executePassA, executePass0, executePassB, executePassBFullImage,
   executePassC, detectSubjectiveUserAnswers, detectCorrectFromCrops, detectFromCrops,
+  sanitizeMcAnswer, normalizeChoiceValue,
 } from './passes.js';
 import { USER_ANSWER_MODEL_SEQUENCE } from './config.js';
 import { buildCroppedUserAnswerPrompt } from './prompts.js';
+
+// answer_area 결정화 패딩(0~1000 스케일).
+const REFINE_XPAD_LEFT = 30;   // 좌측: 문제번호 열/원문자 좌측 삐침 여유
+const REFINE_XPAD_RIGHT = 90;  // 우측: 선택지 텍스트·마크 우측 삐침 여유
+const REFINE_YPAD = 15;        // 상하: 마크가 원문자 위/아래로 삐치는 여유
+
+/**
+ * answer_area_bbox 결정화(Document AI 원문자 기반).
+ * - Pass 0(LLM)이 answer_area_bbox를 런마다 다르게 잡는 비결정성 때문에, 선택지 열 '사이'를
+ *   지나는 구조적 곡선을 마크로 오인하던 문제를 제거한다(실측 Q25: 곡선을 ② 위로 감싸는
+ *   런에서만 user_answer=②로 confident-wrong. 원문자 기반 고정 bbox면 곡선 포함해도 3/3 '4').
+ * - 각 문항 full_bbox 내부의 원문자(①②③④⑤) 심볼 bounding으로 answer_area의 세로 범위(y)와
+ *   좌측 경계를 결정적으로 재산출한다. y는 선택지 행에 밀착시켜 곡선의 세로 조각을 최소화한다.
+ *   x1은 Pass 0가 잡은 문제번호 열 확장을 보존하기 위해 원본과 원문자 좌측 중 더 왼쪽을 취하고,
+ *   x2는 선택지 텍스트/마크 여유를 위해 원본과 원문자 우측+여유 중 큰 쪽을 취한다.
+ *   모든 경계는 full_bbox 내부로 클램프(Pass 0 constraint A 유지).
+ * - 원문자가 2개 미만 검출된 문항(서술형·원문자 미검출·Document AI off)은 원본 bbox를 그대로
+ *   둔다 → 정상 경로 무회귀(정밀도 우선: 근거 없는 재계산으로 정상 케이스를 흔들지 않는다).
+ * @returns 새 bboxes 배열(answer_area_bbox만 교체, full_bbox·problem_number 불변)
+ */
+function refineAnswerAreasWithSymbols(bboxes, symbols, questionContextMap, sessionId) {
+  if (!Array.isArray(symbols) || symbols.length === 0) return bboxes;
+  return bboxes.map((b) => {
+    const full = b.full_bbox;
+    const ans = b.answer_area_bbox;
+    if (!full || !ans) return b;
+    const ctx = questionContextMap?.get(String(b.problem_number));
+    if (ctx?.isSubjective) return b; // 서술형은 선택지 원문자가 없음 → 손대지 않음
+
+    // 이 문항 full_bbox 내부의 원문자만 수집(중심 기준) → 인접 문항 원문자 혼입 방지
+    const inside = symbols.filter((s) => {
+      const cx = (s.x1 + s.x2) / 2, cy = (s.y1 + s.y2) / 2;
+      return cx >= full.x1 && cx <= full.x2 && cy >= full.y1 && cy <= full.y2;
+    });
+    if (inside.length < 2) return b; // 근거 부족 → 원본 유지(무회귀)
+
+    const minX = Math.min(...inside.map((s) => s.x1));
+    const minY = Math.min(...inside.map((s) => s.y1));
+    const maxX = Math.max(...inside.map((s) => s.x2));
+    const maxY = Math.max(...inside.map((s) => s.y2));
+    const refined = {
+      x1: Math.max(full.x1, Math.min(ans.x1, minX - REFINE_XPAD_LEFT)),
+      y1: Math.max(full.y1, minY - REFINE_YPAD),
+      x2: Math.min(full.x2, Math.max(ans.x2, maxX + REFINE_XPAD_RIGHT)),
+      y2: Math.min(full.y2, maxY + REFINE_YPAD),
+    };
+    console.log(`[refine] Q${b.problem_number} answer_area 결정화(${inside.length}원문자): y[${Math.round(ans.y1)}~${Math.round(ans.y2)}]→[${Math.round(refined.y1)}~${Math.round(refined.y2)}]`, { sessionId });
+    return { ...b, answer_area_bbox: refined };
+  });
+}
 
 /**
  * Pass B marks를 검증하고 pageItems에 병합한다.
@@ -22,7 +73,7 @@ import { buildCroppedUserAnswerPrompt } from './prompts.js';
  * - 주관식/서술형/O/X는 자유 텍스트 허용
  * - user_answer, correct_answer, user_marked_correctness 모두 병합
  */
-export function mergeHandwritingMarks(pageItems, marks, sessionId) {
+export function mergeHandwritingMarks(pageItems, marks, sessionId, questionContextMap) {
   if (marks.length === 0) return;
 
   // 진단 로그: 필터링 전 전체 marks 출력
@@ -33,11 +84,26 @@ export function mergeHandwritingMarks(pageItems, marks, sessionId) {
     ),
   });
 
+  // 객관식 답 형식 백스톱(단일 관문): 모든 Pass B 경로(크롭/전체이미지 fallback/서술 override)가
+  // 이 병합을 반드시 통과한다. 크롭 경로는 detectFromCrops에서 sanitizeMcAnswer를 거치지만,
+  // 전체이미지 fallback(executePassBFullImage)은 normalizeChoiceValue만 적용해 객관식 답이
+  // 텍스트("him")·범위밖("7")·문장으로 새어들 수 있다(실측 12번류 재발 경로). 여기서 최종 정규화해
+  // 객관식 correct_answer/user_answer의 오염을 차단한다(confident-wrong 방지, 정밀도 우선).
+  // - 서술형(isSubjective) 또는 선택지 부재 → sanitizeMcAnswer가 원값을 그대로 통과시켜
+  //   자유텍스트 답을 보존한다. 특히 isSubjective=false로 잘못 분류된 서술형(실측 20250420
+  //   Q7 정답"Are"·Q9 문장형)도 선택지 부재 게이트로 파괴되지 않는다(보호 로직은 sanitizeMcAnswer
+  //   단일 지점이 담당 → 크롭 주경로 detectFromCrops와 이 백스톱이 동일하게 보호받는다).
+  // - questionContextMap 미전달(구버전 하위호환) 시엔 과거 동작(범위밖 숫자만 폐기)으로 폴백.
   for (const mark of marks) {
-    // 선택지 범위 초과 검증: 객관식인 경우만 유효한 선택지 번호(1~5) 체크
-    if (mark.user_answer) {
+    const ctx = questionContextMap?.get(String(mark.problem_number));
+    if (ctx) {
+      const isSubjective = ctx.isSubjective === true;
+      const choices = ctx.choices;
+      mark.user_answer = sanitizeMcAnswer(normalizeChoiceValue(mark.user_answer ?? null), isSubjective, choices);
+      mark.correct_answer = sanitizeMcAnswer(normalizeChoiceValue(mark.correct_answer ?? null), isSubjective, choices);
+    } else if (mark.user_answer) {
+      // 하위호환: 컨텍스트 없음 → 순수 숫자 범위검증만(주관식/서술형 자유 텍스트는 허용)
       const ansNum = parseInt(mark.user_answer, 10);
-      // 순수 숫자인데 범위 밖인 경우만 폐기 (주관식/서술형 자유 텍스트는 허용)
       if (!isNaN(ansNum) && String(ansNum) === String(mark.user_answer).trim() && (ansNum < 1 || ansNum > 5)) {
         console.log(`[Pass B] Q${mark.problem_number}: answer "${mark.user_answer}" is a number out of choice range (1-5) → discarded`);
         mark.user_answer = null;
@@ -280,7 +346,10 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
   if (pass0Result.bboxes.length > 0) {
     // bbox가 있으면: 서버 사이드 크롭 → Pass B 크롭 기반 분석
     try {
-      const cropResult = await cropRegions(imageData.imageBase64, imageData.mimeType, pass0Result.bboxes);
+      // answer_area_bbox를 Document AI 원문자로 결정화(Pass 0 비결정성 제거, 곡선 오인 방지).
+      // full_bbox는 불변 → fullCrops(correct_answer 경로) 무영향. user_answer 경로만 개선.
+      const refinedBboxes = refineAnswerAreasWithSymbols(pass0Result.bboxes, passAResult.ocrSymbols, questionContextMap, sessionId);
+      const cropResult = await cropRegions(imageData.imageBase64, imageData.mimeType, refinedBboxes);
       const answerAreaCrops = cropResult.answerAreaCrops;
       const fullCrops = cropResult.fullCrops;
       fullCropsForSubjective = fullCrops;
@@ -293,8 +362,16 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
       const missingProblems = pageItems
         .filter(it => !passBResult.marks.some(m => String(m.problem_number) === String(it.problem_number)))
         .map(it => String(it.problem_number));
-      // correct_answer가 비어있는 mark 존재 여부
-      const hasMissingCorrect = passBResult.marks.some(m => m.correct_answer == null || String(m.correct_answer).trim() === '');
+      // correct_answer가 비어있는 mark 존재 여부 — 비-서술형(객관식류)만 대상.
+      // 서술형 correct는 자유텍스트라 크롭 추론(주경로)에서 null이 자주 남는데, 그 결손까지
+      // fallback을 트리거하면 거의 매 페이지 전체이미지 호출이 상시 발생한다(비용). 서술형 correct의
+      // fallback 보충을 포기해도 손실은 abstain(null)일 뿐 confident-wrong이 아니라 안전하다(정밀도 우선).
+      // 객관식 결손·통째 누락이 있으면 fallback은 여전히 발동하고 그때 서술형 correct도 함께 보충된다.
+      const hasMissingCorrect = passBResult.marks.some(m => {
+        const ctx = questionContextMap.get(String(m.problem_number));
+        if (ctx?.isSubjective) return false;
+        return m.correct_answer == null || String(m.correct_answer).trim() === '';
+      });
 
       // 전체 이미지 fallback은 (1) 통째 누락 문항 복구, (2) correct_answer 결손 보충 용도.
       // user_answer는 일부러 덮어쓰지 않는다: 고해상도 크롭(answerArea + fullCrop 재독해)이
@@ -379,7 +456,7 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
     item.user_marked_correctness = null;
     item.correct_answer = null;
   }
-  mergeHandwritingMarks(pageItems, passBResult.marks, sessionId);
+  mergeHandwritingMarks(pageItems, passBResult.marks, sessionId, questionContextMap);
 
   // Subjective questions: full-image based user_answer detection (overrides crop-based results)
   const subjectiveProblems = [];

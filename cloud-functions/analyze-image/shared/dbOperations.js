@@ -11,7 +11,7 @@
  */
 
 import { StageError } from './errors.js';
-import { cleanOrNull, makeDepthKey } from './taxonomy.js';
+import { cleanOrNull, makeDepthKey, fuzzyMatchTaxonomy, canonicalDepth1 } from './taxonomy.js';
 
 // ─── O/X 마크 정규화 ────────────────────────────────────────
 // 원본: validation.ts#normalizeMark
@@ -118,6 +118,59 @@ function mapWordToChoiceNumber(rawAnswer, choices) {
   return null;
 }
 
+// ─── 복수답안(Bug B)·단어↔숫자 불일치(Bug D) 감지 헬퍼 ────────────
+
+/**
+ * "정답 N개 / 모두 고르면 / 단, N개" 지시문 또는 정답이 (1)…(2)… 번호매김인지 감지.
+ * 복수답안은 단일 숫자/텍스트 비교로 채점 불가 → computeIsCorrect가 집합비교 또는 기권으로 분기.
+ * false-positive는 기권(null)으로 이어질 뿐이라 confident-wrong보다 안전(precision-first).
+ */
+function detectMultiAnswer(instruction, correctAns) {
+  const inst = String(instruction || '');
+  if (/모두\s*고르/.test(inst)) return true;                 // "모두 고르면/고르시오"
+  if (/정답[^0-9]{0,3}[2-9]\s*개/.test(inst)) return true;    // "정답 2개", "정답이 2개"
+  if (/단[,\s]*[2-9]\s*개/.test(inst)) return true;           // "단, 2개"
+  if (/[2-9]\s*개[^.]{0,8}(고르|모두)/.test(inst)) return true; // "2개 고르시오"
+  // 정답 문자열이 (1)…(2)… 번호매김(서술형 다빈칸) → 단일 사용자답과 무조건 불일치하던 케이스
+  if (/\(\s*[1-9]\s*\)[\s\S]*\(\s*[1-9]\s*\)/.test(String(correctAns || ''))) return true;
+  return false;
+}
+
+/** 문자열에서 선택지 번호(원문자 ①~⑨ 및 1~9 숫자)만 정수 집합으로 추출. */
+function extractOptionDigits(s) {
+  const str = String(s || '');
+  const set = new Set();
+  const circled = '①②③④⑤⑥⑦⑧⑨';
+  for (const ch of str) {
+    const ci = circled.indexOf(ch);
+    if (ci !== -1) set.add(ci + 1);
+  }
+  for (const m of str.matchAll(/\d+/g)) {
+    const n = parseInt(m[0], 10);
+    if (n >= 1 && n <= 9) set.add(n);
+  }
+  return set;
+}
+
+/** 두 정수 집합의 완전 일치 여부(부분점수 없음). */
+function eqSet(a, b) {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+/**
+ * choices 없는 빈칸에서 한쪽=순수 숫자, 다른쪽=알파벳/한글 단어인 단위 불일치(Bug D) 감지.
+ * 어형선택(who/which 등)이 객관식으로 오분류돼 정답이 숫자로 날조된 경우 → 오답 단정 대신 기권.
+ */
+function isDigitWordMismatch(userAns, correctAns) {
+  const u = String(userAns || '').trim();
+  const c = String(correctAns || '').trim();
+  const isDigit = (x) => /^\d+$/.test(x);
+  const isWord = (x) => /[a-zA-Z가-힣]/.test(x) && !/^\d+$/.test(x);
+  return (isDigit(u) && isWord(c)) || (isDigit(c) && isWord(u));
+}
+
 // ─── is_correct 판정 (prod 채점 단일 진실원) ──────────────────
 
 /**
@@ -127,10 +180,11 @@ function mapWordToChoiceNumber(rawAnswer, choices) {
  *   - 객관식(choices 있음): parseAnswerNumber + 단어→번호 fallback(mapWordToChoiceNumber) 후 숫자 비교.
  *   - 서술형(choices 없음) 또는 번호 파싱 불가: normalizeAnswerText 후 정확 일치.
  * 부분점수 없음(정확 일치만 정답).
- * @param {{user_marked_correctness?, user_answer?, correct_answer?, choices?}} item
+ * 복수답안(Bug B)·어형선택 단위불일치(Bug D)는 오답 단정 대신 기권(null) — instruction으로 감지.
+ * @param {{user_marked_correctness?, user_answer?, correct_answer?, choices?, instruction?}} item
  * @returns {boolean|null} true=정답, false=오답, null=판정보류(미채점)
  */
-export function computeIsCorrect({ user_marked_correctness, user_answer, correct_answer, choices } = {}) {
+export function computeIsCorrect({ user_marked_correctness, user_answer, correct_answer, choices, instruction } = {}) {
   let isCorrect = null;
 
   // 1차: 시험지의 O/X 채점 마크
@@ -150,6 +204,16 @@ export function computeIsCorrect({ user_marked_correctness, user_answer, correct
     const isObjective = choiceArr.length > 0;
 
     if (userAns && correctAns) {
+      // Bug B(복수답안): "모두 고르면 / 정답 N개" 또는 정답이 (1)…(2)… 번호매김이면 단일 비교로 채점 불가.
+      // 객관식 정답 집합이 온전히 추출된 경우만 완전일치로 채점, 아니면 기권(null) — 단일값만 저장된
+      // 현 상태에서 오답 단정(confident-wrong) 방지. (집합/빈칸별 완전 추출은 Stage 2 프롬프트 개선 몫)
+      if (detectMultiAnswer(instruction, correctAns)) {
+        const cd = extractOptionDigits(correctAns);
+        const ud = extractOptionDigits(userAns);
+        isCorrect = (isObjective && cd.size >= 2 && ud.size >= cd.size) ? eqSet(ud, cd) : null;
+        return isCorrect;
+      }
+
       let userNum = parseAnswerNumber(userAns);
       let correctNum = parseAnswerNumber(correctAns);
 
@@ -167,11 +231,22 @@ export function computeIsCorrect({ user_marked_correctness, user_answer, correct
 
       if (userNum !== null && correctNum !== null) {
         isCorrect = userNum === correctNum;
+      } else if (!isObjective && isDigitWordMismatch(userAns, correctAns)) {
+        // Bug D(어형선택): choices 없는 빈칸에 한쪽=단어·한쪽=날조 숫자(단위 불일치) → 오답 단정 대신 기권.
+        isCorrect = null;
       } else {
         // 서술형 등: 구두점/공백/대소문자 정규화 후 정확 일치. 정규화 후 빈 문자열이면 비교 안 함.
         const nu = normalizeAnswerText(userAns);
         const nc = normalizeAnswerText(correctAns);
-        isCorrect = nu !== '' && nu === nc;
+        if (nu !== '' && nu === nc) {
+          isCorrect = true;
+        } else {
+          // Bug A: 공백만 다른 경우(특히 한글 띄어쓰기 "학교 미술 대회" vs "학교미술대회")도 정답 인정.
+          // 문자 순서는 보존되므로 순수 공백 변형만 동치가 됨(어포스트로피/하이픈 구분은 normalizeAnswerText가 유지 → can't≠cant).
+          const su = nu.replace(/\s+/g, '');
+          const sc = nc.replace(/\s+/g, '');
+          isCorrect = su !== '' && su === sc;
+        }
       }
     }
   }
@@ -426,6 +501,7 @@ export async function saveLabels(supabase, sessionId, savedProblems, validatedIt
       user_answer: it.user_answer,
       correct_answer: it.correct_answer,
       choices: it.choices,
+      instruction: it.instruction,
     });
 
     // ─── taxonomy 보강 ───
@@ -455,16 +531,9 @@ export async function saveLabels(supabase, sessionId, savedProblems, validatedIt
       taxonomyCode = mapped?.code ?? null;
       taxonomyCefr = mapped?.cefr ?? null;
       taxonomyDifficulty = mapped?.difficulty ?? null;
-      if (!taxonomyCode) {
-        console.warn(`[dbOperations:saveLabels] Taxonomy mapping 실패: ${depth1}/${depth2}/${depth3}/${depth4}`);
-        depth1 = depth2 = depth3 = depth4 = null;
-      }
-    } else if (hasAnyDepth) {
-      console.warn(`[dbOperations:saveLabels] 부분 depth 제공, 전체 null 처리: ${depth1}/${depth2}/${depth3}/${depth4}`);
-      depth1 = depth2 = depth3 = depth4 = null;
     }
 
-    // 2) depth가 없고 code만 있으면 → code로 depth 역방향 복원
+    // 2) depth 완전일치 실패 & code만 있으면 → code로 depth 역방향 복원
     if (!taxonomyCode && rawCode) {
       const mapped = taxonomyByCode.get(rawCode);
       if (mapped) {
@@ -477,6 +546,34 @@ export async function saveLabels(supabase, sessionId, savedProblems, validatedIt
         depth4 = mapped.depth4 ?? null;
       } else {
         console.warn(`[dbOperations:saveLabels] 유효하지 않은 taxonomy code: "${rawCode}"`);
+      }
+    }
+
+    // 3) depth/code 정식매핑 모두 실패 + depth 일부라도 제공 → 부분매칭 fallback
+    //    AI가 경로를 미세하게 어긋나게 생성(백틱/공백 오타, depth 누락 축약)해도 구제한다.
+    //    정확도 우선: 유일 수렴만 채택, 모호하면 대분류만 유지하거나 미분류.
+    if (!taxonomyCode && hasAnyDepth) {
+      const fuzzy = fuzzyMatchTaxonomy([rawDepth1, rawDepth2, rawDepth3, rawDepth4], taxonomyByCode);
+      if (fuzzy) {
+        depth1 = fuzzy.depth1 ?? null;
+        depth2 = fuzzy.depth2 ?? null;
+        depth3 = fuzzy.depth3 ?? null;
+        depth4 = fuzzy.depth4 ?? null;
+        taxonomyCode = fuzzy.code ?? null;
+        taxonomyCefr = fuzzy.cefr ?? null;
+        taxonomyDifficulty = fuzzy.difficulty ?? null;
+        console.log(`[dbOperations:saveLabels] Taxonomy 부분매칭 복원: ${rawDepth1}/${rawDepth2}/${rawDepth3}/${rawDepth4} → ${taxonomyCode}`);
+      } else {
+        // 유일 수렴 실패 → 최소 대분류(depth1)라도 정식이면 유지("어떻게든 분류"), 아니면 전체 null
+        const canon1 = canonicalDepth1(rawDepth1, taxonomyByCode);
+        if (canon1) {
+          depth1 = canon1;
+          depth2 = depth3 = depth4 = null;
+          console.log(`[dbOperations:saveLabels] Taxonomy 대분류만 확정: ${rawDepth1} → ${canon1}`);
+        } else {
+          console.warn(`[dbOperations:saveLabels] Taxonomy mapping 완전 실패: ${rawDepth1}/${rawDepth2}/${rawDepth3}/${rawDepth4}`);
+          depth1 = depth2 = depth3 = depth4 = null;
+        }
       }
     }
 

@@ -128,6 +128,13 @@
         { "problem_number": "39", "type": "text", "user_answer": { "value": "Didn't your mother teach English?" }, "correct_answer": { "value": "Didn't your mother teach English?" }, "expected_is_correct": true },
         { "problem_number": "40", "type": "text", "user_answer": { "value": "they do" }, "correct_answer": { "value": "they do" }, "expected_is_correct": true }
       ]
+    },
+    {
+      "image": "user_exam_bug3/page_q25.jpg",
+      "page_label": "사용자 시험지 NE능률(김기택) 1과 중2 p4 (Q22~27) — Bug3 25번 confident-wrong 재현",
+      "questions": [
+        { "problem_number": "25", "type": "mc", "user_answer": { "value": "4" }, "correct_answer": { "value": "4" }, "expected_is_correct": true }
+      ]
     }
   ]
 }

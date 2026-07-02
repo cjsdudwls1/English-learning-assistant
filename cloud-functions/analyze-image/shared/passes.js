@@ -22,7 +22,7 @@ import {
 // 원문자(①②③④⑤…) → ASCII 숫자 정규화 백스톱.
 // 프롬프트로 ASCII 출력을 지시해도 모델이 간헐적으로 원문자를 반환하므로 코드 레벨에서 강제 변환한다.
 const CIRCLED_TO_ASCII = { '①': '1', '②': '2', '③': '3', '④': '4', '⑤': '5', '⑥': '6', '⑦': '7', '⑧': '8', '⑨': '9', '⑩': '10' };
-function normalizeChoiceValue(v) {
+export function normalizeChoiceValue(v) {
   if (v == null) return v;
   let s = String(v);
   for (const [glyph, digit] of Object.entries(CIRCLED_TO_ASCII)) {
@@ -46,7 +46,7 @@ function normalizeForMatch(s) {
  *   (실측 12번: correct_answer가 선택지 문구 "him"으로 추출돼 정답을 오답 처리).
  *   null이면 상위 재독해/폴백이 다시 시도하므로 confident-wrong보다 안전(정밀도 우선).
  */
-function sanitizeMcAnswer(value, isSubjective, choices) {
+export function sanitizeMcAnswer(value, isSubjective, choices) {
   if (value == null) return null;
   if (isSubjective) return value;
   const s = String(value).trim();
@@ -54,8 +54,14 @@ function sanitizeMcAnswer(value, isSubjective, choices) {
   if (/^[0-9]$/.test(s)) return /^[1-5]$/.test(s) ? s : null;
   // 숫자가 아닌 텍스트 답: 선택지와 대조해 번호로 환원 시도.
   const list = Array.isArray(choices) ? choices : [];
+  // 선택지 부재 → 객관식 형식 강제 불가(환원 대상 없음). isSubjective=false로 잘못 분류된
+  // 서술형 문항(실측 20250420 Q7 정답 "Are"·Q9 문장형)의 자유텍스트 답을 null로 파괴하지
+  // 않도록 원값을 보존한다. 진짜 객관식은 항상 선택지를 보유하므로 오염 차단(실측 12번류
+  // correct="him")은 그대로 유지된다. 이 게이트가 detectFromCrops(크롭 주경로)와
+  // mergeHandwritingMarks(병합 백스톱) 양 호출처를 일괄 보호하는 단일 지점이다.
+  if (list.length === 0) return value;
   const target = normalizeForMatch(s);
-  if (list.length > 0 && target) {
+  if (target) {
     const idx = list.findIndex((c) => {
       const t = typeof c === 'string' ? c : (c?.text || c?.label || '');
       return normalizeForMatch(t) === target;
@@ -92,12 +98,14 @@ async function runWithModelFallback({ models, callFn }) {
 export async function executePassA({ ai, sessionId, imageBase64, mimeType, pageNum, totalPages, taxonomyData, preferredModel }) {
   // Document AI Pre-OCR: 환경변수가 설정된 경우에만 실행
   let ocrPages = [];
+  // 선택지 원문자(①②③④⑤) 위치 심볼(0~1000). processPage에서 answer_area_bbox 결정화에 사용.
+  let ocrSymbols = [];
 
   if (config.DOCUMENT_AI_ENABLED) {
     try {
       console.log(`[PreOCR] Document AI Pre-OCR 시작 (Session: ${sessionId}, Page: ${pageNum}/${totalPages})`);
       const docAiResult = await callDocumentAI(imageBase64, mimeType);
-      
+
       // Document AI 반환값 {text, pages}를 buildPrompt가 요구하는 형식으로 변환
       // buildPrompt의 ocrPages: Array<{page: number, text: string}>
       if (docAiResult.text && docAiResult.text.trim().length > 0) {
@@ -106,9 +114,13 @@ export async function executePassA({ ai, sessionId, imageBase64, mimeType, pageN
       } else {
         console.warn(`[PreOCR] Document AI가 텍스트를 반환하지 않음, Gemini 직접 OCR로 fallback`);
       }
+      if (Array.isArray(docAiResult.symbols)) {
+        ocrSymbols = docAiResult.symbols;
+      }
     } catch (error) {
       console.error(`[PreOCR] Document AI 호출 실패, Gemini 직접 OCR로 fallback:`, error?.message);
       ocrPages = [];
+      ocrSymbols = [];
     }
   }
 
@@ -119,7 +131,9 @@ export async function executePassA({ ai, sessionId, imageBase64, mimeType, pageN
     { text: `Page ${pageNum} of ${totalPages}. Extract all printed text and structure from this exam page image.` },
     { inlineData: { data: imageBase64, mimeType } },
   ];
-  return await callModelWithFailover({ ai, sessionId, parts, preferredModel });
+  const result = await callModelWithFailover({ ai, sessionId, parts, preferredModel });
+  // 원문자 심볼을 상위(processPage)로 전달해 answer_area_bbox를 결정적으로 산출하게 한다.
+  return { ...result, ocrSymbols };
 }
 
 /**

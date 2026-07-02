@@ -113,3 +113,64 @@ export async function buildTaxonomyLookupMaps(supabase, userLanguage, sessionId)
 
   return { taxonomyByDepthKey, taxonomyByCode };
 }
+
+// ─── 부분매칭 fallback (AI 분류 미세오차 구제) ───────────────
+// AI가 taxonomy 경로를 미세하게 어긋나게 생성(백틱/공백 오타, depth 누락 축약 등)하면
+// depth 완전일치·code 매핑이 모두 실패해 classification이 전부 null(미분류)이 되던 문제를 구제.
+// 정확도 우선: "유일 수렴"할 때만 채택하고, 모호하면 기권(null)한다.
+
+/**
+ * depth 값 정규화: 백틱 제거 + 공백 축약 + trim + 소문자.
+ * DB의 백틱 오타(`-ly 등)나 AI의 공백/대소문자 편차를 흡수한다.
+ */
+function normDepth(v) {
+  return (v == null ? '' : String(v)).replace(/`/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * 완전일치·code 매핑 실패한 depth 배열을 taxonomy 전체 행에 부분매칭으로 구제한다.
+ * - 제공된 non-null depth 값들(정규화, 중복제거)이 어떤 taxonomy 행의 depth 값 집합의
+ *   부분집합(순서무관)이고, 그런 행이 "유일"할 때만 그 행을 반환.
+ * - 복수 후보면 null(기권) → confident-wrong 회피.
+ * - 최소 2개 이상의 depth 값이 있어야 시도(1개는 대분류 공유로 모호).
+ *
+ * 실측 구제 케이스:
+ *  - 백틱 오타: depth4 "-ly 등" vs DB "`-ly 등" → 정규화로 일치 (WF.ADJADV)
+ *  - depth 축약: [어휘·연결, 콜로케이션/숙어, 관용표현] (depth2 "어휘관습" 누락) → 유일 수렴 (COLL.IDM)
+ *
+ * @param {Array<string|null>} depths - [depth1, depth2, depth3, depth4]
+ * @param {Map} taxonomyByCode - code → { depth1~4, code, cefr, difficulty }
+ * @returns {object|null} 매칭 행 또는 null
+ */
+export function fuzzyMatchTaxonomy(depths, taxonomyByCode) {
+  const provided = (depths || []).map(normDepth).filter(Boolean);
+  const provSet = [...new Set(provided)];
+  if (provSet.length < 2) return null;
+
+  let match = null;
+  for (const row of taxonomyByCode.values()) {
+    const rowVals = [row.depth1, row.depth2, row.depth3, row.depth4].map(normDepth);
+    const allIn = provSet.every(pv => rowVals.includes(pv));
+    if (allIn) {
+      if (match) return null; // 복수 후보 → 기권
+      match = row;
+    }
+  }
+  return match;
+}
+
+/**
+ * depth1만이라도 정식 taxonomy 대분류로 확정한다(정규화 매칭).
+ * fuzzy 유일매칭이 실패해도 최소 대분류 버킷은 부여해 미분류를 탈출시킨다.
+ * code/cefr/난이도는 채우지 않으므로(대분류만) 세부 통계 오염이 없다.
+ *
+ * @returns {string|null} 정식 depth1 표기 또는 null
+ */
+export function canonicalDepth1(rawDepth1, taxonomyByCode) {
+  const target = normDepth(rawDepth1);
+  if (!target) return null;
+  for (const row of taxonomyByCode.values()) {
+    if (normDepth(row.depth1) === target) return row.depth1;
+  }
+  return null;
+}

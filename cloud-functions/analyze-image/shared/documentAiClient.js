@@ -78,12 +78,47 @@ async function getAccessToken(serviceAccountJson) {
   return data.access_token;
 }
 
+// 선택지 원문자(circled numbers). ⑥~⑩까지 포함(일부 시험 6지선다 대비).
+const CIRCLED_NUMBERS = '①②③④⑤⑥⑦⑧⑨⑩';
+
+/**
+ * Document AI 토큰에서 선택지 원문자(①②③④⑤) 심볼의 위치를 추출한다.
+ * - 좌표는 0~1000 정규화(프롬프트/bbox 스케일과 동일) → 그대로 bbox 계산에 사용 가능.
+ * - 학생이 원문자 위에 손그림 마크(동그라미)를 쳐서 그 원문자 글리프가 OCR에서 누락될 수
+ *   있으나(실측 Q25 ④), 나머지 원문자들의 bounding으로 answer_area는 충분히 결정된다.
+ * @returns {Array<{char, x1, y1, x2, y2}>} 원문자 심볼 목록(0~1000 스케일)
+ */
+function extractCircledSymbols(pages, fullText) {
+  const symbols = [];
+  for (const page of pages || []) {
+    for (const tok of (page.tokens || [])) {
+      const seg = tok.layout?.textAnchor?.textSegments?.[0];
+      if (!seg) continue;
+      const start = Number(seg.startIndex || 0);
+      const end = Number(seg.endIndex || 0);
+      const txt = fullText.substring(start, end);
+      const ch = [...txt].find((c) => CIRCLED_NUMBERS.includes(c));
+      if (!ch) continue;
+      const verts = tok.layout?.boundingPoly?.normalizedVertices || [];
+      if (verts.length < 2) continue;
+      const xs = verts.map((p) => (p.x || 0) * 1000);
+      const ys = verts.map((p) => (p.y || 0) * 1000);
+      symbols.push({
+        char: ch,
+        x1: Math.min(...xs), y1: Math.min(...ys),
+        x2: Math.max(...xs), y2: Math.max(...ys),
+      });
+    }
+  }
+  return symbols;
+}
+
 /**
  * Document AI 프로세서를 호출하여 이미지에서 텍스트 및 페이지 정보를 추출합니다.
  * @param {string} imageBase64 - Base64 인코딩된 이미지 문자열 (접두사 제외)
  * @param {string} mimeType - 이미지의 MIME 타입 (예: 'image/jpeg')
  * @param {Object} options - 추가 옵션
- * @returns {Promise<{text: string, pages: Array}>} 추출된 텍스트와 페이지 정보
+ * @returns {Promise<{text: string, pages: Array, symbols: Array}>} 추출된 텍스트/페이지/원문자 심볼
  */
 export async function callDocumentAI(imageBase64, mimeType, options = {}) {
   try {
@@ -122,10 +157,14 @@ export async function callDocumentAI(imageBase64, mimeType, options = {}) {
         mimeType: mimeType,
         content: imageBase64
       },
-      fieldMask: 'text,pages.blocks,pages.paragraphs,pages.lines,pages.pageNumber,pages.dimension',
+      // pages.tokens 추가: 선택지 원문자(①②③④⑤)의 결정적 위치를 얻어 answer_area_bbox를
+      // Pass 0(비결정적 LLM) 대신 결정적으로 산출하기 위함. 동일 process 호출이라 추가 비용 없음.
+      fieldMask: 'text,pages.blocks,pages.paragraphs,pages.lines,pages.tokens,pages.pageNumber,pages.dimension',
       processOptions: {
         ocrConfig: {
-          enableImageQualityScores: true,
+          // NOTE: enableImageQualityScores 제거 — 산출물(품질점수)을 코드에서 소비하지 않고
+          // fieldMask에도 미포함이라 반환조차 안 됨. add-on 과금($6/1000p)만 발생하던 순수 낭비.
+          // 저화질 재촬영 유도 등 실제 소비 기능을 붙일 때 fieldMask와 함께 되살릴 것.
           hints: {
             languageHints: ['ko', 'en']
           }
@@ -153,11 +192,13 @@ export async function callDocumentAI(imageBase64, mimeType, options = {}) {
     const pages = data.document?.pages || [];
     const blockCount = pages.reduce((sum, p) => sum + (p.blocks?.length || 0), 0);
     const lineCount = pages.reduce((sum, p) => sum + (p.lines?.length || 0), 0);
-    console.log(`[DocumentAI] 호출 완료: ${fullText.length}자, ${pages.length}페이지, ${blockCount}블록, ${lineCount}라인`);
-    
+    const symbols = extractCircledSymbols(pages, fullText);
+    console.log(`[DocumentAI] 호출 완료: ${fullText.length}자, ${pages.length}페이지, ${blockCount}블록, ${lineCount}라인, ${symbols.length}원문자`);
+
     return {
       text: fullText,
-      pages: pages
+      pages: pages,
+      symbols: symbols
     };
   } catch (error) {
     console.error(`[DocumentAI] 에러 발생: ${error.message}`);
