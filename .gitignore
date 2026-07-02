@@ -37,6 +37,9 @@ env.txt
 # OMC (외부 도구 상태 — 커밋 제외)
 .omc/
 
+# Supabase CLI 임시 상태 (커밋 제외)
+**/supabase/.temp/
+
 # 부하테스트 산출물 / 로그 덤프 (커밋 제외)
 cloud-functions/analyze-image/load-test-results-*.json
 cloud-functions/analyze-image/gcf-logs-*.txt
