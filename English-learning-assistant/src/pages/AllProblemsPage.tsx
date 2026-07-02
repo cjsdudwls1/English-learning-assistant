@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { getCurrentUserId } from '../services/db';
 import { deleteProblems } from '../services/db/problems';
+import { fetchGeneratedSolvedRowsForUser } from '../services/stats';
 import { useLanguage } from '../contexts/LanguageContext';
 import { resolveImageUrls } from '../utils/imageUrl';
 import type { QuestionType } from '../types';
@@ -37,6 +38,8 @@ export const AllProblemsPage: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  // 과제 응답 + 완료된 생성문제 풀이 집계 — 통계 화면 총계와 수치 기준을 맞추기 위함
+  const [genStats, setGenStats] = useState<{ total: number; correct: number; incorrect: number }>({ total: 0, correct: 0, incorrect: 0 });
 
   // 선택 및 삭제 관련 상태
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -53,6 +56,18 @@ export const AllProblemsPage: React.FC = () => {
       setError(null);
       const userId = await getCurrentUserId();
 
+      // 과제·생성 풀이 집계(전체 기간) — 통계 화면과 동일 헬퍼·동일 규칙 사용
+      const genPromise = fetchGeneratedSolvedRowsForUser(userId)
+        .then((genRows) => {
+          let correct = 0;
+          for (const r of genRows) if (r.is_correct) correct++; // 통계와 동일: truthy=정답, 그 외 오답
+          return { total: genRows.length, correct, incorrect: genRows.length - correct };
+        })
+        .catch((e) => {
+          console.warn('[AllProblems] 과제·생성 풀이 집계 실패 — 요약 카드에 등록 문제만 반영:', e);
+          return { total: 0, correct: 0, incorrect: 0 };
+        });
+
       // 1) sessions(user_id) — 최신순으로 미리 가져오고 매핑
       const { data: sessions, error: sErr } = await supabase
         .from('sessions')
@@ -64,6 +79,7 @@ export const AllProblemsPage: React.FC = () => {
       if (!sessions || sessions.length === 0) {
         setProblems([]);
         setHasMore(false);
+        setGenStats(await genPromise);
         return;
       }
       const sessionMap = new Map<string, { id: string; created_at: string; image_urls: string[] }>();
@@ -114,6 +130,7 @@ export const AllProblemsPage: React.FC = () => {
 
       setProblems(rows);
       setHasMore(rows.length >= 500);
+      setGenStats(await genPromise);
     } catch (err) {
       console.error('Failed to load all problems:', err);
       setError(language === 'ko' ? '문제를 불러오는 중 오류가 발생했습니다.' : 'Failed to load problems.');
@@ -156,6 +173,11 @@ export const AllProblemsPage: React.FC = () => {
   const correctCount = problems.filter(p => p.is_correct === true).length;
   const incorrectCount = problems.filter(p => p.is_correct === false).length;
   const unmarkedCount = problems.filter(p => p.is_correct === null).length;
+
+  // 통계 화면 총계와 맞춘 합산 수치 (등록 문제 + 과제·생성 풀이)
+  const combinedTotal = problems.length + genStats.total;
+  const combinedCorrect = correctCount + genStats.correct;
+  const combinedIncorrect = incorrectCount + genStats.incorrect;
 
   // 현재 표시된 항목 기준 전체 선택 여부
   const allPagedSelected = paged.length > 0 && paged.every(p => selectedIds.has(p.id));
@@ -225,30 +247,43 @@ export const AllProblemsPage: React.FC = () => {
           {language === 'ko' ? '등록 문제 일람' : 'All Problems'}
         </h1>
         <p className="text-slate-600 dark:text-slate-400">
-          {language === 'ko'
-            ? `총 ${problems.length}개의 문제가 등록되어 있습니다.`
-            : `${problems.length} problems registered in total.`}
+          {genStats.total > 0
+            ? (language === 'ko'
+                ? `총 ${combinedTotal}개 — 등록 문제 ${problems.length} + 과제·생성 풀이 ${genStats.total} (통계 화면과 동일 기준)`
+                : `${combinedTotal} in total — ${problems.length} registered + ${genStats.total} assignment/generated solves (same basis as Stats).`)
+            : (language === 'ko'
+                ? `총 ${problems.length}개의 문제가 등록되어 있습니다.`
+                : `${problems.length} problems registered in total.`)}
         </p>
       </div>
 
-      {/* 통계 요약 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700 text-center">
-          <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{problems.length}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '전체' : 'Total'}</p>
+      {/* 통계 요약 — 전체/정답/오답은 과제·생성 풀이 포함(통계 화면과 동일 기준) */}
+      <div className="mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700 text-center">
+            <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{combinedTotal}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '전체' : 'Total'}</p>
+          </div>
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-blue-200 dark:border-blue-800 text-center">
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{combinedCorrect}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '정답' : 'Correct'}</p>
+          </div>
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-red-200 dark:border-red-800 text-center">
+            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{combinedIncorrect}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '오답' : 'Incorrect'}</p>
+          </div>
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700 text-center">
+            <p className="text-2xl font-bold text-slate-500 dark:text-slate-400">{unmarkedCount}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '미채점' : 'Unmarked'}</p>
+          </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-blue-200 dark:border-blue-800 text-center">
-          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{correctCount}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '정답' : 'Correct'}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-red-200 dark:border-red-800 text-center">
-          <p className="text-2xl font-bold text-red-600 dark:text-red-400">{incorrectCount}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '오답' : 'Incorrect'}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700 text-center">
-          <p className="text-2xl font-bold text-slate-500 dark:text-slate-400">{unmarkedCount}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '미채점' : 'Unmarked'}</p>
-        </div>
+        {genStats.total > 0 && (
+          <p className="mt-2 text-xs text-slate-400 dark:text-slate-500 break-words">
+            {language === 'ko'
+              ? `전체·정답·오답에는 과제·생성 풀이 ${genStats.total}건이 포함됩니다. 아래 목록은 이미지로 등록한 문제만 표시합니다.`
+              : `Total/Correct/Incorrect include ${genStats.total} assignment & generated solves. The list below shows registered problems only.`}
+          </p>
+        )}
       </div>
 
       {/* 검색 + 필터 */}

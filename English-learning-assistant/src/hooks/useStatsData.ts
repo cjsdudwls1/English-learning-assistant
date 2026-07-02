@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode } from '../services/stats';
+import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode, StatsComposition } from '../services/stats';
 import { fetchAnalyzingSessions, fetchPendingLabelingSessions, fetchFailedSessions } from '../services/db';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
@@ -31,6 +31,7 @@ interface UseStatsDataParams {
 
 interface UseStatsDataReturn {
   rows: TypeStatsRow[];
+  composition: StatsComposition;
   hierarchicalData: StatsNode[];
   loading: boolean;
   error: string | null;
@@ -45,6 +46,7 @@ interface UseStatsDataReturn {
 
 export function useStatsData({ startDate, endDate, language }: UseStatsDataParams): UseStatsDataReturn {
   const [rows, setRows] = useState<TypeStatsRow[]>([]);
+  const [composition, setComposition] = useState<StatsComposition>({ labelMarked: 0, genSolved: 0 });
   const [hierarchicalData, setHierarchicalData] = useState<StatsNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,14 +61,15 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
       if (showLoading) {
         setLoading(true);
       }
-      const [statsData, hierarchicalStatsData, analyzing, pendingSessions, failed] = await Promise.all([
+      const [statsResult, hierarchicalStatsData, analyzing, pendingSessions, failed] = await Promise.all([
         fetchStatsByType(startDate || undefined, endDate || undefined, language),
         fetchHierarchicalStats(startDate || undefined, endDate || undefined, language),
         fetchAnalyzingSessions(),
         fetchPendingLabelingSessions(),
         fetchFailedSessions(),
       ]);
-      setRows(statsData);
+      setRows(statsResult.rows);
+      setComposition(statsResult.composition);
       setHierarchicalData(hierarchicalStatsData);
 
       // AnalyzingCard에 표시된 세션 ID 수집
@@ -125,6 +128,7 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
 
   return {
     rows,
+    composition,
     hierarchicalData,
     loading,
     error,

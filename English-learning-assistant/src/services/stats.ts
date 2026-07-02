@@ -255,6 +255,17 @@ export interface TypeStatsRow {
   total_count: number;
 }
 
+// 통계 총계(total)의 출처별 구성 — "문제관리" 등록 수와의 차이를 투명하게 설명하기 위함.
+export interface StatsComposition {
+  labelMarked: number; // 채점 완료된 이미지 분석 문항(labels, user_mark != null). 미채점은 제외됨
+  genSolved: number;   // 과제 응답 + 완료된 생성문제 풀이
+}
+
+export interface StatsByTypeResult {
+  rows: TypeStatsRow[];
+  composition: StatsComposition;
+}
+
 export interface StatsNode {
   depth1: string;
   depth2?: string;
@@ -267,11 +278,13 @@ export interface StatsNode {
   sessionIds?: string[]; // 해당 카테고리의 세션 ID들
 }
 
-export async function fetchStatsByType(startDate?: Date, endDate?: Date, language: 'ko' | 'en' = 'ko'): Promise<TypeStatsRow[]> {
+export async function fetchStatsByType(startDate?: Date, endDate?: Date, language: 'ko' | 'en' = 'ko'): Promise<StatsByTypeResult> {
   const userId = await getCurrentUserId();
 
   const maps = await buildTaxonomyMaps();
   const statsMap = new Map<string, TypeStatsRow>();
+  let labelMarked = 0; // 채점 완료된 이미지 문항 수
+  let genSolved = 0;   // 과제 응답 + 완료된 생성문제 풀이 수
 
   // 단일 분류행을 유형별 맵에 누적 (depth 없으면 "미분류" 버킷으로 key='___')
   const accumulate = (classification: Record<string, unknown>, isCorrect: boolean | null) => {
@@ -303,6 +316,7 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date, languag
       for (const row of labels) {
         if (row.user_mark === null || row.user_mark === undefined) continue;
         accumulate(row.classification || {}, row.is_correct);
+        labelMarked++;
       }
     }
   }
@@ -311,9 +325,10 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date, languag
   const genRows = await fetchGeneratedSolvedRowsForUser(userId, startDate, endDate);
   for (const row of genRows) {
     accumulate(row.classification || {}, row.is_correct);
+    genSolved++;
   }
 
-  return Array.from(statsMap.values());
+  return { rows: Array.from(statsMap.values()), composition: { labelMarked, genSolved } };
 }
 
 // 계층 구조 통계 집계 (모든 depth 레벨)
