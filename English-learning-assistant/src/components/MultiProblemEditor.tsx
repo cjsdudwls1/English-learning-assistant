@@ -6,11 +6,23 @@ import { supabase } from '../services/supabaseClient';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
+import { getManualReviewReason } from '../utils/gradingSafety';
 
 /** 사용자 답안과 정답을 비교하여 자동 판정 */
+/**
+ * 채점 비교용 정규화 — 백엔드 computeIsCorrect(dbOperations.js)·QuickLabelingCard와 정합.
+ * 대소문자·구두점(.,?!;:"/)·공백(한글 띄어쓰기 포함) 무시, 어포스트로피(')·하이픈(-)은 보존.
+ */
+function normalizeForCompare(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[.,?!;:"/]/g, '')
+    .replace(/\s+/g, '');
+}
+
 function autoJudge(userAnswer: string, correctAnswer: string): '정답' | '오답' | null {
-  const ua = userAnswer.trim().toLowerCase();
-  const ca = correctAnswer.trim().toLowerCase();
+  const ua = normalizeForCompare(userAnswer);
+  const ca = normalizeForCompare(correctAnswer);
   if (!ua || !ca) return null;
   return ua === ca ? '정답' : '오답';
 }
@@ -180,17 +192,40 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
 
   return (
     <div className="space-y-6">
-      {items.map((it, i) => (
+      {items.map((it, i) => {
+        // 복수답안·형식불일치 감지(편집 중 값 반영) → AI 강조 숨기고 '수동 확인' 안내
+        const reviewReason = getManualReviewReason({
+          instruction: it.instruction,
+          correctAnswer: editableCorrectAnswers[`${i}`] ?? it.correct_answer,
+          userAnswer: editableAnswers[`${i}`] ?? it.사용자가_기술한_정답?.text,
+          hasChoices: (it.문제_보기?.length ?? 0) > 0,
+        });
+        return (
         <div key={i} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 bg-white dark:bg-slate-800">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t.edit.problemNumber.replace('{number}', String(i + 1))}</h3>
+              {reviewReason && (
+                <span
+                  className="mt-1 inline-block text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                  title={language === 'ko'
+                    ? (reviewReason === '복수정답'
+                        ? '정답이 여러 개인 문항입니다. 답안을 구분해 확인 후 직접 채점하세요.'
+                        : '숫자/단어 형식이 맞지 않아 자동 채점을 보류했습니다. 직접 확인하세요.')
+                    : 'Auto-grading withheld — please review manually.'}
+                >
+                  {language === 'ko'
+                    ? (reviewReason === '복수정답' ? '복수 정답 · 수동 확인' : '형식 확인 · 수동 확인')
+                    : (reviewReason === '복수정답' ? 'Multiple answers · review' : 'Check format · review')}
+                </span>
+              )}
             </div>
             {!hideMarking && (
               <div className="flex gap-2">
                 {marks.map(m => {
                   const isUserSelected = it.사용자가_직접_채점한_정오답 === m;
-                  const isAISelected = it.AI가_판단한_정오답 === m;
+                  // 수동 확인 문항은 저장된 AI 판정을 강조하지 않음(confident-wrong 방지)
+                  const isAISelected = !reviewReason && it.AI가_판단한_정오답 === m;
 
                   return (
                     <button
@@ -249,9 +284,10 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
                 onChange={(e) => {
                   const newValue = e.target.value;
                   setEditableAnswers(prev => ({ ...prev, [`${i}`]: newValue }));
-                  // 사용자 답안 변경 시 자동 재판정
+                  // 사용자 답안 변경 시 자동 재판정 (복수답안·형식불일치면 스킵 — 수동 O/X만)
                   const correctAnswer = editableCorrectAnswers[`${i}`] ?? '';
-                  const result = autoJudge(newValue, correctAnswer);
+                  const skip = getManualReviewReason({ instruction: it.instruction, correctAnswer, userAnswer: newValue, hasChoices: (it.문제_보기?.length ?? 0) > 0 }) !== null;
+                  const result = skip ? null : autoJudge(newValue, correctAnswer);
                   if (result !== null) {
                     updateItem(i, { AI가_판단한_정오답: result });
                   }
@@ -270,9 +306,10 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
                 onChange={(e) => {
                   const newValue = e.target.value;
                   setEditableCorrectAnswers(prev => ({ ...prev, [`${i}`]: newValue }));
-                  // 정답 변경 시 자동 재판정
+                  // 정답 변경 시 자동 재판정 (복수답안·형식불일치면 스킵 — 수동 O/X만)
                   const userAnswer = editableAnswers[`${i}`] ?? '';
-                  const result = autoJudge(userAnswer, newValue);
+                  const skip = getManualReviewReason({ instruction: it.instruction, correctAnswer: newValue, userAnswer, hasChoices: (it.문제_보기?.length ?? 0) > 0 }) !== null;
+                  const result = skip ? null : autoJudge(userAnswer, newValue);
                   if (result !== null) {
                     updateItem(i, { AI가_판단한_정오답: result });
                   }
@@ -361,7 +398,8 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       {error && <div className="p-3 bg-red-100 border text-red-800 rounded">{error}</div>}
       {!hideSubmit && (

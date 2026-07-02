@@ -5,6 +5,7 @@ import { fetchSessionProblems, updateProblemLabels, deleteProblems } from '../se
 import type { ProblemItem, QuestionType } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
+import { getManualReviewReason } from '../utils/gradingSafety';
 
 interface QuickLabelingCardProps {
   sessionId: string;
@@ -16,11 +17,23 @@ interface QuickLabelingCardProps {
   onDelete?: (sessionId: string) => void;
 }
 
+/**
+ * 채점 비교용 정규화 — 백엔드 computeIsCorrect(dbOperations.js)의 서술형 정규화와 정합.
+ * 대소문자·구두점(.,?!;:"/)·공백(한글 띄어쓰기 포함) 무시, 어포스트로피(')·하이픈(-)은 보존(can't≠cant).
+ * 기존 autoJudge는 trim+소문자만 해서 "학교 미술" vs "학교미술" 같은 표면차이를 오답 처리 → 정답을 오답으로(confident-wrong) 표시하던 문제.
+ */
+function normalizeForCompare(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[.,?!;:"/]/g, '')
+    .replace(/\s+/g, '');
+}
+
 /** 사용자 답안과 정답을 비교하여 자동 판정 */
 function autoJudge(userAnswer: string, correctAnswer: string): 'O' | 'X' | null {
-  const ua = userAnswer.trim().toLowerCase();
-  const ca = correctAnswer.trim().toLowerCase();
-  if (!ua || !ca) return null; // 둘 중 하나라도 비어있으면 자동 판정 불가
+  const ua = normalizeForCompare(userAnswer);
+  const ca = normalizeForCompare(correctAnswer);
+  if (!ua || !ca) return null; // 둘 중 하나라도 (정규화 후) 비어있으면 자동 판정 불가
   return ua === ca ? 'O' : 'X';
 }
 
@@ -77,11 +90,18 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       const initialCorrectAnswers: Record<string, string> = {};
       data.forEach(p => {
         const mark = p.사용자가_직접_채점한_정오답;
+        // 복수답안·형식불일치는 저장된 구(舊) AI 판정을 신뢰하지 않음 — O/X 시드 안 함(수동 확인 유도)
+        const reviewReason = getManualReviewReason({
+          instruction: p.instruction,
+          correctAnswer: p.correct_answer,
+          userAnswer: p.사용자가_기술한_정답?.text,
+          hasChoices: (p.문제_보기?.length ?? 0) > 0,
+        });
         if (mark === 'O' || mark === 'X') {
-          initialLabels[`${p.index}`] = mark;
-        } else if (p.AI가_판단한_정오답 === '정답') {
+          initialLabels[`${p.index}`] = mark; // 사용자 수동 채점은 항상 우선
+        } else if (!reviewReason && p.AI가_판단한_정오답 === '정답') {
           initialLabels[`${p.index}`] = 'O';
-        } else if (p.AI가_판단한_정오답 === '오답') {
+        } else if (!reviewReason && p.AI가_판단한_정오답 === '오답') {
           initialLabels[`${p.index}`] = 'X';
         }
         initialAnswers[`${p.index}`] = p.사용자가_기술한_정답?.text || '';
@@ -104,10 +124,22 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
     }));
   };
 
+  // 복수답안·형식불일치 문항은 단일값 비교로 채점 불가 → 편집 시 자동판정 스킵(수동 O/X만 허용)
+  const shouldSkipAutoJudge = (index: number, userAnswer: string, correctAnswer: string): boolean => {
+    const problem = problems.find(p => p.index === index);
+    return getManualReviewReason({
+      instruction: problem?.instruction,
+      correctAnswer,
+      userAnswer,
+      hasChoices: (problem?.문제_보기?.length ?? 0) > 0,
+    }) !== null;
+  };
+
   const handleAnswerChange = (index: number, value: string) => {
     setEditableAnswers(prev => ({ ...prev, [`${index}`]: value }));
     // 사용자 답안 변경 시 자동 재판정
     const correctAnswer = editableCorrectAnswers[`${index}`] ?? '';
+    if (shouldSkipAutoJudge(index, value, correctAnswer)) return;
     const result = autoJudge(value, correctAnswer);
     if (result !== null) {
       setLabels(prev => ({ ...prev, [`${index}`]: result }));
@@ -118,6 +150,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
     setEditableCorrectAnswers(prev => ({ ...prev, [`${index}`]: value }));
     // 정답 변경 시 자동 재판정
     const userAnswer = editableAnswers[`${index}`] ?? '';
+    if (shouldSkipAutoJudge(index, userAnswer, value)) return;
     const result = autoJudge(userAnswer, value);
     if (result !== null) {
       setLabels(prev => ({ ...prev, [`${index}`]: result }));
@@ -273,8 +306,16 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       {/* 문제 목록 */}
       <div className="space-y-4 mb-6">
         {problems.map((problem) => {
-          const currentMark = labels[`${problem.index}`] || 'O';
-          const aiMark = problem.AI가_판단한_정오답;
+          // 라벨 없으면 undefined 유지 — O/X 어느 버튼도 강조 안 함. (기존 `|| 'O'`는 미채점/빈답 문항의 O 버튼을 파랗게 켜서 '정답'처럼 보이게 하던 문제)
+          const currentMark = labels[`${problem.index}`];
+          // 복수답안·형식불일치 감지(편집 중 값 반영) → AI 판정 배지 숨기고 '수동 확인' 안내
+          const reviewReason = getManualReviewReason({
+            instruction: problem.instruction,
+            correctAnswer: editableCorrectAnswers[`${problem.index}`] ?? problem.correct_answer,
+            userAnswer: editableAnswers[`${problem.index}`] ?? problem.사용자가_기술한_정답?.text,
+            hasChoices: (problem.문제_보기?.length ?? 0) > 0,
+          });
+          const aiMark = reviewReason ? undefined : problem.AI가_판단한_정오답;
           const qType = inferQuestionType(problem);
 
           return (
@@ -289,6 +330,20 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     {aiMark && (
                       <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
                         AI: {aiMark}
+                      </span>
+                    )}
+                    {reviewReason && (
+                      <span
+                        className="text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                        title={language === 'ko'
+                          ? (reviewReason === '복수정답'
+                              ? '정답이 여러 개인 문항입니다. 답안을 구분해 확인 후 직접 채점하세요.'
+                              : '숫자/단어 형식이 맞지 않아 자동 채점을 보류했습니다. 직접 확인하세요.')
+                          : 'Auto-grading withheld — please review manually.'}
+                      >
+                        {language === 'ko'
+                          ? (reviewReason === '복수정답' ? '복수 정답 · 수동 확인' : '형식 확인 · 수동 확인')
+                          : (reviewReason === '복수정답' ? 'Multiple answers · review' : 'Check format · review')}
                       </span>
                     )}
                     <button
