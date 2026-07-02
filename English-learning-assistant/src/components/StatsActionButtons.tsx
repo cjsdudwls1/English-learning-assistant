@@ -5,9 +5,11 @@ interface StatsActionButtonsProps {
   language: 'ko' | 'en';
   isReclassifying: boolean;
   isGeneratingExamples: boolean;
+  isConsulting: boolean;
   selectedNodesCount: number;
   onReclassify: () => void;
   onGenerateExamples: () => void;
+  onConsult: () => void;
   onGenerateSimilarProblems: () => void;
 }
 
@@ -15,9 +17,11 @@ export const StatsActionButtons: React.FC<StatsActionButtonsProps> = ({
   language,
   isReclassifying,
   isGeneratingExamples,
+  isConsulting,
   selectedNodesCount,
   onReclassify,
   onGenerateExamples,
+  onConsult,
   onGenerateSimilarProblems,
 }) => {
   const t = getTranslation(language);
@@ -38,6 +42,14 @@ export const StatsActionButtons: React.FC<StatsActionButtonsProps> = ({
         className="px-4 py-2 bg-green-600 dark:bg-green-500 text-white rounded-lg hover:bg-green-700 dark:hover:bg-green-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
       >
         {isGeneratingExamples ? t.example.generating : t.example.generate}
+      </button>
+      <button
+        onClick={onConsult}
+        disabled={isConsulting}
+        className="px-4 py-2 bg-violet-600 dark:bg-violet-500 text-white rounded-lg hover:bg-violet-700 dark:hover:bg-violet-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+        title={language === 'ko' ? '선택한 카테고리(미선택 시 전체)에 대한 맞춤형 학습 컨설팅 보고서를 생성합니다' : 'Generate a personalized learning consulting report for the selected category (or all if none selected)'}
+      >
+        {isConsulting ? t.stats.consulting : t.stats.learningConsultant}
       </button>
       <button
         onClick={onGenerateSimilarProblems}

@@ -19,6 +19,7 @@ export const ProfilePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<string>('');
   const [gender, setGender] = useState<string>('');
@@ -36,7 +37,7 @@ export const ProfilePage: React.FC = () => {
         // 프로필 정보 불러오기
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('email, role, gender, age, grade, language, country')
+          .select('name, email, role, gender, age, grade, language, country')
           .eq('user_id', userId)
           .maybeSingle();
 
@@ -45,6 +46,7 @@ export const ProfilePage: React.FC = () => {
         }
 
         if (profileData) {
+          setName(profileData.name || '');
           setEmail(profileData.email || '');
           setRole(profileData.role || 'student');
           setGender(profileData.gender || '');
@@ -82,6 +84,7 @@ export const ProfilePage: React.FC = () => {
         .from('profiles')
         .upsert({
           user_id: userId,
+          name: name.trim() || null,
           email: email,
           role: role || 'student',
           gender: gender || null,
@@ -194,6 +197,17 @@ export const ProfilePage: React.FC = () => {
       )}
 
       {activeTab === 'profile' && <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.profile.name}</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
+            placeholder={language === 'ko' ? '예: 홍길동' : 'e.g., John'}
+          />
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.profile.email}</label>
           <input

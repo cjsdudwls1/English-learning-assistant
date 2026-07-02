@@ -10,6 +10,7 @@ import { ProblemGeneratorUI } from '../components/ProblemGeneratorUI';
 import { StatsDateFilter } from '../components/StatsDateFilter';
 import { StatsActionButtons } from '../components/StatsActionButtons';
 import { StatsExampleModal } from '../components/StatsExampleModal';
+import { ConsultingReportModal } from '../components/ConsultingReportModal';
 import { StatsGeneratedProblems } from '../components/StatsGeneratedProblems';
 import { SolvingStatsCard } from '../components/stats/SolvingStatsCard';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -25,6 +26,7 @@ import { useStatsFilters } from '../hooks/useStatsFilters';
 import { useStatsNodes } from '../hooks/useStatsNodes';
 import { useProblemGenerationState } from '../hooks/useProblemGenerationState';
 import { useExampleGeneration } from '../hooks/useExampleGeneration';
+import { useConsulting } from '../hooks/useConsulting';
 import { useReclassification } from '../hooks/useReclassification';
 import type { GeneratedProblemResult } from '../components/GeneratedProblemCard';
 
@@ -129,15 +131,19 @@ export const StatsPage: React.FC = () => {
       const depth3 = node.depth3 || undefined;
       const depth4 = node.depth4 || undefined;
 
-      console.log('Fetching metadata with params:', { depth1, depth2, depth3, depth4, isCorrect });
+      // 미분류 루트 노드: classification.depth1이 ''라 depth 필터로는 조회 불가 → 전용 플래그로 조회
+      const isUnclassified = !depth2 && !depth3 && !depth4 && (depth1 === '미분류' || depth1 === 'Unclassified');
+
+      console.log('Fetching metadata with params:', { depth1, depth2, depth3, depth4, isCorrect, isUnclassified });
 
       // 메타데이터 조회
       const items = await fetchProblemsMetadataByCorrectness(
-        depth1,
-        depth2,
-        depth3,
-        depth4,
-        isCorrect
+        isUnclassified ? undefined : depth1,
+        isUnclassified ? undefined : depth2,
+        isUnclassified ? undefined : depth3,
+        isUnclassified ? undefined : depth4,
+        isCorrect,
+        isUnclassified
       );
 
       console.log('Metadata items received:', items);
@@ -160,6 +166,17 @@ export const StatsPage: React.FC = () => {
     const total = statsData.rows.reduce((s, r) => s + (r.total_count || 0), 0);
     return { correct, incorrect, total };
   }, [statsData.rows]);
+
+  // 학습 컨설턴트 (선택 카테고리 또는 전체 오답 기반 맞춤 보고서)
+  const consulting = useConsulting({
+    language,
+    hierarchicalData: statsData.hierarchicalData,
+    selectedNodes: nodes.selectedNodes,
+    getLeafNodes: nodes.getLeafNodes,
+    getNodeKey: nodes.getNodeKey,
+    overallTotals: totals,
+    setError: statsData.setError,
+  });
 
   const chartLabels = useMemo(
     () => ({
@@ -275,14 +292,25 @@ export const StatsPage: React.FC = () => {
         />
 
         <div className="mb-4 flex items-center justify-between flex-wrap gap-3 w-full max-w-full min-w-0">
-          <div className="text-slate-700 dark:text-slate-300 text-sm sm:text-base break-words">{t.stats.total}: {totals.total} / {t.stats.correct}: {totals.correct} / {t.stats.incorrect}: {totals.incorrect}</div>
+          <div className="min-w-0">
+            <div className="text-slate-700 dark:text-slate-300 text-sm sm:text-base break-words">{t.stats.total}: {totals.total} / {t.stats.correct}: {totals.correct} / {t.stats.incorrect}: {totals.incorrect}</div>
+            {totals.total > 0 && (
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500 break-words">
+                {language === 'ko'
+                  ? `채점 완료 ${statsData.composition.labelMarked}문항 + 과제·생성 풀이 ${statsData.composition.genSolved}건 · 미채점 문항 제외 ('문제관리' 전체 수와 다를 수 있음)`
+                  : `${statsData.composition.labelMarked} graded items + ${statsData.composition.genSolved} assignment/generated solves · unmarked excluded (may differ from the "Problems" total)`}
+              </p>
+            )}
+          </div>
           <StatsActionButtons
             language={language}
             isReclassifying={reclassify.isReclassifying}
             isGeneratingExamples={exampleGen.isGeneratingExamples}
+            isConsulting={consulting.isConsulting}
             selectedNodesCount={nodes.selectedNodes.size}
             onReclassify={reclassify.handleReclassifyAll}
             onGenerateExamples={handleGenerateExampleSentences}
+            onConsult={consulting.handleGenerateConsulting}
             onGenerateSimilarProblems={problemGen.handleGenerateSimilarProblems}
           />
         </div>
@@ -421,6 +449,14 @@ export const StatsPage: React.FC = () => {
             exampleGen.setShowExampleModal(false);
             // exampleSentences는 useExampleGeneration 내부에서 관리되므로 여기서는 닫기만
           }}
+        />
+
+        {/* 학습 컨설팅 보고서 모달 */}
+        <ConsultingReportModal
+          language={language}
+          report={consulting.reportText}
+          isOpen={consulting.showConsultModal}
+          onClose={() => consulting.setShowConsultModal(false)}
         />
       </div>
 
