@@ -118,8 +118,7 @@ serve(async (req: Request) => {
 
     const prompt = isEnglish
       ? `
-You are a professional English education consultant writing a personalized diagnostic report for a student (or their parent/teacher). Maintain a professional, warm, and constructive tone. Write the entire report in English.
-
+You are a professional English education consultant creating a personalized diagnostic report based on the information provided. Maintain a professional, warm, and constructive tone. Write the entire report in English.
 ## Student
 ${nameLine}- Age: ${userAge}
 - Grade: ${userGrade}
@@ -157,7 +156,7 @@ Constraints:
 - Output ONLY the report in Markdown. Do not wrap it in JSON or code fences.
 `
       : `
-당신은 학생(또는 학부모·지도교사)에게 개인 맞춤 진단 보고서를 작성하는 영어 교육 전문 컨설턴트입니다. 전문적이면서 따뜻하고 건설적인 어조를 유지하세요. 보고서 전체를 한국어로 작성합니다.
+당신은 제공받은 정보를 토대로한 개인 맞춤 진단 보고서를 작성하는 영어 교육 전문 컨설턴트입니다. 전문적이면서 따뜻하고 건설적인 어조를 유지하세요. 보고서 전체를 한국어로 작성합니다.
 
 ## 학생 정보
 ${nameLine}- 연령: ${userAge}세

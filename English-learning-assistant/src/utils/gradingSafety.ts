@@ -14,10 +14,14 @@
 export function detectMultiAnswer(instruction?: string | null, correctAns?: string | null): boolean {
   const inst = String(instruction || '');
   if (/모두\s*고르/.test(inst)) return true;
+  if (/모두\s*고른/.test(inst)) return true;
   if (/정답[^0-9]{0,3}[2-9]\s*개/.test(inst)) return true;
   if (/단[,\s]*[2-9]\s*개/.test(inst)) return true;
   if (/[2-9]\s*개[^.]{0,8}(고르|모두)/.test(inst)) return true;
+  if (/all\s*that\s*apply/i.test(inst)) return true;
+  if (/select\s*all/i.test(inst)) return true;
   if (/\(\s*[1-9]\s*\)[\s\S]*\(\s*[1-9]\s*\)/.test(String(correctAns || ''))) return true;
+  if (/[①②③④⑤⑥⑦⑧⑨][\s,、·]*[①②③④⑤⑥⑦⑧⑨]/.test(String(correctAns || ''))) return true;
   return false;
 }
 
@@ -46,12 +50,24 @@ export function isDigitWordMismatch(userAns?: string | null, correctAns?: string
   return (isDigit(u) && isWord(c)) || (isDigit(c) && isWord(u));
 }
 
+/** 두 정수 집합의 완전 일치 여부(부분점수 없음). 백엔드 dbOperations.js#eqSet과 정합. */
+export function eqSet(a: Set<number>, b: Set<number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
 export type ManualReviewReason = '복수정답' | '형식확인';
 
 /**
  * 문항이 수동 확인 대상인지 판정. 백엔드 computeIsCorrect의 기권(null) 조건과 정합:
- *  - 복수답안: 객관식 정답 집합이 온전히 추출된 경우(hasChoices && |correct|>=2 && |user|>=|correct|)만
- *    백엔드가 완전일치로 채점하므로 그때는 null(자동 채점 신뢰) — 그 외에는 '복수정답'.
+ *  - answerFormat==='unknown': 백엔드가 형식 판단 불가로 표시 → 현행 기권 안전망 유지('형식확인').
+ *  - 복수답안(answerFormat==='multi' 또는 문자열 휴리스틱 감지):
+ *    - correctAnswers/userAnswers(번호 집합)가 |correct|>=2 && |user|>=|correct| 조건을 충족하면
+ *      백엔드가 eqSet 완전일치로 채점 → null(자동 채점 신뢰). (백엔드 computeIsCorrect 게이트와 1:1 정합)
+ *    - 배열이 없거나 조건 미충족이면(레거시 데이터·미확신·정답 1개 추출·선택 부족) 기존 문자열 기반
+ *      추출(extractOptionDigits)로 폴백 — hasChoices && |correct|>=2 && |user|>=|correct| 조건
+ *      충족 시만 null, 그 외 '복수정답'.
  *  - 어형선택 단위 불일치: choices 없고 숫자↔단어 불일치면 '형식확인'.
  * @returns 사유 문자열, 또는 자동 채점 가능하면 null
  */
@@ -60,13 +76,24 @@ export function getManualReviewReason(args: {
   correctAnswer?: string | null;
   userAnswer?: string | null;
   hasChoices?: boolean;
+  answerFormat?: 'single' | 'multi' | 'unknown' | null;
+  correctAnswers?: number[] | null;
+  userAnswers?: number[] | null;
 }): ManualReviewReason | null {
-  const { instruction, correctAnswer, userAnswer, hasChoices } = args;
+  const { instruction, correctAnswer, userAnswer, hasChoices, answerFormat, correctAnswers, userAnswers } = args;
 
-  if (detectMultiAnswer(instruction, correctAnswer)) {
+  if (answerFormat === 'unknown') return '형식확인';
+
+  if (answerFormat === 'multi' || detectMultiAnswer(instruction, correctAnswer)) {
+    // 백엔드가 번호 집합을 확신 추출한 경우 → computeIsCorrect와 동일 게이트로 자동 채점 신뢰
+    // (정답 2개 이상 + 사용자 선택이 정답 수 이상일 때만; 정답 1개 추출이거나 사용자가 덜 골랐으면 기권)
+    if (Array.isArray(correctAnswers) && Array.isArray(userAnswers)
+      && correctAnswers.length >= 2 && userAnswers.length >= correctAnswers.length) {
+      return null;
+    }
+    // 배열 없음(레거시 데이터 또는 미확신) → 기존 문자열 기반 추출로 폴백
     const cd = extractOptionDigits(correctAnswer);
     const ud = extractOptionDigits(userAnswer);
-    // 백엔드가 집합 완전비교로 채점하는 조건이면 자동 채점 신뢰(수동 확인 불필요)
     if (hasChoices && cd.size >= 2 && ud.size >= cd.size) return null;
     return '복수정답';
   }

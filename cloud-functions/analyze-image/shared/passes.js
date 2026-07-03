@@ -77,6 +77,50 @@ export function sanitizeMcAnswer(value, isSubjective, choices) {
 }
 
 /**
+ * 다중정답(multi MC) 답안 집합 파싱: 원문에서 선택지 번호(원문자 ①~⑨ 및 콤마/공백 구분 숫자)를
+ * 모두 추출해 1..choices.length 범위로 검증 후 오름차순 정렬·중복제거한 number[]를 반환한다.
+ * - 원문자와 숫자를 원문(raw) 그대로에서 개별 스캔한다. normalizeChoiceValue의 문자열 치환은
+ *   인접 원문자를 이어붙여버릴 수 있어("③④" → "3④" → "34", 즉 3·4가 아니라 34로 오파싱) 이
+ *   용도로는 쓰지 않는다 — extractOptionDigits(dbOperations.js)와 동일한 안전한 스캔 방식.
+ * - choices 부재(선택지 없음)면 빈 배열(주관형 오분류 방어 — sanitizeMcAnswer의 "원값 보존"과
+ *   달리, multi는 집합 자체가 무의미하므로 안전하게 빈 배열. 상위 채점 로직이 기권으로 처리한다).
+ * - 범위 밖 번호는 개별 폐기(전체 폐기 아님): 예 "3, 4, 9"에서 choices=5개면 9만 버리고 [3,4].
+ * @param {string|null} raw
+ * @param {Array} choices
+ * @returns {number[]}
+ */
+export function sanitizeMcAnswerSet(raw, choices) {
+  const list = Array.isArray(choices) ? choices : [];
+  if (raw == null || list.length === 0) return [];
+  const s = String(raw);
+  const max = list.length;
+  const nums = new Set();
+  const circled = '①②③④⑤⑥⑦⑧⑨';
+  for (const ch of s) {
+    const ci = circled.indexOf(ch);
+    if (ci !== -1) nums.add(ci + 1);
+  }
+  for (const m of s.matchAll(/\d+/g)) {
+    const n = parseInt(m[0], 10);
+    if (!isNaN(n)) nums.add(n);
+  }
+  return Array.from(nums).filter((n) => n >= 1 && n <= max).sort((a, b) => a - b);
+}
+
+/**
+ * sanitizeMcAnswerSet 결과를 하위호환 스칼라 문자열("2, 4")로 평탄화.
+ * 추출된 번호가 없으면 null(=sanitizeMcAnswer의 "마크 없음"과 동일 의미, 하위 로직 일관성 유지).
+ * @param {string|null} raw
+ * @param {Array} choices
+ * @returns {string|null}
+ */
+export function flattenMcAnswerSet(raw, choices) {
+  if (raw == null) return null;
+  const set = sanitizeMcAnswerSet(raw, choices);
+  return set.length > 0 ? set.join(', ') : null;
+}
+
+/**
  * 모델 시퀀스를 순서대로 시도하고 첫 성공 결과를 반환
  * @param {{ models: string[], callFn: (model: string) => Promise<any> }} opts
  * @returns {Promise<any>} 성공한 모델의 결과, 모두 실패 시 null 반환
@@ -207,10 +251,18 @@ export async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, que
             const parsed = parseJsonResponse(text, model);
             const isSubjective = questionContext?.isSubjective;
             const choices = questionContext?.choices;
+            // 다중정답(multi MC): 문두에 "모두 고르시오/정답 N개" 등 신호가 있는 문항(questionContext
+            // 단계에서 미리 판정됨)은 단일 강제(sanitizeMcAnswer)가 아니라 집합 파싱(sanitizeMcAnswerSet)
+            // 경로를 탄다. 신호 없는 문항(isMulti=false)은 기존 sanitizeMcAnswer 경로 그대로 — 무회귀.
+            const isMulti = questionContext?.isMultiFormat === true && !isSubjective;
             return {
               problem_number: parsed.problem_number || crop.problem_number,
-              user_answer: sanitizeMcAnswer(normalizeChoiceValue(parsed.user_answer ?? null), isSubjective, choices),
-              correct_answer: sanitizeMcAnswer(normalizeChoiceValue(parsed.correct_answer ?? null), isSubjective, choices),
+              user_answer: isMulti
+                ? flattenMcAnswerSet(parsed.user_answer, choices)
+                : sanitizeMcAnswer(normalizeChoiceValue(parsed.user_answer ?? null), isSubjective, choices),
+              correct_answer: isMulti
+                ? flattenMcAnswerSet(parsed.correct_answer, choices)
+                : sanitizeMcAnswer(normalizeChoiceValue(parsed.correct_answer ?? null), isSubjective, choices),
             };
           } catch (err) {
             console.warn(`[passes:detectFromCrops] Q${crop.problem_number} ${model} 실패: ${err?.message}, 다음 모델로 폴백`);

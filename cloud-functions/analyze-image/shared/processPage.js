@@ -12,10 +12,11 @@ import { cropRegions } from './imageCropper.js';
 import {
   executePassA, executePass0, executePassB, executePassBFullImage,
   executePassC, detectSubjectiveUserAnswers, detectCorrectFromCrops, detectFromCrops,
-  sanitizeMcAnswer, normalizeChoiceValue,
+  sanitizeMcAnswer, normalizeChoiceValue, flattenMcAnswerSet,
 } from './passes.js';
 import { USER_ANSWER_MODEL_SEQUENCE } from './config.js';
 import { buildCroppedUserAnswerPrompt } from './prompts.js';
+import { detectMultiAnswer } from './dbOperations.js';
 
 // answer_area 결정화 패딩(0~1000 스케일).
 const REFINE_XPAD_LEFT = 30;   // 좌측: 문제번호 열/원문자 좌측 삐침 여유
@@ -99,8 +100,16 @@ export function mergeHandwritingMarks(pageItems, marks, sessionId, questionConte
     if (ctx) {
       const isSubjective = ctx.isSubjective === true;
       const choices = ctx.choices;
-      mark.user_answer = sanitizeMcAnswer(normalizeChoiceValue(mark.user_answer ?? null), isSubjective, choices);
-      mark.correct_answer = sanitizeMcAnswer(normalizeChoiceValue(mark.correct_answer ?? null), isSubjective, choices);
+      // 다중정답(multi MC): isMultiFormat 문항은 sanitizeMcAnswer(단일 강제)를 거치면 "2, 4" 같은
+      // 집합 문자열이 선택지 텍스트와 대조 실패해 null로 파괴된다 — flattenMcAnswerSet(집합 파싱
+      // 후 재평탄화)으로 대체. 신호 없는 문항(isMultiFormat=false)은 원래 로직 그대로(무회귀).
+      if (ctx.isMultiFormat === true && !isSubjective) {
+        mark.user_answer = flattenMcAnswerSet(mark.user_answer, choices);
+        mark.correct_answer = flattenMcAnswerSet(mark.correct_answer, choices);
+      } else {
+        mark.user_answer = sanitizeMcAnswer(normalizeChoiceValue(mark.user_answer ?? null), isSubjective, choices);
+        mark.correct_answer = sanitizeMcAnswer(normalizeChoiceValue(mark.correct_answer ?? null), isSubjective, choices);
+      }
     } else if (mark.user_answer) {
       // 하위호환: 컨텍스트 없음 → 순수 숫자 범위검증만(주관식/서술형 자유 텍스트는 허용)
       const ansNum = parseInt(mark.user_answer, 10);
@@ -319,9 +328,17 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
 
     console.log(`[handler] Q${item.problem_number} 유형 판별: isSubjective=${isSubjective}, hasChoices=${hasChoices}, hasObjKw=${hasObjectiveKw}, hasSubjKw=${hasSubjectiveKw}`, { sessionId });
 
+    // 다중정답(multi MC) 사전판정: correct_answer는 아직 추출 전(Pass B가 이 다음 단계)이라
+    // instruction 신호만 사용(detectMultiAnswer 2번째 인자 null). 정식 판정은 저장 시점
+    // dbOperations.resolveAnswerFormat이 choices까지 반영해 재확정하므로, 이 값은 Pass B
+    // 추출 단계에서 sanitizeMcAnswer(단일)냐 sanitizeMcAnswerSet(집합)이냐를 가르는 스위치일
+    // 뿐이다 — 오탐(false positive)의 최악의 결과는 저장 단계에서 다시 single로 재확정되는 것뿐.
+    const isMultiFormat = detectMultiAnswer(instructionText, null);
+
     questionContextMap.set(String(item.problem_number), {
       isSubjective,
       hasObjectiveKw,
+      isMultiFormat,
       instruction: instructionText,
       questionBody: questionBodyText,
       hasChoices,

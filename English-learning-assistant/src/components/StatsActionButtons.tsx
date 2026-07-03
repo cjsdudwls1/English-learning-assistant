@@ -10,6 +10,7 @@ interface StatsActionButtonsProps {
   onReclassify: () => void;
   onGenerateExamples: () => void;
   onConsult: () => void;
+  onShowHistory: () => void;
   onGenerateSimilarProblems: () => void;
 }
 
@@ -22,6 +23,7 @@ export const StatsActionButtons: React.FC<StatsActionButtonsProps> = ({
   onReclassify,
   onGenerateExamples,
   onConsult,
+  onShowHistory,
   onGenerateSimilarProblems,
 }) => {
   const t = getTranslation(language);
@@ -50,6 +52,12 @@ export const StatsActionButtons: React.FC<StatsActionButtonsProps> = ({
         title={language === 'ko' ? '선택한 카테고리(미선택 시 전체)에 대한 맞춤형 학습 컨설팅 보고서를 생성합니다' : 'Generate a personalized learning consulting report for the selected category (or all if none selected)'}
       >
         {isConsulting ? t.stats.consulting : t.stats.learningConsultant}
+      </button>
+      <button
+        onClick={onShowHistory}
+        className="px-4 py-2 border border-violet-500 text-violet-600 dark:text-violet-400 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors"
+      >
+        {t.stats.consultingHistory}
       </button>
       <button
         onClick={onGenerateSimilarProblems}

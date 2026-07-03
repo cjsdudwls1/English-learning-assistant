@@ -11,6 +11,7 @@ import { StatsDateFilter } from '../components/StatsDateFilter';
 import { StatsActionButtons } from '../components/StatsActionButtons';
 import { StatsExampleModal } from '../components/StatsExampleModal';
 import { ConsultingReportModal } from '../components/ConsultingReportModal';
+import { ConsultingHistoryModal } from '../components/ConsultingHistoryModal';
 import { StatsGeneratedProblems } from '../components/StatsGeneratedProblems';
 import { SolvingStatsCard } from '../components/stats/SolvingStatsCard';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -94,6 +95,7 @@ export const StatsPage: React.FC = () => {
   const [showMetadataModal, setShowMetadataModal] = useState(false);
   const [metadataIsCorrect, setMetadataIsCorrect] = useState(false);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
+  const [showConsultHistory, setShowConsultHistory] = useState(false);
 
   const handleProblemResult = useCallback((problemIndex: number, result: GeneratedProblemResult) => {
     setQuizResults(prev => {
@@ -311,6 +313,7 @@ export const StatsPage: React.FC = () => {
             onReclassify={reclassify.handleReclassifyAll}
             onGenerateExamples={handleGenerateExampleSentences}
             onConsult={consulting.handleGenerateConsulting}
+            onShowHistory={() => setShowConsultHistory(true)}
             onGenerateSimilarProblems={problemGen.handleGenerateSimilarProblems}
           />
         </div>
@@ -457,6 +460,13 @@ export const StatsPage: React.FC = () => {
           report={consulting.reportText}
           isOpen={consulting.showConsultModal}
           onClose={() => consulting.setShowConsultModal(false)}
+        />
+
+        {/* 학습 컨설팅 기록 모달 */}
+        <ConsultingHistoryModal
+          language={language}
+          isOpen={showConsultHistory}
+          onClose={() => setShowConsultHistory(false)}
         />
       </div>
 

@@ -87,6 +87,10 @@ export interface ProblemItem {
   instruction?: string | null;
   question_body?: string | null;
   visual_context?: VisualContext | null;
+  // 다중정답 객관식 지원 (multi_answer_contract v1) — 미설정(레거시)이면 단일답 경로로 취급
+  answerFormat?: 'single' | 'multi' | 'unknown';
+  correctAnswers?: number[];
+  userAnswers?: number[];
 }
 
 export interface AnalysisResults {

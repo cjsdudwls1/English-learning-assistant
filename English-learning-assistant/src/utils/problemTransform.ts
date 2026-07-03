@@ -52,6 +52,10 @@ export function transformToProblemItem(
     instruction: p.content?.instruction ?? null,
     question_body: p.content?.question_body ?? null,
     visual_context: p.content?.visual_context ?? null,
+    // 다중정답 객관식(multi_answer_contract v1) — content에 없으면 undefined(레거시=단일 취급)
+    answerFormat: p.content?.answer_format ?? undefined,
+    correctAnswers: Array.isArray(p.content?.correct_answers) ? p.content.correct_answers : undefined,
+    userAnswers: Array.isArray(p.content?.user_answers) ? p.content.user_answers : undefined,
   };
 }
 
@@ -94,6 +98,10 @@ export function transformFromLabelJoin(row: any): ProblemItem {
     instruction: row.problems.content?.instruction ?? null,
     question_body: row.problems.content?.question_body ?? null,
     visual_context: row.problems.content?.visual_context ?? null,
+    // 다중정답 객관식(multi_answer_contract v1) — content에 없으면 undefined(레거시=단일 취급)
+    answerFormat: row.problems.content?.answer_format ?? undefined,
+    correctAnswers: Array.isArray(row.problems.content?.correct_answers) ? row.problems.content.correct_answers : undefined,
+    userAnswers: Array.isArray(row.problems.content?.user_answers) ? row.problems.content.user_answers : undefined,
   };
 }
 

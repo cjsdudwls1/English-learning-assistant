@@ -12,6 +12,7 @@
 
 import { StageError } from './errors.js';
 import { cleanOrNull, makeDepthKey, fuzzyMatchTaxonomy, canonicalDepth1 } from './taxonomy.js';
+import { sanitizeMcAnswerSet } from './passes.js';
 
 // ─── O/X 마크 정규화 ────────────────────────────────────────
 // 원본: validation.ts#normalizeMark
@@ -124,15 +125,23 @@ function mapWordToChoiceNumber(rawAnswer, choices) {
  * "정답 N개 / 모두 고르면 / 단, N개" 지시문 또는 정답이 (1)…(2)… 번호매김인지 감지.
  * 복수답안은 단일 숫자/텍스트 비교로 채점 불가 → computeIsCorrect가 집합비교 또는 기권으로 분기.
  * false-positive는 기권(null)으로 이어질 뿐이라 confident-wrong보다 안전(precision-first).
+ * multi_answer_contract §2 형식판정에도 이 함수를 재사용(answer_format='multi' 판정 신호원).
+ * export: processPage.js가 Pass B 추출 단계에서 questionContextMap.isMultiFormat 산출에 사용.
  */
-function detectMultiAnswer(instruction, correctAns) {
+export function detectMultiAnswer(instruction, correctAns) {
   const inst = String(instruction || '');
   if (/모두\s*고르/.test(inst)) return true;                 // "모두 고르면/고르시오"
+  if (/모두\s*고른/.test(inst)) return true;                  // "모두 고른 것은"(활용형, 위 정규식과 어간 형태가 달라 별도 매칭 필요)
   if (/정답[^0-9]{0,3}[2-9]\s*개/.test(inst)) return true;    // "정답 2개", "정답이 2개"
   if (/단[,\s]*[2-9]\s*개/.test(inst)) return true;           // "단, 2개"
   if (/[2-9]\s*개[^.]{0,8}(고르|모두)/.test(inst)) return true; // "2개 고르시오"
+  if (/all\s*that\s*apply/i.test(inst)) return true;          // "select all that apply"
+  if (/select\s*all/i.test(inst)) return true;                // "select all"
   // 정답 문자열이 (1)…(2)… 번호매김(서술형 다빈칸) → 단일 사용자답과 무조건 불일치하던 케이스
   if (/\(\s*[1-9]\s*\)[\s\S]*\(\s*[1-9]\s*\)/.test(String(correctAns || ''))) return true;
+  // 정답 원문에 원문자 선택지 번호가 2개 이상(예 "③ ④", "①③"). 원문자 ①~⑨는 선택지 마커라
+  // 주관식 자유서술 본문엔 등장하지 않음 → 이 검출은 confident-wrong 위험 없음(계약 §2 "③ ④" 정합).
+  if (/[①②③④⑤⑥⑦⑧⑨][\s,、·]*[①②③④⑤⑥⑦⑧⑨]/.test(String(correctAns || ''))) return true;
   return false;
 }
 
@@ -159,6 +168,44 @@ function eqSet(a, b) {
   return true;
 }
 
+// ─── 다중정답(multi MC) 형식 판정 (buildContentJson·saveLabels 공유) ────
+
+/**
+ * 문항의 answer_format과 정답/사용자답 번호집합을 단일 지점에서 판정한다(multi_answer_contract §2~3).
+ * - 객관식(choices≥2)이고 detectMultiAnswer가 복수정답 신호를 감지하면 'multi'.
+ * - 그 외(주관식 포함)는 'single' — 기존 스칼라 채점·저장 경로 완전 불변. computeIsCorrect의
+ *   single/서술형 분기는 이 함수의 산출물을 참조하지 않는다(문항 검사만 여기서 선행).
+ * - multi일 때 correct_answers/user_answers는 sanitizeMcAnswerSet으로 추출(불확실하면 빈 배열 —
+ *   빈 배열은 상위 computeIsCorrect·저장 로직에서 기권/빈 문자열로 이어진다. 정밀도 우선).
+ * - buildContentJson(문제 저장)과 saveLabels(라벨/채점) 양쪽이 동일 입력에 이 함수를 각자 호출해
+ *   같은 결과를 얻는다(순수함수라 결과 발산 없음, 두 함수 간 새 결합 없이 DRY).
+ * @param {{instruction?, correct_answer?, user_answer?}} item
+ * @param {Array} choiceArr - 정규화 여부 무관, length만 사용(범위 max)
+ * @returns {{answerFormat: 'single'|'multi', correctAnswers: number[]|null, userAnswers: number[]|null, flatCorrect: string|null, flatUser: string|null}}
+ */
+function resolveAnswerFormat(item, choiceArr) {
+  const list = Array.isArray(choiceArr) ? choiceArr : [];
+  const isMulti = list.length >= 2 && detectMultiAnswer(item?.instruction, item?.correct_answer);
+  if (!isMulti) {
+    return {
+      answerFormat: 'single',
+      correctAnswers: null,
+      userAnswers: null,
+      flatCorrect: item?.correct_answer || null,
+      flatUser: item?.user_answer || null,
+    };
+  }
+  const correctAnswers = sanitizeMcAnswerSet(item?.correct_answer, list);
+  const userAnswers = sanitizeMcAnswerSet(item?.user_answer, list);
+  return {
+    answerFormat: 'multi',
+    correctAnswers,
+    userAnswers,
+    flatCorrect: correctAnswers.length > 0 ? correctAnswers.join(', ') : '',
+    flatUser: userAnswers.length > 0 ? userAnswers.join(', ') : '',
+  };
+}
+
 /**
  * choices 없는 빈칸에서 한쪽=순수 숫자, 다른쪽=알파벳/한글 단어인 단위 불일치(Bug D) 감지.
  * 어형선택(who/which 등)이 객관식으로 오분류돼 정답이 숫자로 날조된 경우 → 오답 단정 대신 기권.
@@ -181,10 +228,14 @@ function isDigitWordMismatch(userAns, correctAns) {
  *   - 서술형(choices 없음) 또는 번호 파싱 불가: normalizeAnswerText 후 정확 일치.
  * 부분점수 없음(정확 일치만 정답).
  * 복수답안(Bug B)·어형선택 단위불일치(Bug D)는 오답 단정 대신 기권(null) — instruction으로 감지.
- * @param {{user_marked_correctness?, user_answer?, correct_answer?, choices?, instruction?}} item
+ * 다중정답(multi MC, multi_answer_contract §5): answer_format==='multi'(또는 detectMultiAnswer 참)면
+ * correct_answers/user_answers(호출측이 resolveAnswerFormat으로 미리 뽑아 넘긴 number[])가 있으면
+ * 그 집합으로 완전일치 채점, 없으면 기존 Bug B 안전망(스칼라 문자열에서 재추출)으로 폴백 — 이 인자를
+ * 넘기지 않는 기존 호출부(eval 하네스 등)는 동작이 완전히 그대로다.
+ * @param {{user_marked_correctness?, user_answer?, correct_answer?, choices?, instruction?, answer_format?, correct_answers?, user_answers?}} item
  * @returns {boolean|null} true=정답, false=오답, null=판정보류(미채점)
  */
-export function computeIsCorrect({ user_marked_correctness, user_answer, correct_answer, choices, instruction } = {}) {
+export function computeIsCorrect({ user_marked_correctness, user_answer, correct_answer, choices, instruction, answer_format, correct_answers, user_answers } = {}) {
   let isCorrect = null;
 
   // 1차: 시험지의 O/X 채점 마크
@@ -207,9 +258,19 @@ export function computeIsCorrect({ user_marked_correctness, user_answer, correct
       // Bug B(복수답안): "모두 고르면 / 정답 N개" 또는 정답이 (1)…(2)… 번호매김이면 단일 비교로 채점 불가.
       // 객관식 정답 집합이 온전히 추출된 경우만 완전일치로 채점, 아니면 기권(null) — 단일값만 저장된
       // 현 상태에서 오답 단정(confident-wrong) 방지. (집합/빈칸별 완전 추출은 Stage 2 프롬프트 개선 몫)
-      if (detectMultiAnswer(instruction, correctAns)) {
-        const cd = extractOptionDigits(correctAns);
-        const ud = extractOptionDigits(userAns);
+      if (detectMultiAnswer(instruction, correctAns) || answer_format === 'multi') {
+        // 우선순위: 호출측(resolveAnswerFormat)이 sanitizeMcAnswerSet으로 정제한 correct_answers/
+        // user_answers 배열을 넘겨줬으면 그것을 신뢰(원문 재파싱보다 정밀). 없으면 기존 Stage 1
+        // 안전망(스칼라 문자열에서 번호집합 재추출)으로 폴백 — 게이트(cd.size>=2 && ud.size>=cd.size)는
+        // 두 경로 동일하게 적용해 안전성 차이를 두지 않는다.
+        let cd, ud;
+        if (Array.isArray(correct_answers) && Array.isArray(user_answers)) {
+          cd = new Set(correct_answers);
+          ud = new Set(user_answers);
+        } else {
+          cd = extractOptionDigits(correctAns);
+          ud = extractOptionDigits(userAns);
+        }
         isCorrect = (isObjective && cd.size >= 2 && ud.size >= cd.size) ? eqSet(ud, cd) : null;
         return isCorrect;
       }
@@ -300,7 +361,11 @@ function buildStemFromItem(item) {
 // 원본: problemSaver.ts#buildContentJson
 
 function buildContentJson(item, normalizedChoicesArr) {
-  return {
+  // 다중정답(multi MC, multi_answer_contract §3): answer_format 태깅 + (multi일 때만) 번호집합.
+  // 기존 user_answer/correct_answer 스칼라는 하위호환을 위해 계속 채우되, multi면 평탄화 문자열
+  // ("3, 4")로 대체된다(단일 문항은 fmt.flatUser/flatCorrect가 item 원값 그대로라 완전 무변화).
+  const fmt = resolveAnswerFormat(item, normalizedChoicesArr);
+  const content = {
     stem: buildStemFromItem(item),
     problem_number: item.problem_number || null,
     shared_passage_ref: item.shared_passage_ref || null,
@@ -309,10 +374,16 @@ function buildContentJson(item, normalizedChoicesArr) {
     instruction: item.instruction || null,
     question_body: item.question_body || null,
     choices: normalizedChoicesArr,
-    user_answer: item.user_answer || null,
+    user_answer: fmt.flatUser,
     user_marked_correctness: item.user_marked_correctness || null,
-    correct_answer: item.correct_answer || null,
+    correct_answer: fmt.flatCorrect,
+    answer_format: fmt.answerFormat,
   };
+  if (fmt.answerFormat === 'multi') {
+    content.correct_answers = fmt.correctAnswers;
+    content.user_answers = fmt.userAnswers;
+  }
+  return content;
 }
 
 // ─── 이미지 업로드 ──────────────────────────────────────────
@@ -496,12 +567,19 @@ export async function saveLabels(supabase, sessionId, savedProblems, validatedIt
 
     // ─── is_correct 판정 (computeIsCorrect 단일 진실원) ───
     // 1차: 시험지 O/X 채점 마크, 2차: user/correct 자동 비교. eval 하네스가 동일 함수로 재현.
+    // 다중정답(multi MC): resolveAnswerFormat이 buildContentJson과 동일 규칙으로 answer_format/
+    // correct_answers/user_answers를 산출해 computeIsCorrect에 전달(단일 문항은 fmt.answerFormat
+    // ='single'이라 아래 두 호출 모두 기존 동작과 완전히 동일).
+    const fmt = resolveAnswerFormat(it, it.choices);
     const isCorrect = computeIsCorrect({
       user_marked_correctness: it.user_marked_correctness,
       user_answer: it.user_answer,
       correct_answer: it.correct_answer,
       choices: it.choices,
       instruction: it.instruction,
+      answer_format: fmt.answerFormat,
+      correct_answers: fmt.correctAnswers,
+      user_answers: fmt.userAnswers,
     });
 
     // ─── taxonomy 보강 ───
@@ -589,10 +667,10 @@ export async function saveLabels(supabase, sessionId, savedProblems, validatedIt
 
     labelsPayload.push({
       problem_id: problemId,
-      user_answer: it.user_answer || null,
+      user_answer: fmt.flatUser,
       user_mark: null,
       is_correct: isCorrect,
-      correct_answer: it.correct_answer || null,
+      correct_answer: fmt.flatCorrect,
       classification: enrichedClassification,
     });
   }

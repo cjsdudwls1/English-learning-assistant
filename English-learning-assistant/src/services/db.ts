@@ -108,3 +108,11 @@ export {
   type AcademyMembership,
   type AcademyMember,
 } from './db/academies';
+
+// Consulting
+export {
+  saveConsultingReport,
+  fetchConsultingReports,
+  deleteConsultingReport,
+  type ConsultingReportRow,
+} from './db/consulting';

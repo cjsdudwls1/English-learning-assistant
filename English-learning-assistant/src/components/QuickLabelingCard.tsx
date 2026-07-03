@@ -5,7 +5,7 @@ import { fetchSessionProblems, updateProblemLabels, deleteProblems } from '../se
 import type { ProblemItem, QuestionType } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
-import { getManualReviewReason } from '../utils/gradingSafety';
+import { getManualReviewReason, eqSet } from '../utils/gradingSafety';
 
 interface QuickLabelingCardProps {
   sessionId: string;
@@ -68,6 +68,9 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   const [labels, setLabels] = useState<Record<string, 'O' | 'X'>>({});
   const [editableAnswers, setEditableAnswers] = useState<Record<string, string>>({});
   const [editableCorrectAnswers, setEditableCorrectAnswers] = useState<Record<string, string>>({});
+  // 다중정답 객관식(multi_answer_contract v1) — 정답/사용자답을 번호 집합으로 편집
+  const [multiUserAnswers, setMultiUserAnswers] = useState<Record<string, number[]>>({});
+  const [multiCorrectAnswers, setMultiCorrectAnswers] = useState<Record<string, number[]>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
@@ -88,14 +91,20 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       const initialLabels: Record<string, 'O' | 'X'> = {};
       const initialAnswers: Record<string, string> = {};
       const initialCorrectAnswers: Record<string, string> = {};
+      const initialMultiUser: Record<string, number[]> = {};
+      const initialMultiCorrect: Record<string, number[]> = {};
       data.forEach(p => {
         const mark = p.사용자가_직접_채점한_정오답;
         // 복수답안·형식불일치는 저장된 구(舊) AI 판정을 신뢰하지 않음 — O/X 시드 안 함(수동 확인 유도)
+        // 단, 백엔드가 번호 집합을 확신 추출한 multi(correctAnswers/userAnswers)는 자동판정 신뢰
         const reviewReason = getManualReviewReason({
           instruction: p.instruction,
           correctAnswer: p.correct_answer,
           userAnswer: p.사용자가_기술한_정답?.text,
           hasChoices: (p.문제_보기?.length ?? 0) > 0,
+          answerFormat: p.answerFormat,
+          correctAnswers: p.correctAnswers,
+          userAnswers: p.userAnswers,
         });
         if (mark === 'O' || mark === 'X') {
           initialLabels[`${p.index}`] = mark; // 사용자 수동 채점은 항상 우선
@@ -106,10 +115,16 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
         }
         initialAnswers[`${p.index}`] = p.사용자가_기술한_정답?.text || '';
         initialCorrectAnswers[`${p.index}`] = p.correct_answer || '';
+        if (p.answerFormat === 'multi') {
+          initialMultiUser[`${p.index}`] = p.userAnswers ?? [];
+          initialMultiCorrect[`${p.index}`] = p.correctAnswers ?? [];
+        }
       });
       setLabels(initialLabels);
       setEditableAnswers(initialAnswers);
       setEditableCorrectAnswers(initialCorrectAnswers);
+      setMultiUserAnswers(initialMultiUser);
+      setMultiCorrectAnswers(initialMultiCorrect);
     } catch (error) {
       console.error('Failed to load problems:', error);
     } finally {
@@ -157,6 +172,26 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
     }
   };
 
+  // 다중정답 객관식 — 정답/사용자답 번호 칩 토글 + 집합 완전일치로 자동 재판정
+  const handleMultiToggle = (index: number, kind: 'user' | 'correct', num: number) => {
+    const key = `${index}`;
+    const source = kind === 'user' ? multiUserAnswers : multiCorrectAnswers;
+    const setSource = kind === 'user' ? setMultiUserAnswers : setMultiCorrectAnswers;
+    const cur = new Set(source[key] ?? []);
+    if (cur.has(num)) cur.delete(num); else cur.add(num);
+    const nextArr = Array.from(cur).sort((a, b) => a - b);
+    setSource(prev => ({ ...prev, [key]: nextArr }));
+
+    const otherArr = kind === 'user' ? (multiCorrectAnswers[key] ?? []) : (multiUserAnswers[key] ?? []);
+    const userArr = kind === 'user' ? nextArr : otherArr;
+    const correctArr = kind === 'correct' ? nextArr : otherArr;
+    // 양쪽 다 비어있지 않을 때만 자동 재판정(백엔드 computeIsCorrect 조건과 동일)
+    if (userArr.length > 0 && correctArr.length > 0) {
+      const result = eqSet(new Set(userArr), new Set(correctArr)) ? 'O' : 'X';
+      setLabels(prev => ({ ...prev, [key]: result }));
+    }
+  };
+
   const handleDeleteProblem = async (problem: ProblemItem) => {
     if (!problem.id) return;
     try {
@@ -166,6 +201,8 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       setLabels(prev => { const next = { ...prev }; delete next[key]; return next; });
       setEditableAnswers(prev => { const next = { ...prev }; delete next[key]; return next; });
       setEditableCorrectAnswers(prev => { const next = { ...prev }; delete next[key]; return next; });
+      setMultiUserAnswers(prev => { const next = { ...prev }; delete next[key]; return next; });
+      setMultiCorrectAnswers(prev => { const next = { ...prev }; delete next[key]; return next; });
     } catch (err) {
       console.error('Failed to delete problem:', err);
       alert(language === 'ko' ? '문제 삭제 중 오류가 발생했습니다.' : 'Error deleting problem.');
@@ -178,15 +215,22 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       return;
     }
 
-    const itemsToSave: ProblemItem[] = problems.map(p => ({
-      ...p,
-      사용자가_직접_채점한_정오답: labels[`${p.index}`] || p.사용자가_직접_채점한_정오답,
-      사용자가_기술한_정답: {
-        ...p.사용자가_기술한_정답,
-        text: editableAnswers[`${p.index}`] ?? p.사용자가_기술한_정답?.text ?? '',
-      },
-      correct_answer: editableCorrectAnswers[`${p.index}`] ?? p.correct_answer ?? '',
-    }));
+    const itemsToSave: ProblemItem[] = problems.map(p => {
+      const isMulti = p.answerFormat === 'multi';
+      const userArr = multiUserAnswers[`${p.index}`] ?? p.userAnswers ?? [];
+      const correctArr = multiCorrectAnswers[`${p.index}`] ?? p.correctAnswers ?? [];
+      return {
+        ...p,
+        사용자가_직접_채점한_정오답: labels[`${p.index}`] || p.사용자가_직접_채점한_정오답,
+        사용자가_기술한_정답: {
+          ...p.사용자가_기술한_정답,
+          text: isMulti ? userArr.join(', ') : (editableAnswers[`${p.index}`] ?? p.사용자가_기술한_정답?.text ?? ''),
+        },
+        correct_answer: isMulti ? correctArr.join(', ') : (editableCorrectAnswers[`${p.index}`] ?? p.correct_answer ?? ''),
+        userAnswers: isMulti ? userArr : p.userAnswers,
+        correctAnswers: isMulti ? correctArr : p.correctAnswers,
+      };
+    });
 
     try {
       setSaving(true);
@@ -309,11 +353,18 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           // 라벨 없으면 undefined 유지 — O/X 어느 버튼도 강조 안 함. (기존 `|| 'O'`는 미채점/빈답 문항의 O 버튼을 파랗게 켜서 '정답'처럼 보이게 하던 문제)
           const currentMark = labels[`${problem.index}`];
           // 복수답안·형식불일치 감지(편집 중 값 반영) → AI 판정 배지 숨기고 '수동 확인' 안내
+          // multi는 correctAnswers/userAnswers가 확신 추출된 경우 null(자동채점 신뢰)
+          const isMulti = problem.answerFormat === 'multi';
+          const currentCorrectAnswers = multiCorrectAnswers[`${problem.index}`] ?? problem.correctAnswers;
+          const currentUserAnswers = multiUserAnswers[`${problem.index}`] ?? problem.userAnswers;
           const reviewReason = getManualReviewReason({
             instruction: problem.instruction,
             correctAnswer: editableCorrectAnswers[`${problem.index}`] ?? problem.correct_answer,
             userAnswer: editableAnswers[`${problem.index}`] ?? problem.사용자가_기술한_정답?.text,
             hasChoices: (problem.문제_보기?.length ?? 0) > 0,
+            answerFormat: problem.answerFormat,
+            correctAnswers: currentCorrectAnswers,
+            userAnswers: currentUserAnswers,
           });
           const aiMark = reviewReason ? undefined : problem.AI가_판단한_정오답;
           const qType = inferQuestionType(problem);
@@ -330,6 +381,11 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     {aiMark && (
                       <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
                         AI: {aiMark}
+                      </span>
+                    )}
+                    {isMulti && !reviewReason && (
+                      <span className="text-xs px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
+                        {t.labeling.multiAnswerAuto}
                       </span>
                     )}
                     {reviewReason && (
@@ -424,33 +480,93 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     )}
                   </div>
 
-                  {/* 사용자 답안 + 정답 (편집 가능 텍스트 입력) */}
-                  <div className="mb-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[70px]">
-                        {language === 'ko' ? '사용자 답안:' : 'User answer:'}
-                      </span>
-                      <input
-                        type="text"
-                        value={editableAnswers[`${problem.index}`] ?? ''}
-                        onChange={(e) => handleAnswerChange(problem.index, e.target.value)}
-                        placeholder={language === 'ko' ? '답안 입력' : 'Enter answer'}
-                        className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500"
-                      />
+                  {/* 사용자 답안 + 정답 */}
+                  {isMulti ? (
+                    // 다중정답 객관식 — 번호 칩 다중 선택(정답=초록, 사용자 오선택=빨강)
+                    <div className="mb-3 space-y-2">
+                      <div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">{t.labeling.multiUserPicks}</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {problem.문제_보기.map((choice, idx) => {
+                            const num = idx + 1;
+                            const userSet = new Set(currentUserAnswers ?? []);
+                            const correctSet = new Set(currentCorrectAnswers ?? []);
+                            const selected = userSet.has(num);
+                            const wrong = selected && !correctSet.has(num);
+                            return (
+                              <button
+                                key={num}
+                                type="button"
+                                title={choice.text}
+                                onClick={() => handleMultiToggle(problem.index, 'user', num)}
+                                className={`w-8 h-8 rounded-full text-sm font-semibold border transition-colors ${
+                                  selected
+                                    ? (wrong
+                                        ? 'bg-red-600 text-white border-red-600'
+                                        : 'bg-blue-600 text-white border-blue-600')
+                                    : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">{t.labeling.multiCorrectPicks}</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {problem.문제_보기.map((choice, idx) => {
+                            const num = idx + 1;
+                            const selected = new Set(currentCorrectAnswers ?? []).has(num);
+                            return (
+                              <button
+                                key={num}
+                                type="button"
+                                title={choice.text}
+                                onClick={() => handleMultiToggle(problem.index, 'correct', num)}
+                                className={`w-8 h-8 rounded-full text-sm font-semibold border transition-colors ${
+                                  selected
+                                    ? 'bg-emerald-600 text-white border-emerald-600'
+                                    : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[70px]">
-                        {language === 'ko' ? '실제 정답:' : 'Correct answer:'}
-                      </span>
-                      <input
-                        type="text"
-                        value={editableCorrectAnswers[`${problem.index}`] ?? ''}
-                        onChange={(e) => handleCorrectAnswerChange(problem.index, e.target.value)}
-                        placeholder={language === 'ko' ? '정답 입력' : 'Enter correct answer'}
-                        className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-green-700 dark:text-green-400 font-medium focus:ring-1 focus:ring-green-500"
-                      />
+                  ) : (
+                    // 단일답/주관식 (편집 가능 텍스트 입력) — 기존 UI 불변
+                    <div className="mb-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[70px]">
+                          {language === 'ko' ? '사용자 답안:' : 'User answer:'}
+                        </span>
+                        <input
+                          type="text"
+                          value={editableAnswers[`${problem.index}`] ?? ''}
+                          onChange={(e) => handleAnswerChange(problem.index, e.target.value)}
+                          placeholder={language === 'ko' ? '답안 입력' : 'Enter answer'}
+                          className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[70px]">
+                          {language === 'ko' ? '실제 정답:' : 'Correct answer:'}
+                        </span>
+                        <input
+                          type="text"
+                          value={editableCorrectAnswers[`${problem.index}`] ?? ''}
+                          onChange={(e) => handleCorrectAnswerChange(problem.index, e.target.value)}
+                          placeholder={language === 'ko' ? '정답 입력' : 'Enter correct answer'}
+                          className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-green-700 dark:text-green-400 font-medium focus:ring-1 focus:ring-green-500"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* 문제 유형 분류 */}
                   {problem.문제_유형_분류 && (

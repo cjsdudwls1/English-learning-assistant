@@ -3,6 +3,7 @@ import type { ProblemItem } from '../../types';
 import { getCurrentUserId } from './auth';
 import { isCorrectFromMark, normalizeMark } from '../marks';
 import { transformToProblemItem, transformFromLabelJoin } from '../../utils/problemTransform';
+import { eqSet } from '../../utils/gradingSafety';
 import { resolveImageUrls } from '../../utils/imageUrl';
 
 const ID_CHUNK = 500;
@@ -277,12 +278,24 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
     const problemId = idByIndex.get(item.index);
     if (!problemId) continue;
 
+    // 다중정답 객관식(multi_answer_contract v1) — 번호 집합이 확신 추출됐으면 eqSet 완전일치로 채점
+    // 게이트는 백엔드 computeIsCorrect와 1:1 정합: 정답 2개 이상 + 사용자 선택이 정답 수 이상일 때만 신뢰
+    const isMulti = item.answerFormat === 'multi';
+    const hasConfidentSets = isMulti
+      && Array.isArray(item.correctAnswers) && item.correctAnswers.length >= 2
+      && Array.isArray(item.userAnswers) && item.userAnswers.length >= item.correctAnswers.length;
+
     // problems 테이블 업데이트 (content JSONB)
     const currentContent = contentById.get(problemId) || {};
     const updatedContent = {
       ...currentContent,
       stem: item.문제내용.text,
       choices: item.문제_보기.map(c => ({ text: c.text })),
+      ...(isMulti && {
+        answer_format: item.answerFormat,
+        correct_answers: item.correctAnswers ?? [],
+        user_answers: item.userAnswers ?? [],
+      }),
     };
 
     const { error: problemUpdateError } = await supabase
@@ -295,12 +308,17 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
     if (problemUpdateError) throw problemUpdateError;
 
     // labels 테이블 업데이트 (사용자 답안, 정답, 채점 정보)
+    // is_correct: 다중정답이 확신 추출됐으면 eqSet 완전일치를 우선 신뢰(precision-first), 그 외 기존 수동 마크 기반 유지
+    const isCorrect = hasConfidentSets
+      ? eqSet(new Set(item.correctAnswers), new Set(item.userAnswers))
+      : isCorrectFromMark(item.사용자가_직접_채점한_정오답);
+
     const { error: labelUpdateError } = await supabase
       .from('labels')
       .update({
         user_answer: item.사용자가_기술한_정답.text,
         user_mark: normalizeMark(item.사용자가_직접_채점한_정오답),
-        is_correct: isCorrectFromMark(item.사용자가_직접_채점한_정오답),
+        is_correct: isCorrect,
         correct_answer: item.correct_answer || null,
         classification: item.문제_유형_분류,
       })

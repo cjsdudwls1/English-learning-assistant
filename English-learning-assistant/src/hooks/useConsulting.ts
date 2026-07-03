@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { fetchProblemsMetadataByCorrectness, type ProblemMetadataItem } from '../services/db';
+import { fetchProblemsMetadataByCorrectness, saveConsultingReport, type ProblemMetadataItem } from '../services/db';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
 import type { StatsNode } from '../services/stats';
@@ -188,6 +188,18 @@ export function useConsulting({
 
       setReportText(result.report);
       setShowConsultModal(true);
+
+      // 히스토리 저장 (실패해도 보고서 표시엔 영향 없음)
+      try {
+        await saveConsultingReport({
+          scopeLabel,
+          language,
+          report: result.report,
+          stats,
+        });
+      } catch (saveErr) {
+        console.error('컨설팅 보고서 저장 실패(무시):', saveErr);
+      }
     } catch (e) {
       console.error('Error generating consulting report:', e);
       setError(translateError(e, language, getTranslation(language), language === 'ko' ? '학습 컨설팅 생성 실패' : 'Failed to generate consulting report'));
