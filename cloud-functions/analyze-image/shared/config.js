@@ -105,10 +105,12 @@ export const USER_ANSWER_MODEL_SEQUENCE = [
 ];
 
 // API 호출 타임아웃 (밀리초)
+// default 60s→90s: 밀집 지문(연속 지문 페이지) 등에서 gemini-2.5-flash가
+// 60s 안에 못 끝내고 폴백으로 넘어가던 간헐 실패 완화. 워커 timeout=540s라 여유 충분.
 export const API_TIMEOUT_MS = {
   withTools: 120_000,
   gemini3: 90_000,
-  default: 60_000,
+  default: 90_000,
 };
 
 /** 분류 JSON 스키마 (Pass C responseJsonSchema) */
