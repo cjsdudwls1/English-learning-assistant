@@ -76,13 +76,17 @@ export function getManualReviewReason(args: {
   correctAnswer?: string | null;
   userAnswer?: string | null;
   hasChoices?: boolean;
-  answerFormat?: 'single' | 'multi' | 'unknown' | null;
+  answerFormat?: 'single' | 'multi' | 'multi_blank' | 'unknown' | null;
   correctAnswers?: number[] | null;
   userAnswers?: number[] | null;
 }): ManualReviewReason | null {
   const { instruction, correctAnswer, userAnswer, hasChoices, answerFormat, correctAnswers, userAnswers } = args;
 
   if (answerFormat === 'unknown') return '형식확인';
+
+  // 다중빈칸 서술형(multi_blank): 빈칸별 자유서술 → 단일 비교/집합 채점 불가. 항상 수동 확인(자동 O/X 금지).
+  // (flat correct_answer가 "(1)…(2)…" 형태라 아래 detectMultiAnswer에 걸려도 오작동하지 않도록 여기서 선차단.)
+  if (answerFormat === 'multi_blank') return '형식확인';
 
   if (answerFormat === 'multi' || detectMultiAnswer(instruction, correctAnswer)) {
     // 백엔드가 번호 집합을 확신 추출한 경우 → computeIsCorrect와 동일 게이트로 자동 채점 신뢰

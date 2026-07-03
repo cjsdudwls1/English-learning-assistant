@@ -112,6 +112,30 @@ The student's mark may sit directly ON a choice number (a circle/check/underline
     : `You are analyzing a CROPPED and ZOOMED image of the ANSWER AREA for exam question Q${problemNumber}.
 This image is zoomed into ONLY the answer marking region. Look very carefully for any handwritten marks.`;
 
+  // 괄호고르기(word-choice, 어법 선택형): "(he/who)"처럼 문장 속 괄호 안 후보 중 하나를 고르는 문항.
+  // 사용자가 동그라미/밑줄/체크로 고른 '단어'를 그대로 반환(번호/인덱스 금지).
+  if (questionContext?.isWordChoice && Array.isArray(questionContext.wordChoiceOptions) && questionContext.wordChoiceOptions.length >= 2) {
+    const opts = questionContext.wordChoiceOptions;
+    const instruction = questionContext.instruction || '';
+    return `${scopeLine}
+
+This is a WORD-CHOICE (괄호고르기 / 어법 선택형) question: inside the printed sentence there is a parenthesis group offering word options, and the student must CHOOSE ONE by circling / underlining / checking / marking it.
+${instruction ? `\nInstruction: ${instruction}` : ''}
+The options for this question are: ${opts.map((o) => `"${o}"`).join(' , ')}
+
+Your task: report WHICH option WORD the student physically marked (circled/underlined/checked/struck-through-the-other).
+
+## Rules — output the WORD, never a number
+- Return EXACTLY ONE of the option words above, spelled exactly as shown (e.g. "who", "that", "which") — the one the student selected.
+- The selection signal: the option the student CIRCLED/underlined/checked is chosen; if they crossed out one option, the OTHER remaining option is chosen.
+- NEVER return an index/position number ("1","2") — always the actual word.
+- If NO mark is visible, or you cannot confidently tell which option was marked, return null — do NOT guess. A wrong answer is worse than null here.
+- NEVER copy the correct answer; user_answer must come only from the physical mark.
+
+Output JSON only:
+{ "problem_number": "${problemNumber}", "user_answer": "${opts[0]}" }`;
+  }
+
   if (questionContext?.isSubjective) {
     const instruction = questionContext.instruction || '';
     const questionBody = questionContext.questionBody || '';
@@ -192,6 +216,29 @@ Output JSON only:
 }
 
 export function buildCroppedCorrectAnswerPrompt(problemNumber, questionContext) {
+  // 괄호고르기(word-choice): 정답도 '옵션 단어'로 출력(인덱스 "2" 금지 — 실측 confident-wrong 원인).
+  if (questionContext?.isWordChoice && Array.isArray(questionContext.wordChoiceOptions) && questionContext.wordChoiceOptions.length >= 2) {
+    const opts = questionContext.wordChoiceOptions;
+    const instruction = questionContext.instruction || '';
+    const questionBody = questionContext.questionBody || '';
+    return `You are analyzing a CROPPED image of exam question Q${problemNumber}.
+This is a WORD-CHOICE (괄호고르기 / 어법 선택형) question: the printed sentence contains a parenthesis group of word options, and exactly ONE is grammatically correct.
+${instruction ? `\nInstruction: ${instruction}` : ''}
+${questionBody ? `\nQuestion: ${questionBody}` : ''}
+The options for this question are: ${opts.map((o) => `"${o}"`).join(' , ')}
+
+Your task: solve the grammar and give the CORRECT option WORD.
+
+## Rules — output the WORD, never a number
+- Return EXACTLY ONE of the option words above, spelled exactly as shown (e.g. "who", "that", "which") — the grammatically correct one.
+- NEVER return an index/position number ("1","2") — always the actual word. Outputting a digit here is a confident-wrong error.
+- If a printed answer key is visible on the page (e.g. "1. that  2. who"), you MAY use it, but still output the WORD, not the number.
+- You MUST provide a correct_answer (one of the option words). Never return null.
+
+Output JSON only:
+{ "problem_number": "${problemNumber}", "correct_answer": "${opts[opts.length - 1]}" }`;
+  }
+
   if (questionContext?.isSubjective) {
     const instruction = questionContext.instruction || '';
     const questionBody = questionContext.questionBody || '';
@@ -287,6 +334,10 @@ ${focusBlock}
   - correct_answer MUST be the CHOICE NUMBER (a single digit "1"-"5" that you determine by solving), NOT the underlined word (e.g., NOT "appear")
 - Sentence-PATTERN questions (문장 형식 고르기, choices written as "1형식".."5형식", NOT ①②③④⑤-labeled statements): BOTH user_answer and correct_answer are the PATTERN NUMBER itself. Student circled "4형식" → user_answer "4"; correct pattern 5형식 → correct_answer "5". Do NOT convert to a slot/position index (①②③); read the digit out of the "N형식" label.
   When SOLVING for the correct pattern, apply: 1형식=S+V (자동사); 2형식=S+V+C (be·become·seem·감각동사+보어 — a be-verb followed by a noun or adjective is 2형식, e.g. "She is my business partner"→2형식, NOT 3형식); 3형식=S+V+O; 4형식=S+V+IO+DO (수여동사 give/buy/make/send/tell + 사람 + 사물); 5형식=S+V+O+OC (make/find/keep/call/leave + 목적어 + 목적격보어, e.g. "I found it difficult"→5형식).
+- Word-choice questions (괄호고르기 / 어법 선택형: a printed sentence with a parenthesis group of word options like "(he/who)", "(which/that)", and the student circles/underlines ONE option word — NOT numbered ①②③④⑤ choices):
+  - BOTH user_answer and correct_answer are the OPTION WORD itself (e.g. "who", "that", "which"), spelled exactly as printed — NEVER an index/position number ("1","2"). Outputting a digit for these is a confident-wrong error.
+  - user_answer = the option word the student physically marked (circled/underlined/checked; if one option is crossed out, the other is chosen). correct_answer = the grammatically correct option word (you may use a printed answer key if visible, but still as the WORD).
+  - If the student's mark is absent or ambiguous, user_answer = null (do NOT guess).
 - Short answer / essay (서술형):
   - UNIT MATCHING (critical): for the SAME question, user_answer and correct_answer MUST be in the SAME unit/format so they can be compared directly (the student fills a blank → both are the blank's content; the student writes a whole sentence → both are the whole sentence).
   - user_answer: transcribe ONLY the student's HANDWRITING in the blank/answer space, VERBATIM (keep their spelling/grammar errors). Do NOT include printed text already on the page (dialogue tags "A:" / "B:", a printed "Yes," / "No," lead-in, the given part of the sentence, word-bank tokens) — unless the student wrote it by hand. The answer is SHORT (the handwritten fill-in); a long printed sentence or dialogue line around the blank is the QUESTION, not the answer — never transcribe it. The blank is often a gap in the MIDDLE of a printed line, or one line of an A/B dialogue — transcribe ONLY the handwritten strokes inserted into the gap (irregular pen/pencil, slanted/cursive), EXCLUDING the printed words before/after the gap and the other speaker's printed line. If a correction arrow (→) is present, report only the text after it. Multiple blanks → join in reading order with a single space (no slashes).

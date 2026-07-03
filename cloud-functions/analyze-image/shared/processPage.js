@@ -13,6 +13,8 @@ import {
   executePassA, executePass0, executePassB, executePassBFullImage,
   executePassC, detectSubjectiveUserAnswers, detectCorrectFromCrops, detectFromCrops,
   sanitizeMcAnswer, normalizeChoiceValue, flattenMcAnswerSet,
+  parseInlineChoiceOptions, sanitizeWordChoiceAnswer, parseNumberedBlanks,
+  detectMultiBlankAnswers,
 } from './passes.js';
 import { USER_ANSWER_MODEL_SEQUENCE } from './config.js';
 import { buildCroppedUserAnswerPrompt } from './prompts.js';
@@ -100,10 +102,15 @@ export function mergeHandwritingMarks(pageItems, marks, sessionId, questionConte
     if (ctx) {
       const isSubjective = ctx.isSubjective === true;
       const choices = ctx.choices;
+      // 괄호고르기(word-choice): 정답/사용자답을 '옵션 단어'로 정규화. 전체이미지 fallback 등
+      // 비크롭 경로가 인덱스 "2"로 오출력해도 여기서 옵션 단어로 환원(confident-wrong 차단).
+      if (ctx.isWordChoice === true && Array.isArray(ctx.wordChoiceOptions) && ctx.wordChoiceOptions.length >= 2) {
+        mark.user_answer = sanitizeWordChoiceAnswer(mark.user_answer == null ? null : String(mark.user_answer).trim(), ctx.wordChoiceOptions);
+        mark.correct_answer = sanitizeWordChoiceAnswer(mark.correct_answer == null ? null : String(mark.correct_answer).trim(), ctx.wordChoiceOptions);
+      } else if (ctx.isMultiFormat === true && !isSubjective) {
       // 다중정답(multi MC): isMultiFormat 문항은 sanitizeMcAnswer(단일 강제)를 거치면 "2, 4" 같은
       // 집합 문자열이 선택지 텍스트와 대조 실패해 null로 파괴된다 — flattenMcAnswerSet(집합 파싱
       // 후 재평탄화)으로 대체. 신호 없는 문항(isMultiFormat=false)은 원래 로직 그대로(무회귀).
-      if (ctx.isMultiFormat === true && !isSubjective) {
         mark.user_answer = flattenMcAnswerSet(mark.user_answer, choices);
         mark.correct_answer = flattenMcAnswerSet(mark.correct_answer, choices);
       } else {
@@ -194,9 +201,10 @@ export function applyEarlyOverExtractionGate(pageItems, bboxNumbers, questionCon
     const ctx = questionContextMap.get(pn);
     const isSubjective = ctx?.isSubjective === true;
     const hasObjectiveKw = ctx?.hasObjectiveKw === true;
+    const isWordChoice = ctx?.isWordChoice === true; // 괄호고르기: choices=0라 유령 오판 위험 → 보호 신호
     const hasPassage = !!(it.shared_passage_ref || (it.passage && String(it.passage).trim() !== '') || it.visual_context);
     const hasBody = hasSubstantialBody(it);
-    const isGhost = !hasChoices && !hasBbox && !isSubjective && !hasObjectiveKw && !hasPassage && !hasBody;
+    const isGhost = !hasChoices && !hasBbox && !isSubjective && !hasObjectiveKw && !hasPassage && !hasBody && !isWordChoice;
     if (isGhost) {
       console.warn(`[handler] over-extraction 조기 게이트: Q${pn} 드롭 (choices=0, bbox=무, subjective=false, objKw=false, passage=무, body=무, is_fragment=${it.is_fragment === true})`, { sessionId });
       pageItems.splice(i, 1);
@@ -335,14 +343,57 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
     // 뿐이다 — 오탐(false positive)의 최악의 결과는 저장 단계에서 다시 single로 재확정되는 것뿐.
     const isMultiFormat = detectMultiAnswer(instructionText, null);
 
+    // 괄호고르기(word-choice, 어법 선택형) 감지.
+    // ⚠️ Pass A는 괄호 옵션을 종종 choices(①②)로 오적재한다(실측 ch2) → !hasChoices 게이트 불가.
+    // 또 Pass A가 body의 슬래시/괄호를 뭉개기도 한다(실측 "(he who)","who which)") → 인라인 파싱만으론
+    // recall 부족. 두 신호를 병용한다:
+    //  (1) 문장 속 인라인 "(x/y)" 그룹 파싱(가장 확실, 옵션 철자까지 획득) — body 우선, 없으면 instruction.
+    //  (2) fallback: "괄호 안에서/골라" 지시문 + 2~4개의 짧은 '단어형' choices(Pass A가 괄호를 뭉갠 경우).
+    //      "괄호 안"은 word-choice 고유 표현이라 ①②③④⑤ 정규 MC와 안전하게 구분된다(정밀도).
+    // 감지 시 isSubjective=false 고정 + choices=[](ctx·item 모두) 비워, MC 인덱스화("2" 오출력)와
+    // 서술형 자유텍스트 양쪽을 우회 → 답을 '옵션 단어'로 추출·비교.
+    let wordChoiceOptions = parseInlineChoiceOptions(questionBodyText);
+    if (wordChoiceOptions.length < 2) wordChoiceOptions = parseInlineChoiceOptions(instructionText);
+    if (wordChoiceOptions.length < 2) {
+      const wcCue = /괄호\s*안|괄호\s*에서|괄호\s*속/.test(combinedText);
+      if (wcCue && hasChoices) {
+        const words = (item.choices || [])
+          .map(c => (typeof c === 'string' ? c : (c?.text || c?.label || '')))
+          .map(s => String(s).trim()).filter(Boolean);
+        const allWordLike = words.length >= 2 && words.length <= 4 &&
+          words.every(w => /[A-Za-z]/.test(w) && w.split(/\s+/).length <= 3 && w.length <= 20);
+        if (allWordLike) wordChoiceOptions = words;
+      }
+    }
+    const isWordChoice = wordChoiceOptions.length >= 2;
+    if (isWordChoice) {
+      item.choices = []; // 인라인 단어옵션을 MC 선택지로 오적재한 것을 제거 → 저장/채점 텍스트 경로로
+    }
+
+    // 다중빈칸 서술형(multi_blank) 감지(Phase 2 대비 컨텍스트만 기록): "(1)…(2)…(3)…" 연속 빈칸.
+    // 현재는 진단/추적 용도로만 저장 — 실제 분리추출·저장은 Phase 2에서 처리.
+    const blankStems = (isSubjective && !isWordChoice) ? parseNumberedBlanks(questionBodyText) : [];
+    const isMultiBlank = blankStems.length >= 2;
+
+    if (isWordChoice) {
+      console.log(`[handler] Q${item.problem_number} 괄호고르기 감지: options=[${wordChoiceOptions.join(' / ')}] → isSubjective=false, choices 비움`, { sessionId });
+    }
+    if (isMultiBlank) {
+      console.log(`[handler] Q${item.problem_number} 다중빈칸 감지: ${blankStems.length}개 빈칸(Phase 2 추적용)`, { sessionId });
+    }
+
     questionContextMap.set(String(item.problem_number), {
-      isSubjective,
+      isSubjective: isWordChoice ? false : isSubjective,
       hasObjectiveKw,
-      isMultiFormat,
+      isMultiFormat: isWordChoice ? false : isMultiFormat,
       instruction: instructionText,
       questionBody: questionBodyText,
-      hasChoices,
-      choices: item.choices || [],
+      hasChoices: isWordChoice ? false : hasChoices,
+      choices: isWordChoice ? [] : (item.choices || []),
+      isWordChoice,
+      wordChoiceOptions,
+      isMultiBlank,
+      blankStems,
     });
   }
 
@@ -520,6 +571,44 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
       if (item && mark.user_answer != null) {
         item.user_answer = mark.user_answer;
       }
+    }
+  }
+
+  // ── 다중빈칸 서술형(multi_blank) 배열 추출 ──
+  // 한 문항 안에 (1)(2)(3)… 번호빈칸이 여러 개인 서술형은 단일 user_answer/correct_answer로는
+  // 한 칸에 몰려 표시된다(실측 Q28 "표 보고 빈칸 완성", 학생이 (1)만 작성). 빈칸별 배열로 분리해
+  // 프론트가 N/N 슬롯으로 보여줄 수 있게 한다. 채점은 상위에서 항상 기권(자유서술, 정밀도 우선).
+  const multiBlankProblems = [];
+  for (const [pNum, ctx] of questionContextMap) {
+    if (ctx.isMultiBlank && Array.isArray(ctx.blankStems) && ctx.blankStems.length >= 2) {
+      multiBlankProblems.push({ problem_number: pNum, instruction: ctx.instruction, questionBody: ctx.questionBody, blankStems: ctx.blankStems });
+    }
+  }
+  if (multiBlankProblems.length > 0) {
+    console.log(`[handler] 다중빈칸 ${multiBlankProblems.length}개 → 빈칸별 배열 추출`, { sessionId });
+    try {
+      const mbResult = await detectMultiBlankAnswers({
+        ai, sessionId,
+        imageBase64: imageData.imageBase64, mimeType: imageData.mimeType,
+        multiBlankProblems,
+      });
+      for (const mark of mbResult.marks) {
+        const item = pageItems.find(it => String(it.problem_number) === String(mark.problem_number));
+        if (!item) continue;
+        const ua = Array.isArray(mark.user_answers) ? mark.user_answers : [];
+        const ca = Array.isArray(mark.correct_answers) ? mark.correct_answers : [];
+        if (ca.length >= 2) {
+          item.answer_format = 'multi_blank';
+          item.user_answers = ua;
+          item.correct_answers = ca;
+          // 하위호환 flat 값: 번호형 조합(빈칸은 [빈칸] 표기) → 기존 detectMultiAnswer 기권 유지·기존 UI 폴백.
+          item.user_answer = ua.map((v, i) => `(${i + 1}) ${v == null ? '[빈칸]' : v}`).join(' ');
+          item.correct_answer = ca.map((v, i) => `(${i + 1}) ${v == null ? '' : v}`).join(' ');
+          console.log(`[handler] Q${mark.problem_number} 다중빈칸 배열: user=${JSON.stringify(ua)} correct=${JSON.stringify(ca)}`, { sessionId });
+        }
+      }
+    } catch (mbErr) {
+      console.warn(`[handler] 다중빈칸 추출 실패(무시, 기존 단일값 유지): ${mbErr?.message}`, { sessionId });
     }
   }
 

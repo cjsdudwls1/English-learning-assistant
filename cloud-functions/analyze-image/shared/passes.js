@@ -77,6 +77,99 @@ export function sanitizeMcAnswer(value, isSubjective, choices) {
 }
 
 /**
+ * 괄호고르기(word-choice, 어법 선택형) 옵션 파서.
+ * 문장 속 괄호/대괄호 안 '/'로 구분된 단어 후보를 추출한다.
+ *   예: "The man is an actor (he / who) has a lot of fans." → ["he","who"]
+ *       "She wants a jacket (who/that) is blue." → ["who","that"]
+ * 판정 신호(정밀도 우선, 오탐 시 최악=기권):
+ *  - 괄호-선택 그룹이 정확히 1개이고, 그 안이 '/'로 나뉜 2~4개의 짧은 '단어형' 후보일 때만 인정.
+ *  - 각 후보는 영문 알파벳 포함 + 3단어 이하 + 20자 이하(문장/지문 슬래시·숫자 슬래시 오탐 차단).
+ *  - 여러 괄호-선택 그룹(다중 빈칸형)은 제외(빈 배열) — 단순 word-choice로 한정.
+ * @param {string} text
+ * @returns {string[]} 옵션 배열(0 또는 2~4개)
+ */
+export function parseInlineChoiceOptions(text) {
+  const s = String(text || '');
+  const groups = [];
+  const re = /[([]([^()[\]]{1,60})[)\]]/g; // (...) 또는 [...]
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const inner = m[1];
+    if (!inner.includes('/')) continue;
+    const parts = inner.split('/').map((t) => t.trim()).filter(Boolean);
+    if (parts.length < 2 || parts.length > 4) continue;
+    const ok = parts.every((p) => /[A-Za-z]/.test(p) && p.split(/\s+/).length <= 3 && p.length <= 20);
+    if (ok) groups.push(parts);
+  }
+  // 정확히 1개의 괄호-선택 그룹일 때만 단순 word-choice로 인정(다중 그룹은 별도 처리 대상).
+  return groups.length === 1 ? groups[0] : [];
+}
+
+/**
+ * 괄호고르기(word-choice) 답을 '옵션 단어'로 정규화한다.
+ *  - value가 옵션 중 하나와 (대소문자·구두점 무시) 일치 → 표준 옵션 단어 반환.
+ *  - value가 숫자 N이고 1..options.length 범위 → options[N-1]로 환원(인덱스 오출력 방어;
+ *    실측 "(he/who)" 정답이 "2"로 새던 confident-wrong을 옵션 단어 "who"로 복원).
+ *  - 그 외(옵션과 무관한 단어·범위밖 숫자) → null(기권, 정밀도 우선).
+ * @param {string|null} value
+ * @param {string[]} options
+ * @returns {string|null}
+ */
+export function sanitizeWordChoiceAnswer(value, options) {
+  const opts = Array.isArray(options) ? options : [];
+  if (value == null || opts.length === 0) return value ?? null;
+  const s = String(value).trim();
+  if (s === '') return null;
+  const norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+  const target = norm(s);
+  // 1) 옵션 단어 직접 일치 → 표준 옵션 반환
+  const hit = opts.find((o) => norm(o) === target);
+  if (hit) return hit;
+  // 2) 인덱스 숫자 → 옵션 환원(모델이 번호로 오출력한 경우 복원)
+  if (/^[0-9]+$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (n >= 1 && n <= opts.length) {
+      console.log(`[passes:sanitizeWordChoiceAnswer] 인덱스 "${s}" → 옵션 "${opts[n - 1]}" 환원`);
+      return opts[n - 1];
+    }
+    return null; // 범위밖 숫자
+  }
+  // 3) 옵션과 무관 → 기권(정밀도 우선)
+  console.warn(`[passes:sanitizeWordChoiceAnswer] 옵션(${opts.join('/')})과 불일치한 답 "${s}" → null`);
+  return null;
+}
+
+/**
+ * 다중빈칸 서술형(multi_blank)용 번호매김 빈칸 파서.
+ * "(1) ... (2) ... (3) ..." 형태를 순서대로 분리해 각 빈칸의 문장 stem을 반환한다.
+ *   예: "(1) Han Kang is ___ (2) Leonardo da Vinci is ___ (3) Thomas Edison is ___"
+ *       → ["Han Kang is ___", "Leonardo da Vinci is ___", "Thomas Edison is ___"]
+ * 조건: (1)부터 시작하는 연속 시퀀스(1,2,3,…) 2개 이상일 때만 인정(오탐 차단, 정밀도 우선).
+ * @param {string} text
+ * @returns {string[]} 빈칸 stem 배열(0 또는 2개 이상)
+ */
+export function parseNumberedBlanks(text) {
+  const s = String(text || '');
+  const marker = /\(\s*([1-9])\s*\)/g;
+  const idxs = [];
+  let m;
+  while ((m = marker.exec(s)) !== null) {
+    idxs.push({ n: parseInt(m[1], 10), pos: m.index, end: marker.lastIndex });
+  }
+  if (idxs.length < 2) return [];
+  for (let i = 0; i < idxs.length; i++) {
+    if (idxs[i].n !== i + 1) return []; // 1,2,3… 연속 아님 → 미인정
+  }
+  const stems = [];
+  for (let i = 0; i < idxs.length; i++) {
+    const start = idxs[i].end;
+    const stop = i + 1 < idxs.length ? idxs[i + 1].pos : s.length;
+    stems.push(s.slice(start, stop).trim());
+  }
+  return stems;
+}
+
+/**
  * 다중정답(multi MC) 답안 집합 파싱: 원문에서 선택지 번호(원문자 ①~⑨ 및 콤마/공백 구분 숫자)를
  * 모두 추출해 1..choices.length 범위로 검증 후 오름차순 정렬·중복제거한 number[]를 반환한다.
  * - 원문자와 숫자를 원문(raw) 그대로에서 개별 스캔한다. normalizeChoiceValue의 문자열 치환은
@@ -251,18 +344,24 @@ export async function detectFromCrops({ ai, sessionId, crops, buildPromptFn, que
             const parsed = parseJsonResponse(text, model);
             const isSubjective = questionContext?.isSubjective;
             const choices = questionContext?.choices;
+            // 괄호고르기(word-choice, 어법 선택형): "(he/who)"처럼 문장 속 괄호 후보 중 하나를 고르는 문항.
+            // 정답/사용자답을 '옵션 단어'로 정규화한다(인덱스 "2" 오출력을 옵션 단어로 환원, 무관 답은 기권).
+            // questionContext 단계에서 미리 판정(isWordChoice)되며, 이 경우 choices=[]로 비워져 MC 인덱스화가 안 됨.
+            const isWordChoice = questionContext?.isWordChoice === true;
+            const wcOptions = questionContext?.wordChoiceOptions;
             // 다중정답(multi MC): 문두에 "모두 고르시오/정답 N개" 등 신호가 있는 문항(questionContext
             // 단계에서 미리 판정됨)은 단일 강제(sanitizeMcAnswer)가 아니라 집합 파싱(sanitizeMcAnswerSet)
             // 경로를 탄다. 신호 없는 문항(isMulti=false)은 기존 sanitizeMcAnswer 경로 그대로 — 무회귀.
-            const isMulti = questionContext?.isMultiFormat === true && !isSubjective;
+            const isMulti = questionContext?.isMultiFormat === true && !isSubjective && !isWordChoice;
+            const normalizeAnswer = (raw) => {
+              if (isWordChoice) return sanitizeWordChoiceAnswer(raw == null ? null : String(raw).trim(), wcOptions);
+              if (isMulti) return flattenMcAnswerSet(raw, choices);
+              return sanitizeMcAnswer(normalizeChoiceValue(raw ?? null), isSubjective, choices);
+            };
             return {
               problem_number: parsed.problem_number || crop.problem_number,
-              user_answer: isMulti
-                ? flattenMcAnswerSet(parsed.user_answer, choices)
-                : sanitizeMcAnswer(normalizeChoiceValue(parsed.user_answer ?? null), isSubjective, choices),
-              correct_answer: isMulti
-                ? flattenMcAnswerSet(parsed.correct_answer, choices)
-                : sanitizeMcAnswer(normalizeChoiceValue(parsed.correct_answer ?? null), isSubjective, choices),
+              user_answer: normalizeAnswer(parsed.user_answer),
+              correct_answer: normalizeAnswer(parsed.correct_answer),
             };
           } catch (err) {
             console.warn(`[passes:detectFromCrops] Q${crop.problem_number} ${model} 실패: ${err?.message}, 다음 모델로 폴백`);
@@ -505,6 +604,91 @@ Output JSON only:
       const parsed = parseJsonResponse(text, model);
       const marks = Array.isArray(parsed?.marks) ? parsed.marks : (Array.isArray(parsed) ? parsed : []);
       console.log(`[passes:SubjectiveUserAnswers] ${model}: ${marks.length}개 주관식 user_answer 감지`, { sessionId });
+      return { marks, usageMetadata };
+    },
+  });
+  return result ?? { marks: [], usageMetadata: null };
+}
+
+/**
+ * 다중빈칸 서술형(multi_blank) 전용 추출 — 한 문항 안의 N개 번호빈칸((1)…(2)…(3)…)에 대해
+ * 빈칸별 학생답(user_answers[])과 정답(correct_answers[])을 '배열'로 받는다.
+ * - 전체 이미지 1회 호출(detectSubjectiveUserAnswers와 동형). 각 문항의 blankStems(인쇄된 빈칸 문장)를
+ *   프롬프트에 명시해 빈칸-답 정렬을 결정적으로 유도.
+ * - 빈 빈칸은 user_answers[i]=null. correct_answers[i]는 항상 풀이(빈칸 조건 기반).
+ * - 배열 길이는 각 문항 blankStems 길이에 맞춰 pad/truncate(정렬 안정성).
+ * - 채점은 상위(computeIsCorrect)에서 항상 기권(자유서술 정확일치 불가) — 여기선 표시용 추출만.
+ * @returns {{marks: Array<{problem_number, user_answers: Array<string|null>, correct_answers: Array<string|null>}>, usageMetadata}}
+ */
+export async function detectMultiBlankAnswers({ ai, sessionId, imageBase64, mimeType, multiBlankProblems }) {
+  if (!Array.isArray(multiBlankProblems) || multiBlankProblems.length === 0) {
+    return { marks: [], usageMetadata: null };
+  }
+
+  const problemBlocks = multiBlankProblems.map((p) => {
+    const stems = Array.isArray(p.blankStems) ? p.blankStems : [];
+    const blankLines = stems.map((s, i) => `    (${i + 1}) ${String(s || '').replace(/\s+/g, ' ').trim()}`).join('\n');
+    return `- Q${p.problem_number} — ${p.instruction || ''}\n  This question has ${stems.length} numbered blanks:\n${blankLines}`;
+  }).join('\n');
+
+  const prompt = `You are looking at an exam page image. Some questions contain MULTIPLE numbered blanks (1)(2)(3)… inside ONE problem, and the student fills each blank with a handwritten sentence/phrase (some blanks may be left EMPTY).
+
+Questions (each with its numbered blanks):
+${problemBlocks}
+
+Your task, for EACH question, return TWO arrays aligned to the blanks IN ORDER:
+- "user_answers": for each blank (1),(2),(3)…, the student's HANDWRITTEN answer transcribed EXACTLY as written (keep their spelling/grammar mistakes). If that specific blank is EMPTY (no handwriting), use null for that position. Do NOT shift answers up — position i MUST correspond to blank (i+1).
+- "correct_answers": for each blank, the correct answer you solve for that blank (based on the question conditions / the table shown). Always provide a best correct answer per blank (never null unless truly indeterminable).
+
+Rules:
+- Both arrays MUST have EXACTLY one entry per numbered blank, in blank order.
+- Transcribe handwriting only (not printed stems/labels). If a correction arrow (→) is present, report only the text after it.
+- Write each entry as natural text (no slashes splitting tokens).
+
+Output JSON only:
+{
+  "marks": [
+    { "problem_number": "28", "user_answers": ["the writer who won ...", null, null], "correct_answers": ["the writer who won ...", "the artist who painted ...", "the inventor who invented ..."] }
+  ]
+}`;
+
+  const parts = [
+    { text: prompt },
+    { inlineData: { data: imageBase64, mimeType } },
+  ];
+
+  const lenByNum = new Map(multiBlankProblems.map(p => [String(p.problem_number), (Array.isArray(p.blankStems) ? p.blankStems.length : 0)]));
+  const fitLen = (arr, n) => {
+    const a = Array.isArray(arr) ? arr.slice(0, n) : [];
+    while (a.length < n) a.push(null);
+    return a.map((v) => {
+      if (v == null) return null;
+      const s = String(v).trim();
+      return s === '' ? null : s;
+    });
+  };
+
+  const result = await runWithModelFallback({
+    models: LIGHTWEIGHT_MODEL_SEQUENCE,
+    callFn: async (model) => {
+      const { response, usageMetadata } = await generateWithRetry({
+        ai, model,
+        contents: [{ role: 'user', parts }],
+        sessionId, maxRetries: 2, baseDelayMs: 2000, temperature: 0.0,
+      });
+      const text = extractTextFromResponse(response, model);
+      const parsed = parseJsonResponse(text, model);
+      const raw = Array.isArray(parsed?.marks) ? parsed.marks : (Array.isArray(parsed) ? parsed : []);
+      const marks = raw.map((m) => {
+        const pn = String(m.problem_number ?? '').trim();
+        const n = lenByNum.get(pn) || (Array.isArray(m.correct_answers) ? m.correct_answers.length : 0) || (Array.isArray(m.user_answers) ? m.user_answers.length : 0);
+        return {
+          problem_number: pn,
+          user_answers: fitLen(m.user_answers, n),
+          correct_answers: fitLen(m.correct_answers, n),
+        };
+      });
+      console.log(`[passes:MultiBlank] ${model}: ${marks.length}개 다중빈칸 문항 배열 추출`, { sessionId });
       return { marks, usageMetadata };
     },
   });

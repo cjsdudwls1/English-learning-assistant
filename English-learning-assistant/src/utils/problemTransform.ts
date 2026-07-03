@@ -53,9 +53,13 @@ export function transformToProblemItem(
     question_body: p.content?.question_body ?? null,
     visual_context: p.content?.visual_context ?? null,
     // 다중정답 객관식(multi_answer_contract v1) — content에 없으면 undefined(레거시=단일 취급)
+    // multi_blank는 correct_answers/user_answers가 문자열 배열(빈칸별)이므로 MC 번호배열 필드에 넣지 않고
+    // 전용 blank* 필드로 분리(타입 충돌 방지 + 자동채점 오작동 방지).
     answerFormat: p.content?.answer_format ?? undefined,
-    correctAnswers: Array.isArray(p.content?.correct_answers) ? p.content.correct_answers : undefined,
-    userAnswers: Array.isArray(p.content?.user_answers) ? p.content.user_answers : undefined,
+    correctAnswers: (p.content?.answer_format !== 'multi_blank' && Array.isArray(p.content?.correct_answers)) ? p.content.correct_answers : undefined,
+    userAnswers: (p.content?.answer_format !== 'multi_blank' && Array.isArray(p.content?.user_answers)) ? p.content.user_answers : undefined,
+    blankCorrectAnswers: (p.content?.answer_format === 'multi_blank' && Array.isArray(p.content?.correct_answers)) ? p.content.correct_answers : undefined,
+    blankUserAnswers: (p.content?.answer_format === 'multi_blank' && Array.isArray(p.content?.user_answers)) ? p.content.user_answers : undefined,
   };
 }
 
@@ -99,9 +103,12 @@ export function transformFromLabelJoin(row: any): ProblemItem {
     question_body: row.problems.content?.question_body ?? null,
     visual_context: row.problems.content?.visual_context ?? null,
     // 다중정답 객관식(multi_answer_contract v1) — content에 없으면 undefined(레거시=단일 취급)
+    // multi_blank는 문자열 배열 → 전용 blank* 필드로 분리(위 transformFromContent와 동일 규칙).
     answerFormat: row.problems.content?.answer_format ?? undefined,
-    correctAnswers: Array.isArray(row.problems.content?.correct_answers) ? row.problems.content.correct_answers : undefined,
-    userAnswers: Array.isArray(row.problems.content?.user_answers) ? row.problems.content.user_answers : undefined,
+    correctAnswers: (row.problems.content?.answer_format !== 'multi_blank' && Array.isArray(row.problems.content?.correct_answers)) ? row.problems.content.correct_answers : undefined,
+    userAnswers: (row.problems.content?.answer_format !== 'multi_blank' && Array.isArray(row.problems.content?.user_answers)) ? row.problems.content.user_answers : undefined,
+    blankCorrectAnswers: (row.problems.content?.answer_format === 'multi_blank' && Array.isArray(row.problems.content?.correct_answers)) ? row.problems.content.correct_answers : undefined,
+    blankUserAnswers: (row.problems.content?.answer_format === 'multi_blank' && Array.isArray(row.problems.content?.user_answers)) ? row.problems.content.user_answers : undefined,
   };
 }
 

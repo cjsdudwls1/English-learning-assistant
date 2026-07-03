@@ -88,9 +88,13 @@ export interface ProblemItem {
   question_body?: string | null;
   visual_context?: VisualContext | null;
   // 다중정답 객관식 지원 (multi_answer_contract v1) — 미설정(레거시)이면 단일답 경로로 취급
-  answerFormat?: 'single' | 'multi' | 'unknown';
+  // multi_blank = 한 문항 안 여러 번호빈칸(1)(2)(3) 서술형. 채점은 항상 기권(빈칸별 자유서술).
+  answerFormat?: 'single' | 'multi' | 'multi_blank' | 'unknown';
   correctAnswers?: number[];
   userAnswers?: number[];
+  // 다중빈칸 서술형(multi_blank) 전용 — 빈칸별 자유텍스트 배열(빈 빈칸은 null). MC 번호배열과 타입 분리.
+  blankUserAnswers?: (string | null)[];
+  blankCorrectAnswers?: (string | null)[];
 }
 
 export interface AnalysisResults {

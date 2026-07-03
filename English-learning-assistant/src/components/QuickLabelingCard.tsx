@@ -355,6 +355,11 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           // 복수답안·형식불일치 감지(편집 중 값 반영) → AI 판정 배지 숨기고 '수동 확인' 안내
           // multi는 correctAnswers/userAnswers가 확신 추출된 경우 null(자동채점 신뢰)
           const isMulti = problem.answerFormat === 'multi';
+          // 다중빈칸 서술형(multi_blank): 빈칸별 자유텍스트를 N행으로 분리 표시(읽기전용). 채점은 항상 기권.
+          const isMultiBlank = problem.answerFormat === 'multi_blank';
+          const blankUser = problem.blankUserAnswers ?? [];
+          const blankCorrect = problem.blankCorrectAnswers ?? [];
+          const blankCount = Math.max(blankUser.length, blankCorrect.length);
           const currentCorrectAnswers = multiCorrectAnswers[`${problem.index}`] ?? problem.correctAnswers;
           const currentUserAnswers = multiUserAnswers[`${problem.index}`] ?? problem.userAnswers;
           const reviewReason = getManualReviewReason({
@@ -481,7 +486,44 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                   </div>
 
                   {/* 사용자 답안 + 정답 */}
-                  {isMulti ? (
+                  {isMultiBlank ? (
+                    // 다중빈칸 서술형 — 한 문항의 (1)(2)(3) 빈칸을 행별로 분리(읽기전용). 채점은 항상 수동 확인.
+                    <div className="mb-3 space-y-2">
+                      <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">
+                        {language === 'ko' ? `빈칸 ${blankCount}개 (빈칸별 답안)` : `${blankCount} blanks (per-blank answers)`}
+                      </div>
+                      <div className="space-y-1.5">
+                        {Array.from({ length: blankCount }).map((_, bi) => {
+                          const ua = blankUser[bi];
+                          const ca = blankCorrect[bi];
+                          const uaText = (ua == null || String(ua).trim() === '')
+                            ? (language === 'ko' ? '미작성' : 'blank')
+                            : String(ua);
+                          const uaEmpty = ua == null || String(ua).trim() === '';
+                          return (
+                            <div key={bi} className="flex items-start gap-2 text-sm">
+                              <span className="mt-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 px-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 flex-shrink-0">
+                                {bi + 1}
+                              </span>
+                              <div className="flex-1 min-w-0 space-y-0.5">
+                                <div className="flex gap-1.5">
+                                  <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap">{language === 'ko' ? '사용자:' : 'User:'}</span>
+                                  <span className={uaEmpty ? 'text-slate-400 dark:text-slate-500 italic' : 'text-slate-800 dark:text-slate-200 break-words'}>{uaText}</span>
+                                </div>
+                                <div className="flex gap-1.5">
+                                  <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap">{language === 'ko' ? '정답:' : 'Answer:'}</span>
+                                  <span className="text-green-700 dark:text-green-400 font-medium break-words">{ca == null ? '—' : String(ca)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="text-xs text-amber-600 dark:text-amber-400">
+                        {language === 'ko' ? '※ 빈칸별 서술형 — 자동 채점 대신 수동 확인' : '※ Per-blank essay — manual review (no auto-grading)'}
+                      </div>
+                    </div>
+                  ) : isMulti ? (
                     // 다중정답 객관식 — 번호 칩 다중 선택(정답=초록, 사용자 오선택=빨강)
                     <div className="mb-3 space-y-2">
                       <div>

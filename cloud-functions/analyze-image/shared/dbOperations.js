@@ -184,6 +184,19 @@ function eqSet(a, b) {
  * @returns {{answerFormat: 'single'|'multi', correctAnswers: number[]|null, userAnswers: number[]|null, flatCorrect: string|null, flatUser: string|null}}
  */
 function resolveAnswerFormat(item, choiceArr) {
+  // 다중빈칸 서술형(multi_blank): processPage가 빈칸별 자유텍스트 배열(user_answers/correct_answers)을
+  // 미리 채워 넘긴다. MC 번호집합이 아니므로 sanitizeMcAnswerSet(번호추출)을 태우지 않고 그대로 통과.
+  // flat 값은 processPage가 만든 번호형 문자열("(1) X (2) Y")을 유지 → 기존 detectMultiAnswer 기권·UI 폴백.
+  // 채점은 항상 기권(computeIsCorrect가 multi_blank→null, 정밀도 우선).
+  if (item?.answer_format === 'multi_blank') {
+    return {
+      answerFormat: 'multi_blank',
+      correctAnswers: Array.isArray(item.correct_answers) ? item.correct_answers : [],
+      userAnswers: Array.isArray(item.user_answers) ? item.user_answers : [],
+      flatCorrect: item?.correct_answer || null,
+      flatUser: item?.user_answer || null,
+    };
+  }
   const list = Array.isArray(choiceArr) ? choiceArr : [];
   const isMulti = list.length >= 2 && detectMultiAnswer(item?.instruction, item?.correct_answer);
   if (!isMulti) {
@@ -249,6 +262,9 @@ export function computeIsCorrect({ user_marked_correctness, user_answer, correct
 
   // 2차: user_answer vs correct_answer 자동 비교
   if (isCorrect === null) {
+    // 다중빈칸 서술형(multi_blank): 빈칸별 자유서술이라 단일 자동비교로 채점 불가 → 항상 기권.
+    // (시험지 O/X 채점 마크가 있으면 위 1차에서 이미 반영됨. 여기선 자동비교만 차단.)
+    if (answer_format === 'multi_blank') return null;
     const userAns = String(user_answer || '').trim();
     const correctAns = String(correct_answer || '').trim();
     const choiceArr = Array.isArray(choices) ? choices : [];
@@ -379,7 +395,8 @@ function buildContentJson(item, normalizedChoicesArr) {
     correct_answer: fmt.flatCorrect,
     answer_format: fmt.answerFormat,
   };
-  if (fmt.answerFormat === 'multi') {
+  if (fmt.answerFormat === 'multi' || fmt.answerFormat === 'multi_blank') {
+    // multi=MC 번호집합(number[]), multi_blank=빈칸별 자유텍스트 배열(string|null[]). 둘 다 배열 그대로 저장.
     content.correct_answers = fmt.correctAnswers;
     content.user_answers = fmt.userAnswers;
   }
