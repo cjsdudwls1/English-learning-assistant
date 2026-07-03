@@ -281,6 +281,7 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
     // 다중정답 객관식(multi_answer_contract v1) — 번호 집합이 확신 추출됐으면 eqSet 완전일치로 채점
     // 게이트는 백엔드 computeIsCorrect와 1:1 정합: 정답 2개 이상 + 사용자 선택이 정답 수 이상일 때만 신뢰
     const isMulti = item.answerFormat === 'multi';
+    const isMultiBlank = item.answerFormat === 'multi_blank';
     const hasConfidentSets = isMulti
       && Array.isArray(item.correctAnswers) && item.correctAnswers.length >= 2
       && Array.isArray(item.userAnswers) && item.userAnswers.length >= item.correctAnswers.length;
@@ -295,6 +296,13 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
         answer_format: item.answerFormat,
         correct_answers: item.correctAnswers ?? [],
         user_answers: item.userAnswers ?? [],
+      }),
+      // 다중빈칸 서술형 — 빈칸별 편집값(문자열 배열, 빈칸=null)을 content에 반영.
+      // 편집 안 했으면 기존 content 값 유지(...currentContent가 이미 보존하므로 안전).
+      ...(isMultiBlank && {
+        answer_format: 'multi_blank',
+        correct_answers: item.blankCorrectAnswers ?? currentContent.correct_answers ?? [],
+        user_answers: item.blankUserAnswers ?? currentContent.user_answers ?? [],
       }),
     };
 

@@ -48,6 +48,9 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
   // 다중정답 객관식(multi_answer_contract v1) — 정답/사용자답을 번호 집합으로 편집
   const [multiUserAnswers, setMultiUserAnswers] = useState<Record<string, number[]>>({});
   const [multiCorrectAnswers, setMultiCorrectAnswers] = useState<Record<string, number[]>>({});
+  // 다중빈칸 서술형(multi_blank) — 빈칸별 사용자답/정답을 문자열 배열로 편집(빈 문자열='')
+  const [editableBlankUser, setEditableBlankUser] = useState<Record<string, string[]>>({});
+  const [editableBlankCorrect, setEditableBlankCorrect] = useState<Record<string, string[]>>({});
 
   // initial prop이 변경될 때 내부 state를 동기화
   useEffect(() => {
@@ -57,6 +60,8 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
     const initCorrectAnswers: Record<string, string> = {};
     const initMultiUser: Record<string, number[]> = {};
     const initMultiCorrect: Record<string, number[]> = {};
+    const initBlankUser: Record<string, string[]> = {};
+    const initBlankCorrect: Record<string, string[]> = {};
     initial.items.forEach((p, idx) => {
       initAnswers[`${idx}`] = p.사용자가_기술한_정답?.text || '';
       initCorrectAnswers[`${idx}`] = p.correct_answer || '';
@@ -64,11 +69,20 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
         initMultiUser[`${idx}`] = p.userAnswers ?? [];
         initMultiCorrect[`${idx}`] = p.correctAnswers ?? [];
       }
+      if (p.answerFormat === 'multi_blank') {
+        const bu = p.blankUserAnswers ?? [];
+        const bc = p.blankCorrectAnswers ?? [];
+        const n = Math.max(bu.length, bc.length);
+        initBlankUser[`${idx}`] = Array.from({ length: n }, (_, i) => bu[i] == null ? '' : String(bu[i]));
+        initBlankCorrect[`${idx}`] = Array.from({ length: n }, (_, i) => bc[i] == null ? '' : String(bc[i]));
+      }
     });
     setEditableAnswers(initAnswers);
     setEditableCorrectAnswers(initCorrectAnswers);
     setMultiUserAnswers(initMultiUser);
     setMultiCorrectAnswers(initMultiCorrect);
+    setEditableBlankUser(initBlankUser);
+    setEditableBlankCorrect(initBlankCorrect);
   }, [initial.items]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +133,17 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
     }
   };
 
+  // 다중빈칸 서술형 — 빈칸별 사용자답/정답 편집(문자열 상태 유지, 저장 시 null 정규화). 자동 채점 없음(수동 정/오답만).
+  const handleBlankChange = (idx: number, kind: 'user' | 'correct', bi: number, value: string) => {
+    const setSource = kind === 'user' ? setEditableBlankUser : setEditableBlankCorrect;
+    setSource(prev => {
+      const key = `${idx}`;
+      const arr = [...(prev[key] ?? [])];
+      arr[bi] = value;
+      return { ...prev, [key]: arr };
+    });
+  };
+
   const handleSubmit = async () => {
     try {
       setSaving(true);
@@ -126,6 +151,24 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
       // 편집된 답안/정답을 items에 반영
       const updatedItems = items.map((item, idx) => {
         const isMulti = item.answerFormat === 'multi';
+        const isMultiBlank = item.answerFormat === 'multi_blank';
+        if (isMultiBlank) {
+          // 빈칸별 편집값 → (string|null)[] 정규화(빈 문자열=null) + flat 표시문자열 재조립. 채점은 수동만.
+          const bu = editableBlankUser[`${idx}`] ?? (item.blankUserAnswers ?? []).map(x => x == null ? '' : String(x));
+          const bc = editableBlankCorrect[`${idx}`] ?? (item.blankCorrectAnswers ?? []).map(x => x == null ? '' : String(x));
+          const toNullable = (v: string) => (v == null || String(v).trim() === '') ? null : String(v);
+          const buN = bu.map(toNullable);
+          const bcN = bc.map(toNullable);
+          const flatUser = buN.map((v, i) => `(${i + 1}) ${v == null ? '[빈칸]' : v}`).join(' ');
+          const flatCorrect = bcN.map((v, i) => `(${i + 1}) ${v == null ? '' : v}`).join(' ');
+          return {
+            ...item,
+            사용자가_기술한_정답: { ...item.사용자가_기술한_정답, text: flatUser },
+            correct_answer: flatCorrect,
+            blankUserAnswers: buN,
+            blankCorrectAnswers: bcN,
+          };
+        }
         const userArr = multiUserAnswers[`${idx}`] ?? item.userAnswers ?? [];
         const correctArr = multiCorrectAnswers[`${idx}`] ?? item.correctAnswers ?? [];
         return {
@@ -234,10 +277,10 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
         // 복수답안·형식불일치 감지(편집 중 값 반영) → AI 강조 숨기고 '수동 확인' 안내
         // multi는 correctAnswers/userAnswers가 확신 추출된 경우 null(자동채점 신뢰)
         const isMulti = it.answerFormat === 'multi';
-        // 다중빈칸 서술형(multi_blank): 빈칸별 자유텍스트 N행 분리(읽기전용). 채점은 항상 기권.
+        // 다중빈칸 서술형(multi_blank): 빈칸별 자유텍스트 N행 분리(각 칸 편집 가능). 채점은 항상 기권(수동 정/오답만).
         const isMultiBlank = it.answerFormat === 'multi_blank';
-        const blankUser = it.blankUserAnswers ?? [];
-        const blankCorrect = it.blankCorrectAnswers ?? [];
+        const blankUser = editableBlankUser[`${i}`] ?? (it.blankUserAnswers ?? []).map(x => x == null ? '' : String(x));
+        const blankCorrect = editableBlankCorrect[`${i}`] ?? (it.blankCorrectAnswers ?? []).map(x => x == null ? '' : String(x));
         const blankCount = Math.max(blankUser.length, blankCorrect.length);
         const currentCorrectAnswers = multiCorrectAnswers[`${i}`] ?? it.correctAnswers;
         const currentUserAnswers = multiUserAnswers[`${i}`] ?? it.userAnswers;
@@ -329,35 +372,41 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
 
           {/* 사용자 답안 + 정답 편집 영역 */}
           {isMultiBlank ? (
-            // 다중빈칸 서술형 — (1)(2)(3) 빈칸을 행별로 분리 표시(읽기전용). 자동 채점 대신 수동 확인.
+            // 다중빈칸 서술형 — (1)(2)(3) 빈칸을 행별로 분리, 각 칸 편집 가능. 자동 채점 대신 수동 확인.
             <div className="mt-3 space-y-2">
               <div className="text-sm text-slate-500 dark:text-slate-400">
                 {language === 'ko' ? `빈칸 ${blankCount}개 (빈칸별 답안)` : `${blankCount} blanks (per-blank answers)`}
               </div>
-              <div className="space-y-1.5">
-                {Array.from({ length: blankCount }).map((_, bi) => {
-                  const ua = blankUser[bi];
-                  const ca = blankCorrect[bi];
-                  const uaEmpty = ua == null || String(ua).trim() === '';
-                  const uaText = uaEmpty ? (language === 'ko' ? '미작성' : 'blank') : String(ua);
-                  return (
-                    <div key={bi} className="flex items-start gap-2 text-sm">
-                      <span className="mt-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 px-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 flex-shrink-0">
-                        {bi + 1}
-                      </span>
-                      <div className="flex-1 min-w-0 space-y-0.5">
-                        <div className="flex gap-1.5">
-                          <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap">{language === 'ko' ? '사용자:' : 'User:'}</span>
-                          <span className={uaEmpty ? 'text-slate-400 dark:text-slate-500 italic' : 'text-slate-800 dark:text-slate-200 break-words'}>{uaText}</span>
-                        </div>
-                        <div className="flex gap-1.5">
-                          <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap">{language === 'ko' ? '정답:' : 'Answer:'}</span>
-                          <span className="text-green-700 dark:text-green-400 font-medium break-words">{ca == null ? '—' : String(ca)}</span>
-                        </div>
+              <div className="space-y-2">
+                {Array.from({ length: blankCount }).map((_, bi) => (
+                  <div key={bi} className="flex items-start gap-2 text-sm">
+                    <span className="mt-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 px-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 flex-shrink-0">
+                      {bi + 1}
+                    </span>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[52px]">{language === 'ko' ? '사용자:' : 'User:'}</span>
+                        <input
+                          type="text"
+                          value={blankUser[bi] ?? ''}
+                          onChange={(e) => handleBlankChange(i, 'user', bi, e.target.value)}
+                          placeholder={language === 'ko' ? '미작성' : 'blank'}
+                          className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[52px]">{language === 'ko' ? '정답:' : 'Answer:'}</span>
+                        <input
+                          type="text"
+                          value={blankCorrect[bi] ?? ''}
+                          onChange={(e) => handleBlankChange(i, 'correct', bi, e.target.value)}
+                          placeholder={language === 'ko' ? '정답 입력' : 'Enter answer'}
+                          className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-green-700 dark:text-green-400 font-medium focus:ring-1 focus:ring-green-500"
+                        />
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
               <div className="text-xs text-amber-600 dark:text-amber-400">
                 {language === 'ko' ? '※ 빈칸별 서술형 — 자동 채점 대신 수동 확인' : '※ Per-blank essay — manual review (no auto-grading)'}
