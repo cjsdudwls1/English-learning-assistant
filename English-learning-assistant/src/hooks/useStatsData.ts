@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode, StatsComposition } from '../services/stats';
+import { fetchStatsByType, TypeStatsRow, fetchHierarchicalStats, StatsNode, StatsComposition, fetchUnifiedProblemSummary, UnifiedSummary } from '../services/stats';
 import { fetchAnalyzingSessions, fetchPendingLabelingSessions, fetchFailedSessions } from '../services/db';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
@@ -29,9 +29,16 @@ interface UseStatsDataParams {
   language: 'ko' | 'en';
 }
 
+const EMPTY_SUMMARY: UnifiedSummary = {
+  registered: 0, regCorrect: 0, regIncorrect: 0, regUngraded: 0,
+  gen: 0, genCorrect: 0, genIncorrect: 0, genUngraded: 0,
+  total: 0, correct: 0, incorrect: 0, ungraded: 0,
+};
+
 interface UseStatsDataReturn {
   rows: TypeStatsRow[];
   composition: StatsComposition;
+  summary: UnifiedSummary;
   hierarchicalData: StatsNode[];
   loading: boolean;
   error: string | null;
@@ -47,6 +54,7 @@ interface UseStatsDataReturn {
 export function useStatsData({ startDate, endDate, language }: UseStatsDataParams): UseStatsDataReturn {
   const [rows, setRows] = useState<TypeStatsRow[]>([]);
   const [composition, setComposition] = useState<StatsComposition>({ labelMarked: 0, genSolved: 0 });
+  const [summary, setSummary] = useState<UnifiedSummary>(EMPTY_SUMMARY);
   const [hierarchicalData, setHierarchicalData] = useState<StatsNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,15 +69,17 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
       if (showLoading) {
         setLoading(true);
       }
-      const [statsResult, hierarchicalStatsData, analyzing, pendingSessions, failed] = await Promise.all([
+      const [statsResult, hierarchicalStatsData, unifiedSummary, analyzing, pendingSessions, failed] = await Promise.all([
         fetchStatsByType(startDate || undefined, endDate || undefined, language),
         fetchHierarchicalStats(startDate || undefined, endDate || undefined, language),
+        fetchUnifiedProblemSummary(startDate || undefined, endDate || undefined),
         fetchAnalyzingSessions(),
         fetchPendingLabelingSessions(),
         fetchFailedSessions(),
       ]);
       setRows(statsResult.rows);
       setComposition(statsResult.composition);
+      setSummary(unifiedSummary);
       setHierarchicalData(hierarchicalStatsData);
 
       // AnalyzingCard에 표시된 세션 ID 수집
@@ -129,6 +139,7 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
   return {
     rows,
     composition,
+    summary,
     hierarchicalData,
     loading,
     error,

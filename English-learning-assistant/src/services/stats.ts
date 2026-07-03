@@ -94,6 +94,29 @@ export async function fetchLabelsForProblems(
   return out;
 }
 
+// 문제별 "첫 라벨"의 is_correct 매핑 (user_mark 필터 없음 — 미채점 포함 전량).
+// AllProblemsPage의 `p.labels?.[0]` 파생과 정합(문제당 하나의 is_correct).
+// 라벨이 없거나 is_correct가 null이면 맵에 없거나 null → 호출부에서 "미채점"으로 처리.
+export async function fetchFirstLabelCorrectness(
+  problemIds: string[],
+): Promise<Map<string, boolean | null>> {
+  const map = new Map<string, boolean | null>();
+  for (let i = 0; i < problemIds.length; i += ID_CHUNK) {
+    const chunk = problemIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await supabase
+      .from('labels')
+      .select('problem_id, is_correct, created_at')
+      .in('problem_id', chunk)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    for (const r of (data || []) as Array<{ problem_id: string; is_correct: boolean | null }>) {
+      // 같은 problem_id의 여러 라벨 중 첫 행(가장 오래된)만 채택
+      if (!map.has(r.problem_id)) map.set(r.problem_id, r.is_correct ?? null);
+    }
+  }
+  return map;
+}
+
 // ===== A+B: 생성문제 기반 풀이(과제 응답 + 완료된 생성문제 풀이) 합산 =====
 // 유형별 정오답 통계를 월별/일별 풀이 통계와 정합시키기 위해, labels(이미지 분석 추출문제)
 // 외에 generated_problems 기반 풀이도 동일 통계에 합산한다.
@@ -177,6 +200,81 @@ export async function fetchGeneratedSolvedRowsForUser(
     is_correct: r.is_correct,
     classification: clsMap.get(r.problem_id) ?? null,
   }));
+}
+
+// ===== 통계·문제관리 공용 요약 =====
+// 두 화면이 "동일한 수치"를 보이도록 단일 소스로 집계한다.
+// 정의(precision-first): 정답=is_correct true, 오답=is_correct false,
+//   미채점=is_correct null(미채점 문항 + 채점 보류/기권). null을 오답으로 위조하지 않음.
+// 항상 correct + incorrect + ungraded === total(=registered + gen) 로 합계가 맞음.
+export interface UnifiedSummary {
+  registered: number;   // 등록 문제 전량(이미지 분석 추출)
+  regCorrect: number;
+  regIncorrect: number;
+  regUngraded: number;  // 미채점(라벨 없음 or is_correct null)
+  gen: number;          // 과제 응답 + 완료된 생성문제 풀이
+  genCorrect: number;
+  genIncorrect: number;
+  genUngraded: number;
+  total: number;        // registered + gen
+  correct: number;      // regCorrect + genCorrect
+  incorrect: number;    // regIncorrect + genIncorrect
+  ungraded: number;     // regUngraded + genUngraded
+}
+
+export async function fetchUnifiedProblemSummary(
+  startDate?: Date,
+  endDate?: Date,
+  userId?: string,
+): Promise<UnifiedSummary> {
+  const uid = userId ?? (await getCurrentUserId());
+
+  // (1) 등록 문제(전량) — 세션 → 문제 → 첫 라벨 is_correct
+  let registered = 0;
+  let regCorrect = 0;
+  let regIncorrect = 0;
+  const sessions = await fetchSessionsForUser(uid, startDate, endDate);
+  if (sessions.length > 0) {
+    const problems = await fetchProblemsForSessions(sessions.map((s) => s.id));
+    registered = problems.length;
+    if (problems.length > 0) {
+      const icMap = await fetchFirstLabelCorrectness(problems.map((p) => p.id));
+      for (const p of problems) {
+        const ic = icMap.get(p.id);
+        if (ic === true) regCorrect++;
+        else if (ic === false) regIncorrect++;
+        // 그 외(라벨 없음/null) → 미채점(암묵)
+      }
+    }
+  }
+  const regUngraded = registered - regCorrect - regIncorrect;
+
+  // (2) 과제·생성 풀이 — 통계/문제관리와 동일 헬퍼
+  const genRows = await fetchGeneratedSolvedRowsForUser(uid, startDate, endDate);
+  let genCorrect = 0;
+  let genIncorrect = 0;
+  for (const r of genRows) {
+    if (r.is_correct === true) genCorrect++;
+    else if (r.is_correct === false) genIncorrect++;
+  }
+  const gen = genRows.length;
+  const genUngraded = gen - genCorrect - genIncorrect;
+
+  const total = registered + gen;
+  return {
+    registered,
+    regCorrect,
+    regIncorrect,
+    regUngraded,
+    gen,
+    genCorrect,
+    genIncorrect,
+    genUngraded,
+    total,
+    correct: regCorrect + genCorrect,
+    incorrect: regIncorrect + genIncorrect,
+    ungraded: regUngraded + genUngraded,
+  };
 }
 
 // statsMap에 단일 row의 집계를 누적하는 헬퍼

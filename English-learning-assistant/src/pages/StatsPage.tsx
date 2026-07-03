@@ -295,12 +295,12 @@ export const StatsPage: React.FC = () => {
 
         <div className="mb-4 flex items-center justify-between flex-wrap gap-3 w-full max-w-full min-w-0">
           <div className="min-w-0">
-            <div className="text-slate-700 dark:text-slate-300 text-sm sm:text-base break-words">{t.stats.total}: {totals.total} / {t.stats.correct}: {totals.correct} / {t.stats.incorrect}: {totals.incorrect}</div>
-            {totals.total > 0 && (
+            <div className="text-slate-700 dark:text-slate-300 text-sm sm:text-base break-words">{t.stats.total}: {statsData.summary.total} / {t.stats.correct}: {statsData.summary.correct} / {t.stats.incorrect}: {statsData.summary.incorrect} / {language === 'ko' ? '미채점' : 'Ungraded'}: {statsData.summary.ungraded}</div>
+            {statsData.summary.total > 0 && (
               <p className="mt-1 text-xs text-slate-400 dark:text-slate-500 break-words">
                 {language === 'ko'
-                  ? `채점 완료 ${statsData.composition.labelMarked}문항 + 과제·생성 풀이 ${statsData.composition.genSolved}건 · 미채점 문항 제외 ('문제관리' 전체 수와 다를 수 있음)`
-                  : `${statsData.composition.labelMarked} graded items + ${statsData.composition.genSolved} assignment/generated solves · unmarked excluded (may differ from the "Problems" total)`}
+                  ? `등록 문제 ${statsData.summary.registered} (채점완료 ${statsData.summary.regCorrect + statsData.summary.regIncorrect} / 미채점 ${statsData.summary.regUngraded}) + 과제·생성 풀이 ${statsData.summary.gen} · '문제관리'와 동일 기준`
+                  : `${statsData.summary.registered} registered (${statsData.summary.regCorrect + statsData.summary.regIncorrect} graded / ${statsData.summary.regUngraded} ungraded) + ${statsData.summary.gen} assignment/generated solves · same basis as "Problems"`}
               </p>
             )}
           </div>
