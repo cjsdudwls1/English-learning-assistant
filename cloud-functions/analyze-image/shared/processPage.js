@@ -4,71 +4,32 @@
  *   동일 코드를 공유하도록 단일 소스화한다.
  * - processPage: Pass A(구조) + Pass 0(좌표) → 크롭 → Pass B(필기) → 주관식 → Pass C(분류)
  * - mergeHandwritingMarks: Pass B marks 검증 + pageItems 병합
+ * - 문항 유형 판별은 questionContext.js, answer_area 결정화는 answerAreaRefine.js,
+ *   유령 문항 게이트는 overExtractionGate.js로 분리(행위보존, 이 모듈에서 re-export).
  *
  * 원본: pageAnalyzer.ts#analyzeOnePage / mergeHandwritingMarks
  */
 
 import { cropRegions } from './imageCropper.js';
+import { executePassA } from './passA.js';
+import { executePass0 } from './pass0.js';
 import {
-  executePassA, executePass0, executePassB, executePassBFullImage,
-  executePassC, detectSubjectiveUserAnswers, detectCorrectFromCrops, detectFromCrops,
-  sanitizeMcAnswer, normalizeChoiceValue, flattenMcAnswerSet,
-  parseInlineChoiceOptions, sanitizeWordChoiceAnswer, parseNumberedBlanks,
+  executePassB, executePassBFullImage,
+  detectSubjectiveUserAnswers, detectCorrectFromCrops, detectFromCrops,
   detectMultiBlankAnswers,
-} from './passes.js';
+} from './passB.js';
+import { executePassC } from './passC.js';
+import {
+  sanitizeMcAnswer, normalizeChoiceValue, flattenMcAnswerSet, sanitizeWordChoiceAnswer,
+} from './answerSanitizers.js';
 import { USER_ANSWER_MODEL_SEQUENCE } from './config.js';
 import { buildCroppedUserAnswerPrompt } from './prompts.js';
-import { detectMultiAnswer } from './dbOperations.js';
+import { buildQuestionContextMap } from './questionContext.js';
+import { refineAnswerAreasWithSymbols } from './answerAreaRefine.js';
+import { hasSubstantialBody, applyEarlyOverExtractionGate, applyOverExtractionGate } from './overExtractionGate.js';
 
-// answer_area 결정화 패딩(0~1000 스케일).
-const REFINE_XPAD_LEFT = 30;   // 좌측: 문제번호 열/원문자 좌측 삐침 여유
-const REFINE_XPAD_RIGHT = 90;  // 우측: 선택지 텍스트·마크 우측 삐침 여유
-const REFINE_YPAD = 15;        // 상하: 마크가 원문자 위/아래로 삐치는 여유
-
-/**
- * answer_area_bbox 결정화(Document AI 원문자 기반).
- * - Pass 0(LLM)이 answer_area_bbox를 런마다 다르게 잡는 비결정성 때문에, 선택지 열 '사이'를
- *   지나는 구조적 곡선을 마크로 오인하던 문제를 제거한다(실측 Q25: 곡선을 ② 위로 감싸는
- *   런에서만 user_answer=②로 confident-wrong. 원문자 기반 고정 bbox면 곡선 포함해도 3/3 '4').
- * - 각 문항 full_bbox 내부의 원문자(①②③④⑤) 심볼 bounding으로 answer_area의 세로 범위(y)와
- *   좌측 경계를 결정적으로 재산출한다. y는 선택지 행에 밀착시켜 곡선의 세로 조각을 최소화한다.
- *   x1은 Pass 0가 잡은 문제번호 열 확장을 보존하기 위해 원본과 원문자 좌측 중 더 왼쪽을 취하고,
- *   x2는 선택지 텍스트/마크 여유를 위해 원본과 원문자 우측+여유 중 큰 쪽을 취한다.
- *   모든 경계는 full_bbox 내부로 클램프(Pass 0 constraint A 유지).
- * - 원문자가 2개 미만 검출된 문항(서술형·원문자 미검출·Document AI off)은 원본 bbox를 그대로
- *   둔다 → 정상 경로 무회귀(정밀도 우선: 근거 없는 재계산으로 정상 케이스를 흔들지 않는다).
- * @returns 새 bboxes 배열(answer_area_bbox만 교체, full_bbox·problem_number 불변)
- */
-function refineAnswerAreasWithSymbols(bboxes, symbols, questionContextMap, sessionId) {
-  if (!Array.isArray(symbols) || symbols.length === 0) return bboxes;
-  return bboxes.map((b) => {
-    const full = b.full_bbox;
-    const ans = b.answer_area_bbox;
-    if (!full || !ans) return b;
-    const ctx = questionContextMap?.get(String(b.problem_number));
-    if (ctx?.isSubjective) return b; // 서술형은 선택지 원문자가 없음 → 손대지 않음
-
-    // 이 문항 full_bbox 내부의 원문자만 수집(중심 기준) → 인접 문항 원문자 혼입 방지
-    const inside = symbols.filter((s) => {
-      const cx = (s.x1 + s.x2) / 2, cy = (s.y1 + s.y2) / 2;
-      return cx >= full.x1 && cx <= full.x2 && cy >= full.y1 && cy <= full.y2;
-    });
-    if (inside.length < 2) return b; // 근거 부족 → 원본 유지(무회귀)
-
-    const minX = Math.min(...inside.map((s) => s.x1));
-    const minY = Math.min(...inside.map((s) => s.y1));
-    const maxX = Math.max(...inside.map((s) => s.x2));
-    const maxY = Math.max(...inside.map((s) => s.y2));
-    const refined = {
-      x1: Math.max(full.x1, Math.min(ans.x1, minX - REFINE_XPAD_LEFT)),
-      y1: Math.max(full.y1, minY - REFINE_YPAD),
-      x2: Math.min(full.x2, Math.max(ans.x2, maxX + REFINE_XPAD_RIGHT)),
-      y2: Math.min(full.y2, maxY + REFINE_YPAD),
-    };
-    console.log(`[refine] Q${b.problem_number} answer_area 결정화(${inside.length}원문자): y[${Math.round(ans.y1)}~${Math.round(ans.y2)}]→[${Math.round(refined.y1)}~${Math.round(refined.y2)}]`, { sessionId });
-    return { ...b, answer_area_bbox: refined };
-  });
-}
+// 하위호환 re-export: 분리 전 이 모듈의 공개 API였다.
+export { hasSubstantialBody, applyEarlyOverExtractionGate, applyOverExtractionGate };
 
 /**
  * Pass B marks를 검증하고 pageItems에 병합한다.
@@ -157,115 +118,6 @@ export function mergeHandwritingMarks(pageItems, marks, sessionId, questionConte
 }
 
 /**
- * 문항 본문 충실도 판정 — 완전한 문제 본문을 가진 정당 문항을 게이트에서 보호하는 신호.
- * 잘린 조각/그룹헤더 유령은 본문이 비거나 파편(영어 소수 단어 + 짧은 한글)이라 false가 된다.
- * 기준: 영어 단어(2글자+) 4개 이상 OR 한글 10자 이상.
- * (실측: 정당 _04 Q66 "He found the book interesting."=영어 5단어 → true,
- *  유령 Q11 "a home. (will 긍정문)"=영어 2·한글 3 → false, 유령 Q12 ""=공백 → false.)
- */
-export function hasSubstantialBody(it) {
-  const qbody = String(it?.question_body ?? '').trim();
-  if (!qbody) return false;
-  const enWords = (qbody.match(/[A-Za-z]{2,}/g) || []).length;
-  const koChars = (qbody.match(/[가-힣]/g) || []).length;
-  return enWords >= 4 || koChars >= 10;
-}
-
-/**
- * Over-extraction 조기 게이트 — Pass B/전체이미지 fallback 전에 '정체불명' 유령 문항을 in-place 제거.
- *
- * 사후 게이트(applyOverExtractionGate)만으로 부족한 이유: 전체이미지 fallback이 잘린 조각에
- * correct_answer를 환각으로 채우면(실측 e40e0532 재현: 인접조각 Q11/Q12 → correct 1/2 생성) 답이
- * 생긴 것처럼 보여 빈-껍데기 판정을 우회한다. 답이 오염되기 전에 선제 차단해야 한다.
- *
- * 유령 판정(모두 만족): 객관식 단서 전무(choices 0 + Pass0 bbox 없음 + 객관식 키워드 없음)
- * + 서술형 아님(isSubjective=false) + 지문/시각자료/공유지문 없음.
- * → 정당 문항은 이 단서 중 최소 하나를 보유하므로 보호된다(객관식=choices/bbox/키워드,
- *   서술형=isSubjective, 지문연계=passage/shared_passage_ref). is_fragment(Pass A 플래그)는
- *   보조 로그로만 남긴다(이 결정적 신호 조합이 프롬프트 플래그보다 신뢰성 높음 — 실측상 미작동 케이스 존재).
- *
- * @param {Array} pageItems - Pass A 추출 문항(in-place 수정)
- * @param {Set<string>} bboxNumbers - Pass 0가 bbox를 만든 problem_number 집합
- * @param {Map} questionContextMap - 문항별 컨텍스트(isSubjective/hasObjectiveKw 등). 드롭 시 동기 삭제.
- * @param {string} sessionId
- * @returns {number} 드롭된 문항 수
- */
-export function applyEarlyOverExtractionGate(pageItems, bboxNumbers, questionContextMap, sessionId) {
-  const before = pageItems.length;
-  for (let i = pageItems.length - 1; i >= 0; i--) {
-    const it = pageItems[i];
-    const pn = String(it.problem_number ?? '');
-    const choices = Array.isArray(it.choices) ? it.choices : [];
-    const hasChoices = choices.length > 0;
-    const hasBbox = bboxNumbers.has(pn);
-    const ctx = questionContextMap.get(pn);
-    const isSubjective = ctx?.isSubjective === true;
-    const hasObjectiveKw = ctx?.hasObjectiveKw === true;
-    const isWordChoice = ctx?.isWordChoice === true; // 괄호고르기: choices=0라 유령 오판 위험 → 보호 신호
-    const hasPassage = !!(it.shared_passage_ref || (it.passage && String(it.passage).trim() !== '') || it.visual_context);
-    const hasBody = hasSubstantialBody(it);
-    const isGhost = !hasChoices && !hasBbox && !isSubjective && !hasObjectiveKw && !hasPassage && !hasBody && !isWordChoice;
-    if (isGhost) {
-      console.warn(`[handler] over-extraction 조기 게이트: Q${pn} 드롭 (choices=0, bbox=무, subjective=false, objKw=false, passage=무, body=무, is_fragment=${it.is_fragment === true})`, { sessionId });
-      pageItems.splice(i, 1);
-      if (ctx) questionContextMap.delete(pn);
-    }
-  }
-  const dropped = before - pageItems.length;
-  if (dropped > 0) {
-    console.log(`[handler] over-extraction 조기 게이트: ${before}→${pageItems.length}개 (${dropped}개 유령 드롭)`, { sessionId });
-  }
-  return dropped;
-}
-
-/**
- * Over-extraction(유령 문항) 사후 게이트 — pageItems에서 인접페이지 조각/잘린 빈 껍데기를 in-place 제거한다.
- *
- * 배경: 사용자가 휴대폰으로 찍는 시험지 사진은 가장자리에 인접 페이지의 얇은 슬라이스가 함께
- * 찍히거나, 한 문항이 페이지 경계에서 잘리는 경우가 잦다. Pass A 프롬프트의 강한 recall 편향
- * (모든 번호를 빠짐없이 추출)이 이 조각의 번호까지 문항으로 추출 → 존재하지 않는 유령 문항 노출.
- * 이는 '존재하지 않는 문제를 자신있게 제시'하는 일종의 confident-wrong이므로 정밀도 우선상 제거한다.
- *
- * 드롭 조건(둘 중 하나 — 각자 독립적으로 강한 신호. 정당 문항을 죽이지 않도록 보수적으로 설계):
- *  (1) explicitFragment: Pass A가 is_fragment=true로 명시 + 객관식 아님(choices 0) + 답 미검출.
- *      └ 답(user/correct)이 하나라도 잡힌 문항은 LLM이 fragment로 오표시해도 보호(살림).
- *  (2) emptyShell: choices 0 + user/correct 모두 미검출 + 지문/시각자료/공유지문 없음.
- *      └ 채점에 기여할 정보가 전무한 빈 껍데기 → 표시 가치 0. is_fragment 신호가 없어도 드롭.
- *
- * 정당 문항 보호(절대 드롭 안 됨): 객관식(choices≥1), 답이 하나라도 잡힌 서술형, 지문/시각자료/
- * 공유지문을 보유한 문항. (실측 e40e0532: 정당 서술형 Q6~9는 ua/ca 보유로 유지, 객관식 Q1~5는
- * choices=5로 유지, 유령 Q11/Q12만 emptyShell로 드롭 → 9문항 정확.)
- *
- * @param {Array} pageItems - Pass B 병합까지 끝난 문항 배열(in-place 수정)
- * @param {string} sessionId
- * @returns {number} 드롭된 문항 수
- */
-export function applyOverExtractionGate(pageItems, sessionId) {
-  const before = pageItems.length;
-  for (let i = pageItems.length - 1; i >= 0; i--) {
-    const it = pageItems[i];
-    const choices = Array.isArray(it.choices) ? it.choices : [];
-    const hasChoices = choices.length > 0;
-    const ua = it.user_answer, ca = it.correct_answer;
-    const hasAnswer = (ua != null && String(ua).trim() !== '') || (ca != null && String(ca).trim() !== '');
-    const hasPassage = !!(it.shared_passage_ref || (it.passage && String(it.passage).trim() !== '') || it.visual_context);
-    const hasBody = hasSubstantialBody(it);
-    // 본문이 충실하면(완전한 문제) 답 인식에 실패했어도 정당 문항 → 보호(드롭 금지).
-    const explicitFragment = it.is_fragment === true && !hasChoices && !hasAnswer && !hasBody;
-    const emptyShell = !hasChoices && !hasAnswer && !hasPassage && !hasBody;
-    if (explicitFragment || emptyShell) {
-      console.warn(`[handler] over-extraction 게이트: Q${it.problem_number} 드롭 (reason=${explicitFragment ? 'fragment' : 'empty-shell'}, is_fragment=${it.is_fragment === true}, choices=${choices.length}, body=무, ua=${ua ?? 'null'}, ca=${ca ?? 'null'})`, { sessionId });
-      pageItems.splice(i, 1);
-    }
-  }
-  const dropped = before - pageItems.length;
-  if (dropped > 0) {
-    console.log(`[handler] over-extraction 게이트: ${before}→${pageItems.length}개 (${dropped}개 유령 문항 드롭)`, { sessionId });
-  }
-  return dropped;
-}
-
-/**
  * 단일 페이지에 대한 4-Pass 분석 파이프라인 실행
  * Pass A(구조) + Pass 0(좌표) → 크롭 → Pass B(필기) → Pass C(분류)
  *
@@ -286,116 +138,8 @@ export async function processPage({ ai, sessionId, imageData, pageNum, totalPage
   const pageItems = passAResult.parsed?.items || passAResult.parsed?.problems || passAResult.parsed?.pages?.[0]?.problems || [];
   console.log(`[handler] Pass A: ${pageItems.length}개 문제 (${passAResult.model}), Pass 0: ${pass0Result.bboxes.length}개 bbox`, { sessionId });
 
-  // Pass A 결과에서 문제 유형 판별 (객관식 vs 주관식)
-  // 우선순위: 명시적 키워드 > choices 유무
-  // - 객관식 키워드가 있으면 무조건 객관식 (choices 추출 실패해도)
-  // - 주관식 키워드가 있으면 무조건 주관식
-  // - 키워드 없으면 choices 유무로 판단
-  const OBJECTIVE_KEYWORDS = [
-    '고르시오', '고른 것은', '고를 것은', '다음 중', '다음 글의 밑줄', '밑줄 친',
-    '적절한 것은', '적절하지 않은 것은', '적절하지 않은', '옳은 것은', '옳지 않은',
-    '알맞은 것은', '알맞지 않은', '가장 적절', '가장 알맞은', '바른 것은', '틀린 것은',
-    '5지선다', '4지선다', '①', '②', '③', '④', '⑤',
-  ];
-  const SUBJECTIVE_KEYWORDS = [
-    '서술형', '고쳐 쓰', '바꿔 쓰', '영작', '쓰시오', '쓰세요',
-    '빈칸을 채우', '빈 칸을 채우', '문장을 완성', '단어를 쓰', '단어를 적', '답을 적',
-    '서술하시오', '논술', '단답형',
-    // 성분 표시형(주어/동사/목적어/목적격보어 라벨링), 배열/완성/찾아쓰기형 — choices가 없는
-    // 주관식인데 객관식 키워드가 없어 미분류되던 유형(실측 _04 Q66~68 "성분을 표시하시오").
-    '표시하', '배열하', '나열하', '완성하', '연결하', '찾아 쓰', '찾아서 쓰', '고치시오', '바르게 고',
-  ];
-  const questionContextMap = new Map();
-  for (const item of pageItems) {
-    const hasChoices = Array.isArray(item.choices) && item.choices.length > 0;
-    const instructionText = item.instruction || '';
-    const questionBodyText = item.question_body || '';
-    const combinedText = `${instructionText}\n${questionBodyText}`;
-
-    const hasObjectiveKw = OBJECTIVE_KEYWORDS.some(kw => combinedText.includes(kw));
-    const hasSubjectiveKw = SUBJECTIVE_KEYWORDS.some(kw => combinedText.includes(kw));
-
-    // 유형 판별 우선순위: 주관식 키워드 유무 → 그다음 choices 유무.
-    // 핵심 규칙: 선택지(①~⑤)가 명확히 추출됐으면(hasChoices) 객관식이다.
-    // '영작/쓰시오' 같은 주관식 키워드가 instruction에 있어도, 선택지에서 답을 고르는
-    // 유형("다음 우리말을 영작할 때 세 번째로 오는 단어는? ①a ②we ③him …")은 객관식.
-    // 이를 주관식으로 오판하면 user_answer가 손글씨 낙서로, correct_answer가 선택지
-    // 텍스트("him")로 추출돼 정답을 오답 처리하는 결함이 생긴다(실측 12번).
-    let isSubjective;
-    if (!hasSubjectiveKw) {
-      // 주관식 키워드 없음 → 객관식 기본.
-      // choices=0이어도 주관식으로 단정하지 않는다(영어 시험 28~45 대부분 객관식,
-      // 묶음문제 후속 문항은 위치마커 ①~⑤가 choices로 안 잡혀 choices=0이 되곤 함.
-      // 주관식 오판 시 correct_answer가 번호 대신 지문 문장으로 추출됨 — 실측 Q39).
-      isSubjective = false;
-    } else {
-      // 주관식 키워드 존재 → 선택지가 명확히 추출됐으면 객관식, 없으면 주관식.
-      // (객관식 키워드 동시 존재 여부와 무관하게 choices가 최종 판단 기준)
-      isSubjective = !hasChoices;
-    }
-
-    console.log(`[handler] Q${item.problem_number} 유형 판별: isSubjective=${isSubjective}, hasChoices=${hasChoices}, hasObjKw=${hasObjectiveKw}, hasSubjKw=${hasSubjectiveKw}`, { sessionId });
-
-    // 다중정답(multi MC) 사전판정: correct_answer는 아직 추출 전(Pass B가 이 다음 단계)이라
-    // instruction 신호만 사용(detectMultiAnswer 2번째 인자 null). 정식 판정은 저장 시점
-    // dbOperations.resolveAnswerFormat이 choices까지 반영해 재확정하므로, 이 값은 Pass B
-    // 추출 단계에서 sanitizeMcAnswer(단일)냐 sanitizeMcAnswerSet(집합)이냐를 가르는 스위치일
-    // 뿐이다 — 오탐(false positive)의 최악의 결과는 저장 단계에서 다시 single로 재확정되는 것뿐.
-    const isMultiFormat = detectMultiAnswer(instructionText, null);
-
-    // 괄호고르기(word-choice, 어법 선택형) 감지.
-    // ⚠️ Pass A는 괄호 옵션을 종종 choices(①②)로 오적재한다(실측 ch2) → !hasChoices 게이트 불가.
-    // 또 Pass A가 body의 슬래시/괄호를 뭉개기도 한다(실측 "(he who)","who which)") → 인라인 파싱만으론
-    // recall 부족. 두 신호를 병용한다:
-    //  (1) 문장 속 인라인 "(x/y)" 그룹 파싱(가장 확실, 옵션 철자까지 획득) — body 우선, 없으면 instruction.
-    //  (2) fallback: "괄호 안에서/골라" 지시문 + 2~4개의 짧은 '단어형' choices(Pass A가 괄호를 뭉갠 경우).
-    //      "괄호 안"은 word-choice 고유 표현이라 ①②③④⑤ 정규 MC와 안전하게 구분된다(정밀도).
-    // 감지 시 isSubjective=false 고정 + choices=[](ctx·item 모두) 비워, MC 인덱스화("2" 오출력)와
-    // 서술형 자유텍스트 양쪽을 우회 → 답을 '옵션 단어'로 추출·비교.
-    let wordChoiceOptions = parseInlineChoiceOptions(questionBodyText);
-    if (wordChoiceOptions.length < 2) wordChoiceOptions = parseInlineChoiceOptions(instructionText);
-    if (wordChoiceOptions.length < 2) {
-      const wcCue = /괄호\s*안|괄호\s*에서|괄호\s*속/.test(combinedText);
-      if (wcCue && hasChoices) {
-        const words = (item.choices || [])
-          .map(c => (typeof c === 'string' ? c : (c?.text || c?.label || '')))
-          .map(s => String(s).trim()).filter(Boolean);
-        const allWordLike = words.length >= 2 && words.length <= 4 &&
-          words.every(w => /[A-Za-z]/.test(w) && w.split(/\s+/).length <= 3 && w.length <= 20);
-        if (allWordLike) wordChoiceOptions = words;
-      }
-    }
-    const isWordChoice = wordChoiceOptions.length >= 2;
-    if (isWordChoice) {
-      item.choices = []; // 인라인 단어옵션을 MC 선택지로 오적재한 것을 제거 → 저장/채점 텍스트 경로로
-    }
-
-    // 다중빈칸 서술형(multi_blank) 감지(Phase 2 대비 컨텍스트만 기록): "(1)…(2)…(3)…" 연속 빈칸.
-    // 현재는 진단/추적 용도로만 저장 — 실제 분리추출·저장은 Phase 2에서 처리.
-    const blankStems = (isSubjective && !isWordChoice) ? parseNumberedBlanks(questionBodyText) : [];
-    const isMultiBlank = blankStems.length >= 2;
-
-    if (isWordChoice) {
-      console.log(`[handler] Q${item.problem_number} 괄호고르기 감지: options=[${wordChoiceOptions.join(' / ')}] → isSubjective=false, choices 비움`, { sessionId });
-    }
-    if (isMultiBlank) {
-      console.log(`[handler] Q${item.problem_number} 다중빈칸 감지: ${blankStems.length}개 빈칸(Phase 2 추적용)`, { sessionId });
-    }
-
-    questionContextMap.set(String(item.problem_number), {
-      isSubjective: isWordChoice ? false : isSubjective,
-      hasObjectiveKw,
-      isMultiFormat: isWordChoice ? false : isMultiFormat,
-      instruction: instructionText,
-      questionBody: questionBodyText,
-      hasChoices: isWordChoice ? false : hasChoices,
-      choices: isWordChoice ? [] : (item.choices || []),
-      isWordChoice,
-      wordChoiceOptions,
-      isMultiBlank,
-      blankStems,
-    });
-  }
+  // 문항 유형 판별(객관식/주관식/괄호고르기/다중정답/다중빈칸) → questionContext.js
+  const questionContextMap = buildQuestionContextMap(pageItems, sessionId);
 
   // ── Over-extraction 조기 게이트 (Pass B / 전체이미지 fallback 전에 유령 제거) ──
   // 왜 '조기'인가: 전체이미지 fallback이 잘린 조각(인접페이지)에 correct_answer를 '환각'으로

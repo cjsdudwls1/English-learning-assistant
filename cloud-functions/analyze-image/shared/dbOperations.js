@@ -12,7 +12,7 @@
 
 import { StageError } from './errors.js';
 import { cleanOrNull, makeDepthKey, fuzzyMatchTaxonomy, canonicalDepth1 } from './taxonomy.js';
-import { sanitizeMcAnswerSet } from './passes.js';
+import { sanitizeMcAnswerSet } from './answerSanitizers.js';
 
 // ─── O/X 마크 정규화 ────────────────────────────────────────
 // 원본: validation.ts#normalizeMark
