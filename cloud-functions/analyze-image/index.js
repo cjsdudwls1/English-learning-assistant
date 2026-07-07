@@ -17,10 +17,11 @@ import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 import { StageError, markSessionFailed, parseModelError } from './shared/errors.js';
-import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE } from './shared/config.js';
+import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE } from './shared/config.js';
 import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { processPage } from './shared/processPage.js';
+import { runSimpleExtractAndStructure } from './shared/simplePipeline.js';
 import { uploadImages, createSession, saveProblems, saveLabels, finalizeAnalysisSession } from './shared/dbOperations.js';
 import { downloadImagesFromStorage } from './shared/imageDownloader.js';
 import { generateAllProblemTypes } from './shared/generateProblems.js';
@@ -291,54 +292,81 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
   let allValidatedItems = [];
   let finalUsedModel = '';
 
-  // 배치 병렬 처리 (batch_size=3)
-  // 원본: index.ts ANALYSIS_BATCH_SIZE
-  for (let batchStart = 0; batchStart < images.length; batchStart += ANALYSIS_BATCH_SIZE) {
-    const batchEnd = Math.min(batchStart + ANALYSIS_BATCH_SIZE, images.length);
-    const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, i) => batchStart + i);
-
-    console.log(`[handler] 배치 처리 (페이지 ${batchStart + 1}-${batchEnd})...`, { sessionId });
-
-    const batchResults = await Promise.all(batchIndices.map(async (idx) => {
-      const imageData = images[idx];
+  if (SIMPLE_PIPELINE) {
+    // 단순 파이프라인(기본 ON): 입력된 모든 이미지를 한 번에 Gemini 3.5로 자유추출 →
+    // Gemini 3 Flash로 문항별 JSON 구조화. 페이지 분리/크롭 없이 모델이 전체를 보고 처리
+    // (여러 페이지에 걸친 지문도 자연히 병합). env SIMPLE_PIPELINE=0 이면 아래 4-Pass 경로.
+    // 서버 측 전처리(긴 변 1200px + JPEG 80%)를 모든 이미지에 적용.
+    for (const imageData of images) {
       try {
-        // 서버 측 이미지 전처리: 긴 변 1200px + JPEG 80%로 리사이즈
-        const { imageBase64: resizedBase64, mimeType: resizedMimeType } = await preprocessImage(
-          imageData.imageBase64, imageData.mimeType
-        );
-        imageData.imageBase64 = resizedBase64;
-        imageData.mimeType = resizedMimeType;
-
-        const { pageItems, usedModel } = await processPage({
-          ai, sessionId, imageData, pageNum: idx + 1, totalPages: images.length, taxonomyData, userLanguage,
-          correctSource: CORRECT_SOURCE, // 기본 'crop'(행위보존). env CORRECT_SOURCE=fullpage 로 비용 -25% 경로.
-        });
-        return { pageItems, usedModel, pageIndex: idx };
-      } catch (pageError) {
-        console.error(`[handler] 페이지 ${idx + 1} 실패:`, pageError?.message, { sessionId });
-        return null;
+        const { imageBase64, mimeType } = await preprocessImage(imageData.imageBase64, imageData.mimeType);
+        imageData.imageBase64 = imageBase64;
+        imageData.mimeType = mimeType;
+      } catch (e) {
+        console.error(`[handler] 이미지 전처리 실패(원본 사용): ${e?.message}`, { sessionId });
       }
-    }));
+    }
+    try {
+      const { items, usedModel } = await runSimpleExtractAndStructure({
+        ai, sessionId, images, taxonomyData, userLanguage,
+      });
+      allValidatedItems = items;
+      finalUsedModel = usedModel;
+    } catch (e) {
+      console.error(`[handler] 단순 파이프라인 실패:`, e?.message, { sessionId });
+    }
+    // 이미지 메모리 해제
+    for (const imageData of images) imageData.imageBase64 = '';
+  } else {
+    // ── 기존 4-Pass 경로(롤백용) ──
+    // 배치 병렬 처리 (batch_size=3). 원본: index.ts ANALYSIS_BATCH_SIZE
+    for (let batchStart = 0; batchStart < images.length; batchStart += ANALYSIS_BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + ANALYSIS_BATCH_SIZE, images.length);
+      const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, i) => batchStart + i);
 
-    for (const result of batchResults) {
-      if (!result) continue;
-      // 페이지 인덱스 태깅 → dedupeProblemItems가 다른 페이지의 같은 번호를 구분(오염·소실 방지)
-      for (const it of result.pageItems) it._page_index = result.pageIndex;
-      allValidatedItems.push(...result.pageItems);
-      finalUsedModel = result.usedModel;
+      console.log(`[handler] 배치 처리 (페이지 ${batchStart + 1}-${batchEnd})...`, { sessionId });
+
+      const batchResults = await Promise.all(batchIndices.map(async (idx) => {
+        const imageData = images[idx];
+        try {
+          // 서버 측 이미지 전처리: 긴 변 1200px + JPEG 80%로 리사이즈
+          const { imageBase64: resizedBase64, mimeType: resizedMimeType } = await preprocessImage(
+            imageData.imageBase64, imageData.mimeType
+          );
+          imageData.imageBase64 = resizedBase64;
+          imageData.mimeType = resizedMimeType;
+
+          const { pageItems, usedModel } = await processPage({
+            ai, sessionId, imageData, pageNum: idx + 1, totalPages: images.length, taxonomyData, userLanguage,
+            correctSource: CORRECT_SOURCE, // 기본 'crop'(행위보존). env CORRECT_SOURCE=fullpage 로 비용 -25% 경로.
+          });
+          return { pageItems, usedModel, pageIndex: idx };
+        } catch (pageError) {
+          console.error(`[handler] 페이지 ${idx + 1} 실패:`, pageError?.message, { sessionId });
+          return null;
+        }
+      }));
+
+      for (const result of batchResults) {
+        if (!result) continue;
+        // 페이지 인덱스 태깅 → dedupeProblemItems가 다른 페이지의 같은 번호를 구분(오염·소실 방지)
+        for (const it of result.pageItems) it._page_index = result.pageIndex;
+        allValidatedItems.push(...result.pageItems);
+        finalUsedModel = result.usedModel;
+      }
+
+      // 분석 완료된 페이지의 이미지 메모리 해제
+      for (const idx of batchIndices) {
+        if (images[idx]) images[idx].imageBase64 = '';
+      }
     }
 
-    // 분석 완료된 페이지의 이미지 메모리 해제
-    for (const idx of batchIndices) {
-      if (images[idx]) images[idx].imageBase64 = '';
-    }
+    // 다중 페이지 결과 병합: (페이지,번호) 키로 페이지 '내' 중복만 제거하고, 다른 페이지의
+    // 같은 번호는 다른 문제로 보존(cross-page 오염·소실 방지). 이후 _page_index는 불필요 →
+    // DB 페이로드 누출 방지 위해 제거.
+    allValidatedItems = dedupeProblemItems(allValidatedItems, sessionId);
+    for (const it of allValidatedItems) delete it._page_index;
   }
-
-  // 다중 페이지 결과 병합: (페이지,번호) 키로 페이지 '내' 중복만 제거하고, 다른 페이지의
-  // 같은 번호는 다른 문제로 보존(cross-page 오염·소실 방지). 이후 _page_index는 불필요 →
-  // DB 페이로드 누출 방지 위해 제거.
-  allValidatedItems = dedupeProblemItems(allValidatedItems, sessionId);
-  for (const it of allValidatedItems) delete it._page_index;
 
   if (allValidatedItems.length === 0) {
     if (images.length > 0) {

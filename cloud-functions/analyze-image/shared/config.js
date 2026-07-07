@@ -65,6 +65,13 @@ export const USER_ANSWER_CONSENSUS = process.env.USER_ANSWER_CONSENSUS === '1';
  *  env CORRECT_SOURCE=fullpage 로 점진 적용. */
 export const CORRECT_SOURCE = process.env.CORRECT_SOURCE === 'fullpage' ? 'fullpage' : 'crop';
 
+/** 단순 2-스텝 파이프라인 스위치(기본 ON).
+ *  ON: Gemini 3.5 Flash 단일 호출로 페이지 전체 통합 추출(문제/지문/보기/손글씨답/정답)
+ *      → Gemini 3.x Flash 분류(executePassC). 기존 4-Pass(processPage) 대체.
+ *  롤백: env SIMPLE_PIPELINE=0 이면 기존 processPage 경로로 즉시 복귀(코드 보존).
+ */
+export const SIMPLE_PIPELINE = process.env.SIMPLE_PIPELINE !== '0';
+
 /** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 (GA 우선)
  *  - 실험(2026-05-25): Pass 0 1순위를 3.1-flash-lite로 바꾸면 분할 품질이 회귀.
  *    Q37(36~37 지문공유) 마크를 fallback에서 복구 못 함(2.5는 2/2 복구), Q41/42 병합.
