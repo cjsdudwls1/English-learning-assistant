@@ -106,7 +106,7 @@ export const AssignmentSolvePage: React.FC = () => {
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
         <Link to="/assignments" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">&larr; {t.assignments.assignmentList}</Link>
-        <span className="text-sm text-slate-500">{currentIdx + 1} / {problems.length}</span>
+        <span className="text-sm text-slate-500">{Math.min(currentIdx + 1, problems.length)} / {problems.length}</span>
         {assignment?.due_date && (
           <span className="text-sm text-slate-500">
             {t.assignments.dueLabel.replace('{date}', new Date(assignment.due_date).toLocaleDateString())}

@@ -230,30 +230,53 @@ export interface DirectorOverview {
 }
 
 export async function fetchDirectorOverview(academyId?: string | null): Promise<DirectorOverview> {
-  let classesQuery = supabase.from('classes').select('*', { count: 'exact', head: true });
-  if (academyId) classesQuery = classesQuery.eq('academy_id', academyId);
-  const { count: totalClasses } = await classesQuery;
+  const CHUNK = 500;
+
+  // 학원 학급 목록 — 과제의 academy_id는 과거 데이터에 비어 있을 수 있어 class_id 경유로도 매칭
+  let academyClassIds: string[] | null = null;
+  let totalClasses: number;
+  if (academyId) {
+    const { data: cRows, error: cErr } = await supabase
+      .from('classes')
+      .select('id')
+      .eq('academy_id', academyId);
+    if (cErr) throw cErr;
+    academyClassIds = (cRows || []).map((r) => r.id);
+    totalClasses = academyClassIds.length;
+  } else {
+    const { count } = await supabase.from('classes').select('*', { count: 'exact', head: true });
+    totalClasses = count ?? 0;
+  }
 
   let studentsQuery = supabase.from('academy_students').select('*', { count: 'exact', head: true });
   if (academyId) studentsQuery = studentsQuery.eq('academy_id', academyId);
   const { count: totalStudents } = await studentsQuery;
 
-  let assignmentsQuery = supabase.from('shared_assignments').select('*', { count: 'exact', head: true });
-  if (academyId) assignmentsQuery = assignmentsQuery.eq('academy_id', academyId);
-  const { count: totalAssignments } = await assignmentsQuery;
-
-  // 응답 집계 — academyId가 있으면 해당 학원 과제의 응답만 카운트(타 학원/개인 과제 혼입 방지)
+  // 과제·응답 집계 — academyId가 있으면 academy_id 직접 매칭 ∪ 학원 학급(class_id) 매칭
   let assignmentIds: string[] | null = null;
+  let totalAssignments: number;
   if (academyId) {
-    const { data: aRows, error: aErr } = await supabase
+    const idSet = new Set<string>();
+    const { data: byAcademy, error: aErr } = await supabase
       .from('shared_assignments')
       .select('id')
       .eq('academy_id', academyId);
     if (aErr) throw aErr;
-    assignmentIds = (aRows || []).map((r) => r.id);
+    for (const r of byAcademy || []) idSet.add(r.id);
+    for (let i = 0; i < (academyClassIds || []).length; i += CHUNK) {
+      const { data: byClass, error: bErr } = await supabase
+        .from('shared_assignments')
+        .select('id')
+        .in('class_id', (academyClassIds || []).slice(i, i + CHUNK));
+      if (bErr) throw bErr;
+      for (const r of byClass || []) idSet.add(r.id);
+    }
+    assignmentIds = Array.from(idSet);
+    totalAssignments = assignmentIds.length;
+  } else {
+    const { count } = await supabase.from('shared_assignments').select('*', { count: 'exact', head: true });
+    totalAssignments = count ?? 0;
   }
-
-  const CHUNK = 500;
   const countResponses = async (filter: 'all' | 'graded' | 'correct'): Promise<number> => {
     const buildQuery = (ids?: string[]) => {
       let q = supabase.from('assignment_responses').select('*', { count: 'exact', head: true });

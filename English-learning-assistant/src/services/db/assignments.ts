@@ -6,9 +6,21 @@ export async function createAssignment(params: CreateAssignmentParams): Promise<
   const userId = await getCurrentUserId();
   const { title, description, classId, problemIds, studentIds, dueDate } = params;
 
+  // 학급 소속 학원을 과제에 기록 — 원장 개요/교사 실적의 학원 필터가 academy_id를 참조
+  let academyId: string | null = null;
+  if (classId) {
+    const { data: cls, error: clsError } = await supabase
+      .from('classes')
+      .select('academy_id')
+      .eq('id', classId)
+      .maybeSingle();
+    if (clsError) throw clsError;
+    academyId = cls?.academy_id ?? null;
+  }
+
   const { data, error } = await supabase
     .from('shared_assignments')
-    .insert({ title, description, created_by: userId, class_id: classId, due_date: dueDate ?? null })
+    .insert({ title, description, created_by: userId, class_id: classId, due_date: dueDate ?? null, academy_id: academyId })
     .select('id')
     .single();
   if (error) throw error;

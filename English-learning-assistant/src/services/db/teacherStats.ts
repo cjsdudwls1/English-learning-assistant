@@ -40,15 +40,22 @@ export async function fetchTeacherPerformances(academyId?: string | null): Promi
 
   const ids = teachers.map(t => t.user_id);
 
-  let classesQuery = supabase.from('classes').select('created_by').in('created_by', ids);
-  if (academyId) classesQuery = classesQuery.eq('academy_id', academyId);
+  // academyId가 있으면 학원 소속 전체 학급을 조회(과제 class_id 매칭용), 없으면 담당 교사 학급만
+  let classesQuery = supabase.from('classes').select('id, created_by');
+  classesQuery = academyId ? classesQuery.eq('academy_id', academyId) : classesQuery.in('created_by', ids);
   const { data: classes, error: cErr } = await classesQuery;
   if (cErr) throw cErr;
+  const academyClassIds = new Set((classes || []).map(c => c.id as string));
 
-  let assignmentsQuery = supabase.from('shared_assignments').select('id, created_by').in('created_by', ids);
-  if (academyId) assignmentsQuery = assignmentsQuery.eq('academy_id', academyId);
-  const { data: assignments, error: aErr } = await assignmentsQuery;
+  // 과제의 academy_id는 과거 데이터에 비어 있을 수 있어 학원 학급(class_id) 매칭으로 보강
+  const { data: allAssignments, error: aErr } = await supabase
+    .from('shared_assignments')
+    .select('id, created_by, class_id, academy_id')
+    .in('created_by', ids);
   if (aErr) throw aErr;
+  const assignments = academyId
+    ? (allAssignments || []).filter(a => a.academy_id === academyId || academyClassIds.has(a.class_id as string))
+    : (allAssignments || []);
 
   // 과제 → 담당 교사 매핑 후 응답을 교사별로 집계(과제 id .in() 500 청크)
   const assignmentOwner = new Map<string, string>((assignments || []).map(a => [a.id as string, a.created_by as string]));
