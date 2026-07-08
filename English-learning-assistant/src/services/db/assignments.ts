@@ -6,9 +6,21 @@ export async function createAssignment(params: CreateAssignmentParams): Promise<
   const userId = await getCurrentUserId();
   const { title, description, classId, problemIds, studentIds, dueDate } = params;
 
+  // 학급 소속 학원을 과제에 기록 — 원장 개요/교사 실적의 학원 필터가 academy_id를 참조
+  let academyId: string | null = null;
+  if (classId) {
+    const { data: cls, error: clsError } = await supabase
+      .from('classes')
+      .select('academy_id')
+      .eq('id', classId)
+      .maybeSingle();
+    if (clsError) throw clsError;
+    academyId = cls?.academy_id ?? null;
+  }
+
   const { data, error } = await supabase
     .from('shared_assignments')
-    .insert({ title, description, created_by: userId, class_id: classId, due_date: dueDate ?? null })
+    .insert({ title, description, created_by: userId, class_id: classId, due_date: dueDate ?? null, academy_id: academyId })
     .select('id')
     .single();
   if (error) throw error;
@@ -95,6 +107,17 @@ export async function fetchAssignedToMe(): Promise<SharedAssignment[]> {
   }));
 }
 
+/** 과제 단건 조회 — 풀이 화면의 제목/마감일 표시·마감 판정용. 없거나 권한 없으면 null */
+export async function fetchAssignmentById(assignmentId: string): Promise<SharedAssignment | null> {
+  const { data, error } = await supabase
+    .from('shared_assignments')
+    .select('id, title, description, created_by, class_id, due_date, created_at')
+    .eq('id', assignmentId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as SharedAssignment | null) ?? null;
+}
+
 interface SubmitResponseParams {
   assignmentId: string;
   problemId: string;
@@ -127,7 +150,36 @@ export async function fetchAssignmentResponses(assignmentId: string): Promise<As
     .eq('assignment_id', assignmentId)
     .order('submitted_at', { ascending: true });
   if (error) throw error;
-  return (data || []) as AssignmentResponse[];
+  const responses = (data || []) as AssignmentResponse[];
+
+  // 학생 이름/이메일 병합 — profiles와 FK 조인 관계가 없어 2-쿼리. 실패해도 응답 목록은 반환.
+  const studentIds = Array.from(new Set(responses.map((r) => r.student_id)));
+  if (studentIds.length > 0) {
+    const { data: profiles, error: pError } = await supabase
+      .from('profiles')
+      .select('user_id, name, email')
+      .in('user_id', studentIds);
+    if (!pError && profiles) {
+      const byId = new Map(profiles.map((p: any) => [p.user_id, p]));
+      for (const r of responses) {
+        const p = byId.get(r.student_id);
+        if (p) {
+          r.student_name = p.name ?? null;
+          r.student_email = p.email ?? null;
+        }
+      }
+    }
+  }
+  return responses;
+}
+
+/** 과제 작성자의 수동 채점(서술형 확정 포함) — RLS "Assignment creators can grade responses"로 허용 */
+export async function gradeAssignmentResponse(responseId: string, isCorrect: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('assignment_responses')
+    .update({ is_correct: isCorrect })
+    .eq('id', responseId);
+  if (error) throw error;
 }
 
 export async function deleteAssignment(assignmentId: string): Promise<void> {
@@ -163,16 +215,22 @@ export async function fetchChildAssignments(childId: string): Promise<SharedAssi
 
   const { data: arRows, error: arErr } = await supabase
     .from('assignment_responses')
-    .select('assignment_id')
+    .select('assignment_id, is_correct')
     .in('assignment_id', ids)
     .eq('student_id', childId);
   if (arErr) throw arErr;
 
-  return (assignments || []).map(a => ({
-    ...a,
-    problem_count: (apRows || []).filter(r => r.assignment_id === a.id).length,
-    completed_count: (arRows || []).filter(r => r.assignment_id === a.id).length,
-  }));
+  return (assignments || []).map(a => {
+    const responses = (arRows || []).filter(r => r.assignment_id === a.id);
+    return {
+      ...a,
+      problem_count: (apRows || []).filter(r => r.assignment_id === a.id).length,
+      completed_count: responses.length,
+      correct_count: responses.filter(r => r.is_correct === true).length,
+      incorrect_count: responses.filter(r => r.is_correct === false).length,
+      ungraded_count: responses.filter(r => r.is_correct === null).length,
+    };
+  });
 }
 
 export async function fetchAssignmentProblems(assignmentId: string) {

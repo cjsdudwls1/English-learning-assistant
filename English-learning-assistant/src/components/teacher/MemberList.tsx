@@ -84,7 +84,7 @@ export const MemberList: React.FC<Props> = ({ classId, members, onUpdate, select
               member={m}
               onRemove={handleRemove}
               isSelected={selectedStudentId === m.user_id}
-              onSelect={onSelectStudent ? () => onSelectStudent(m.user_id, m.email) : undefined}
+              onSelect={onSelectStudent ? () => onSelectStudent(m.user_id, m.name || m.email) : undefined}
             />
           ))
         )}
@@ -111,7 +111,7 @@ const MemberRow: React.FC<{
     onClick={onSelect}
   >
     <div className="flex items-center gap-2">
-      <span className="text-sm text-slate-700 dark:text-slate-300">{member.email || member.user_id.slice(0, 8)}</span>
+      <span className="text-sm text-slate-700 dark:text-slate-300">{member.name || member.email || member.user_id.slice(0, 8)}</span>
       {onSelect && (
         <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
           {isSelected ? t.teacher.viewingStats : t.teacher.clickToViewStats}

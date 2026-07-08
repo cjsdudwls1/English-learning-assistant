@@ -9,11 +9,19 @@ interface Props {
   selectedStudentId?: string | null;
 }
 
-const RatePill: React.FC<{ rate: number; total: number }> = ({ rate, total }) => {
+const RatePill: React.FC<{ rate: number; total: number; graded: number }> = ({ rate, total, graded }) => {
   const { language } = useLanguage();
   const t = getTranslation(language);
   if (total === 0) {
     return <span className="text-[10px] text-slate-400">{t.charts.noData}</span>;
+  }
+  // 채점 계약: 정답률은 채점된 응답 기준 — 전부 미채점이면 정답률 대신 대기 건수 표시
+  if (graded === 0) {
+    return (
+      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400">
+        {language === 'ko' ? `미채점 ${total}건` : `${total} ungraded`}
+      </span>
+    );
   }
   const color =
     rate >= 80 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' :
@@ -22,8 +30,8 @@ const RatePill: React.FC<{ rate: number; total: number }> = ({ rate, total }) =>
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${color}`}>
       {language === 'ko'
-        ? `정답률 ${rate}% (${total}건)`
-        : `Accuracy ${rate}% (${total} solved)`}
+        ? `정답률 ${rate}% (채점 ${graded}건)`
+        : `Accuracy ${rate}% (${graded} graded)`}
     </span>
   );
 };
@@ -48,7 +56,7 @@ const StudentRow: React.FC<{
       <div className="flex items-center flex-wrap gap-1.5">
         <span className="font-medium">{student.email || student.user_id.slice(0, 8)}</span>
         {student.grade && <span className="text-[10px] text-slate-500">{student.grade}</span>}
-        <RatePill rate={student.correct_rate} total={student.total_count} />
+        <RatePill rate={student.correct_rate} total={student.total_count} graded={student.graded_count} />
       </div>
       {student.parents.length > 0 && (
         <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
@@ -90,7 +98,7 @@ const TeacherSection: React.FC<{
               : `${teacher.classes.length} classes · ${teacher.student_ids.length} students`}
           </span>
         </div>
-        <RatePill rate={teacher.correct_rate} total={teacher.total_count} />
+        <RatePill rate={teacher.correct_rate} total={teacher.total_count} graded={teacher.graded_count} />
       </button>
 
       {open && (

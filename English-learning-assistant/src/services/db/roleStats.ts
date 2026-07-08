@@ -8,11 +8,14 @@ import {
   fetchLabelsForProblems,
 } from '../stats';
 
-interface StatsRow { date: string; is_correct: boolean; time: number }
+// is_correct null = 자동 채점 불가(서술형 등 미채점) — 채점 계약상 오답으로 위조하지 않고
+// 월별/일별 집계에서 제외한다(correct + incorrect === total 불변식 유지).
+interface StatsRow { date: string; is_correct: boolean | null; time: number }
 
 function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
   const map = new Map<number, { total: number; correct: number; incorrect: number; totalTime: number }>();
   for (const r of rows) {
+    if (typeof r.is_correct !== 'boolean') continue;
     const month = new Date(r.date).getMonth() + 1;
     const e = map.get(month) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0 };
     e.total++;
@@ -32,6 +35,7 @@ function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
 function aggregateByDay(rows: StatsRow[]): DailyStats[] {
   const map = new Map<string, { total: number; correct: number; incorrect: number; totalTime: number }>();
   for (const r of rows) {
+    if (typeof r.is_correct !== 'boolean') continue;
     const date = r.date.slice(0, 10);
     const e = map.get(date) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0 };
     e.total++;
@@ -64,7 +68,7 @@ async function fetchLabelStatsRowsForUser(targetId: string, startDate: string, e
   for (const l of labels) {
     const sid = problemToSession.get(l.problem_id);
     const created = sid ? sessionDateMap.get(sid) : undefined;
-    if (created) rows.push({ date: created, is_correct: l.is_correct ?? false, time: 0 });
+    if (created) rows.push({ date: created, is_correct: l.is_correct ?? null, time: 0 });
   }
   return rows;
 }
@@ -85,7 +89,7 @@ async function fetchLabelStatsRowsForUsers(studentIds: string[], startDate: stri
   for (const l of labels) {
     const sid = problemToSession.get(l.problem_id);
     const created = sid ? sessionDateMap.get(sid) : undefined;
-    if (created) rows.push({ date: created, is_correct: l.is_correct ?? false, time: 0 });
+    if (created) rows.push({ date: created, is_correct: l.is_correct ?? null, time: 0 });
   }
   return rows;
 }
@@ -132,6 +136,39 @@ export async function fetchDailySolvingStats(year: number, month: number, studen
   const lastDay = new Date(year, month, 0).getDate();
   const rows = await fetchAllStatsRows(targetId, `${year}-${mm}-01T00:00:00Z`, `${year}-${mm}-${lastDay}T23:59:59Z`);
   return aggregateByDay(rows);
+}
+
+export interface WeeklySolvingSummary {
+  thisWeekCount: number;
+  lastWeekCount: number;
+  /** 이번 주 정답률(0-100). 채점된 문항(is_correct not null) 기준, 표본 없으면 0 */
+  thisWeekCorrectRate: number;
+  /** 이번 주 시작(월요일 00:00, 로컬) — 취약 카테고리 조회 등 동일 범위 재사용용 */
+  weekStart: Date;
+}
+
+/** 이번 주(월요일 시작)와 지난주의 풀이량·정답률 비교 — 학부모 주간 요약용 */
+export async function fetchWeeklySolvingSummary(studentId?: string): Promise<WeeklySolvingSummary> {
+  const targetId = studentId ?? await getCurrentUserId();
+  const now = new Date();
+  const mondayOffset = (now.getDay() + 6) % 7;
+  const thisWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+
+  const [thisRows, lastRows] = await Promise.all([
+    fetchAllStatsRows(targetId, thisWeekStart.toISOString(), now.toISOString()),
+    fetchAllStatsRows(targetId, lastWeekStart.toISOString(), thisWeekStart.toISOString()),
+  ]);
+  // 풀이량(thisWeekCount)은 미채점 포함 전체, 정답률은 채점된 문항만 기준
+  const graded = thisRows.filter((r) => typeof r.is_correct === 'boolean');
+  const correct = graded.filter((r) => r.is_correct === true).length;
+  return {
+    thisWeekCount: thisRows.length,
+    lastWeekCount: lastRows.length,
+    thisWeekCorrectRate: graded.length > 0 ? Math.round((correct / graded.length) * 100) : 0,
+    weekStart: thisWeekStart,
+  };
 }
 
 export async function fetchClassAssignmentStats(classId: string, year: number, month?: number): Promise<MonthlyStats[]> {
@@ -186,44 +223,100 @@ export interface DirectorOverview {
   totalClasses: number;
   totalAssignments: number;
   totalResponses: number;
+  /** 채점 대기(is_correct null) 응답 수 — 서술형 등 수동 확인 필요 */
+  ungradedResponses: number;
+  /** 채점된 응답(is_correct not null) 기준 정답률(0-100). 표본 없으면 0 */
   overallCorrectRate: number;
 }
 
 export async function fetchDirectorOverview(academyId?: string | null): Promise<DirectorOverview> {
-  let classesQuery = supabase.from('classes').select('*', { count: 'exact', head: true });
-  if (academyId) classesQuery = classesQuery.eq('academy_id', academyId);
-  const { count: totalClasses } = await classesQuery;
+  const CHUNK = 500;
+
+  // 학원 학급 목록 — 과제의 academy_id는 과거 데이터에 비어 있을 수 있어 class_id 경유로도 매칭
+  let academyClassIds: string[] | null = null;
+  let totalClasses: number;
+  if (academyId) {
+    const { data: cRows, error: cErr } = await supabase
+      .from('classes')
+      .select('id')
+      .eq('academy_id', academyId);
+    if (cErr) throw cErr;
+    academyClassIds = (cRows || []).map((r) => r.id);
+    totalClasses = academyClassIds.length;
+  } else {
+    const { count } = await supabase.from('classes').select('*', { count: 'exact', head: true });
+    totalClasses = count ?? 0;
+  }
 
   let studentsQuery = supabase.from('academy_students').select('*', { count: 'exact', head: true });
   if (academyId) studentsQuery = studentsQuery.eq('academy_id', academyId);
   const { count: totalStudents } = await studentsQuery;
 
-  let assignmentsQuery = supabase.from('shared_assignments').select('*', { count: 'exact', head: true });
-  if (academyId) assignmentsQuery = assignmentsQuery.eq('academy_id', academyId);
-  const { count: totalAssignments } = await assignmentsQuery;
+  // 과제·응답 집계 — academyId가 있으면 academy_id 직접 매칭 ∪ 학원 학급(class_id) 매칭
+  let assignmentIds: string[] | null = null;
+  let totalAssignments: number;
+  if (academyId) {
+    const idSet = new Set<string>();
+    const { data: byAcademy, error: aErr } = await supabase
+      .from('shared_assignments')
+      .select('id')
+      .eq('academy_id', academyId);
+    if (aErr) throw aErr;
+    for (const r of byAcademy || []) idSet.add(r.id);
+    for (let i = 0; i < (academyClassIds || []).length; i += CHUNK) {
+      const { data: byClass, error: bErr } = await supabase
+        .from('shared_assignments')
+        .select('id')
+        .in('class_id', (academyClassIds || []).slice(i, i + CHUNK));
+      if (bErr) throw bErr;
+      for (const r of byClass || []) idSet.add(r.id);
+    }
+    assignmentIds = Array.from(idSet);
+    totalAssignments = assignmentIds.length;
+  } else {
+    const { count } = await supabase.from('shared_assignments').select('*', { count: 'exact', head: true });
+    totalAssignments = count ?? 0;
+  }
+  const countResponses = async (filter: 'all' | 'graded' | 'correct'): Promise<number> => {
+    const buildQuery = (ids?: string[]) => {
+      let q = supabase.from('assignment_responses').select('*', { count: 'exact', head: true });
+      if (ids) q = q.in('assignment_id', ids);
+      if (filter === 'graded') q = q.not('is_correct', 'is', null);
+      if (filter === 'correct') q = q.eq('is_correct', true);
+      return q;
+    };
+    if (!assignmentIds) {
+      const { count, error } = await buildQuery();
+      if (error) throw error;
+      return count ?? 0;
+    }
+    if (assignmentIds.length === 0) return 0;
+    let total = 0;
+    for (let i = 0; i < assignmentIds.length; i += CHUNK) {
+      const { count, error } = await buildQuery(assignmentIds.slice(i, i + CHUNK));
+      if (error) throw error;
+      total += count ?? 0;
+    }
+    return total;
+  };
 
-  const { count: totalResponses, error: trErr } = await supabase
-    .from('assignment_responses')
-    .select('*', { count: 'exact', head: true });
-  if (trErr) throw trErr;
+  const [totalResponses, gradedCount, correctCount] = await Promise.all([
+    countResponses('all'),
+    countResponses('graded'),
+    countResponses('correct'),
+  ]);
 
-  const { count: correctCount, error: ccErr } = await supabase
-    .from('assignment_responses')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_correct', true);
-  if (ccErr) throw ccErr;
-
-  const total = totalResponses ?? 0;
-  const correct = correctCount ?? 0;
-  const overallCorrectRate = total > 0
-    ? Math.round((correct / total) * 100)
+  // 정답률은 채점된 응답 기준 — 미채점(null)을 오답으로 위조하지 않음
+  const overallCorrectRate = gradedCount > 0
+    ? Math.round((correctCount / gradedCount) * 100)
     : 0;
 
   return {
     totalStudents: totalStudents ?? 0,
     totalClasses: totalClasses ?? 0,
     totalAssignments: totalAssignments ?? 0,
-    totalResponses: total,
+    totalResponses,
+    ungradedResponses: totalResponses - gradedCount,
     overallCorrectRate,
   };
 }

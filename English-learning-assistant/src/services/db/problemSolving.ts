@@ -47,6 +47,40 @@ export async function completeProblemSolving(
   if (error) throw error;
 }
 
+export interface GeneratedProblemResult {
+  problemId: string;
+  isCorrect: boolean | null; // null = 자동 채점 불가(서술형 등)
+  timeSpentSeconds: number;
+}
+
+/**
+ * 시험지(TestSheetView) 제출 결과 배치 저장.
+ * UNIQUE(user_id, problem_id) 제약이라 같은 문제 재제출 시 최신 결과로 덮어쓴다.
+ */
+export async function saveGeneratedProblemResults(
+  results: GeneratedProblemResult[],
+  startedAt?: string
+): Promise<void> {
+  if (results.length === 0) return;
+  const userId = await getCurrentUserId();
+  const now = new Date().toISOString();
+
+  const rows = results.map((r) => ({
+    user_id: userId,
+    problem_id: r.problemId,
+    started_at: startedAt ?? now,
+    completed_at: now,
+    time_spent_seconds: r.timeSpentSeconds,
+    is_correct: r.isCorrect,
+  }));
+
+  const { error } = await supabase
+    .from('problem_solving_sessions')
+    .upsert(rows, { onConflict: 'user_id,problem_id' });
+
+  if (error) throw error;
+}
+
 /**
  * 문제 풀이 세션 조회 (기존 세션이 있으면 반환)
  */

@@ -171,6 +171,7 @@ export interface ClassMember {
   role: 'teacher' | 'student';
   joined_at: string;
   email?: string;
+  name?: string | null;
 }
 
 export interface SharedAssignment {
@@ -183,6 +184,10 @@ export interface SharedAssignment {
   created_at: string;
   problem_count?: number;
   completed_count?: number;
+  // 채점 상세(학생 1명 기준) — fetchChildAssignments 등에서 채움. null 채점은 ungraded로 분리
+  correct_count?: number;
+  incorrect_count?: number;
+  ungraded_count?: number;
 }
 
 export interface AssignmentProblem {
@@ -202,6 +207,9 @@ export interface AssignmentResponse {
   is_correct: boolean | null;
   time_spent_seconds: number | null;
   submitted_at: string;
+  // 표시용 — fetchAssignmentResponses에서 profiles 병합(조회 실패 시 미설정)
+  student_name?: string | null;
+  student_email?: string | null;
 }
 
 export interface MonthlyStats {
@@ -241,6 +249,8 @@ export interface StudentDetail {
   class_ids: string[];
   parents: ParentSummary[];
   total_count: number;
+  /** 채점 완료(is_correct boolean) 응답 수 — correct_rate의 분모 */
+  graded_count: number;
   correct_count: number;
   correct_rate: number;
 }
@@ -251,6 +261,8 @@ export interface TeacherDetail {
   classes: Array<{ id: string; name: string; student_count: number }>;
   student_ids: string[];
   total_count: number;
+  /** 채점 완료(is_correct boolean) 응답 수 — correct_rate의 분모 */
+  graded_count: number;
   correct_count: number;
   correct_rate: number;
 }

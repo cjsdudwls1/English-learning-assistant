@@ -5,6 +5,7 @@ import type { SharedAssignment } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
+import { isOverdue } from '../utils/assignmentDue';
 
 export const AssignmentsPage: React.FC = () => {
   const { language } = useLanguage();
@@ -35,11 +36,17 @@ export const AssignmentsPage: React.FC = () => {
         <div className="space-y-3">
           {assignments.map((a) => {
             const isComplete = (a.completed_count ?? 0) >= (a.problem_count ?? 1);
+            const overdueIncomplete = !isComplete && isOverdue(a.due_date);
             return (
-              <Link key={a.id} to={`/assignments/${a.id}`} className="block bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 hover:border-indigo-400 transition-colors">
+              <Link key={a.id} to={`/assignments/${a.id}`} className={`block bg-white dark:bg-slate-800 rounded-2xl border p-5 transition-colors ${overdueIncomplete ? 'border-red-300 dark:border-red-800 hover:border-red-400' : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-slate-800 dark:text-slate-200">{a.title}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">
+                      {a.title}
+                      {overdueIncomplete && (
+                        <span className="ml-2 align-middle text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">{t.assignments.overdue}</span>
+                      )}
+                    </p>
                     {a.description && <p className="text-sm text-slate-500 mt-1">{a.description}</p>}
                     <p className="text-xs text-slate-400 mt-2">
                       {new Date(a.created_at).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US')} · {t.assignments.problemCountUnit.replace('{count}', String(a.problem_count ?? 0))}

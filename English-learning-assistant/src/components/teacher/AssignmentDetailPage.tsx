@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { fetchAssignmentProblems, fetchAssignmentResponses, deleteAssignment } from '../../services/db';
+import { fetchAssignmentProblems, fetchAssignmentResponses, deleteAssignment, gradeAssignmentResponse } from '../../services/db';
 import { AssignmentResponseTable } from './AssignmentResponseTable';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getTranslation } from '../../utils/translations';
@@ -30,6 +30,15 @@ export const AssignmentDetailPage: React.FC = () => {
       .finally(() => setLoading(false));
   }, [assignmentId]);
 
+  const handleGrade = async (responseId: string, isCorrect: boolean) => {
+    try {
+      await gradeAssignmentResponse(responseId, isCorrect);
+      setResponses(prev => prev.map(r => r.id === responseId ? { ...r, is_correct: isCorrect } : r));
+    } catch {
+      alert(t.assignments.gradeFailed);
+    }
+  };
+
   const handleDelete = async () => {
     if (!assignmentId || !confirm(t.assignments.deleteConfirm)) return;
     setDeleting(true);
@@ -57,7 +66,7 @@ export const AssignmentDetailPage: React.FC = () => {
         </button>
       </div>
       <p className="text-sm text-slate-500">{language === 'ko' ? `문제 ${problems.length}개 · 응답 ${responses.length}건` : `${problems.length} problems · ${responses.length} responses`}</p>
-      <AssignmentResponseTable problems={problems} responses={responses} />
+      <AssignmentResponseTable problems={problems} responses={responses} onGrade={handleGrade} />
     </div>
   );
 };

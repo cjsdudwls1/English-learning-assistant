@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { ProblemEditMode } from './ProblemEditMode';
-import { getCurrentUserId } from '../services/db';
+import { getCurrentUserId, saveGeneratedProblemResults } from '../services/db';
 import { supabase } from '../services/supabaseClient';
+import { gradeGeneratedProblem } from '../utils/grading';
 
 type ProblemType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox';
+type PrintMode = 'questions' | 'answers' | null;
+type SaveState = 'saving' | 'saved' | 'error' | null;
 
 interface TestSheetViewProps {
   problems: any[];
@@ -21,7 +25,7 @@ interface QuizResult {
   problemId: string;
   userAnswer: string | number | boolean | null;
   correctAnswer: string | number | boolean | null;
-  isCorrect: boolean;
+  isCorrect: boolean | null; // null = 자동 채점 불가(서술형 등) → '미채점' 표시, 통계 제외
   problemType: ProblemType;
   classification: any;
   explanation?: string;
@@ -32,11 +36,12 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
   const t = getTranslation(language);
   const [editingProblemId, setEditingProblemId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [isPrintMode, setIsPrintMode] = useState(false);
+  const [printMode, setPrintMode] = useState<PrintMode>(null);
   const [problemsList, setProblemsList] = useState(problems);
   const [userAnswers, setUserAnswers] = useState<Record<string, UserAnswer>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
+  const [saveState, setSaveState] = useState<SaveState>(null);
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -51,6 +56,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     setUserAnswers({});
     setIsSubmitted(false);
     setQuizResults([]);
+    setSaveState(null);
   }, [problems]);
 
   useEffect(() => {
@@ -89,7 +95,22 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     checkUserRole();
   }, []);
 
-  const isTeacher = userRole === 'teacher';
+  // 인쇄: body에 클래스를 달아 앱(#root)을 숨기고 포털로 렌더한 인쇄 전용 시트만 출력
+  useEffect(() => {
+    if (!printMode) return;
+    document.body.classList.add('test-sheet-printing');
+    const timer = setTimeout(() => {
+      window.print(); // 동기 블로킹 — 인쇄 대화상자가 닫힌 뒤 아래 줄 실행
+      document.body.classList.remove('test-sheet-printing');
+      setPrintMode(null);
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      document.body.classList.remove('test-sheet-printing');
+    };
+  }, [printMode]);
+
+  const isTeacher = userRole === 'teacher' || userRole === 'director';
 
   const formatTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000);
@@ -108,35 +129,29 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const results: QuizResult[] = problemsList.map((problem) => {
       const userAnswer = userAnswers[problem.id]?.answer;
       const currentProblemType = problem.problem_type || problemType;
 
-      let correctAnswer: string | number | boolean | null = null;
-      let isCorrect = false;
+      const isCorrect = gradeGeneratedProblem(
+        { ...problem, problem_type: currentProblemType },
+        userAnswer
+      );
 
+      // 표시용 정답값
+      let correctAnswer: string | number | boolean | null = null;
       if (currentProblemType === 'multiple_choice') {
         correctAnswer = problem.correct_answer_index;
-        isCorrect = userAnswer === correctAnswer;
       } else if (currentProblemType === 'short_answer') {
         correctAnswer = problem.correct_answer || '';
-        isCorrect = String(userAnswer || '').trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
       } else if (currentProblemType === 'ox') {
-        // DB에서 correct_answer 필드에 true/false 저장 (Edge Function 기준)
         correctAnswer = problem.correct_answer;
-        // correct_answer가 문자열 "true"/"false"일 수 있으므로 변환
-        const correctBool = correctAnswer === true || correctAnswer === 'true';
-        isCorrect = userAnswer === correctBool;
-      } else if (currentProblemType === 'essay') {
-        // 서술형은 자동 채점 불가, 사용자 답안만 저장
-        correctAnswer = null;
-        isCorrect = false;
       }
 
       return {
         problemId: problem.id,
-        userAnswer,
+        userAnswer: userAnswer ?? null,
         correctAnswer,
         isCorrect,
         problemType: currentProblemType,
@@ -151,13 +166,30 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-    setElapsedTime(Date.now() - startTime);
-  };
+    const finalElapsed = Date.now() - startTime;
+    setElapsedTime(finalElapsed);
 
-  const handlePrint = () => {
-    setIsPrintMode(true);
-    window.print();
-    setTimeout(() => setIsPrintMode(false), 1000);
+    // 풀이 결과 DB 저장 — 문제별 소요시간은 총 시간을 균등 분배. 실패해도 결과 화면은 유지.
+    const savable = results.filter(r => r.problemId);
+    if (savable.length > 0) {
+      const totalSec = Math.max(1, Math.floor(finalElapsed / 1000));
+      const perProblemSec = Math.max(1, Math.round(totalSec / savable.length));
+      setSaveState('saving');
+      try {
+        await saveGeneratedProblemResults(
+          savable.map(r => ({
+            problemId: r.problemId,
+            isCorrect: r.isCorrect,
+            timeSpentSeconds: perProblemSec,
+          })),
+          new Date(startTime).toISOString()
+        );
+        setSaveState('saved');
+      } catch (error) {
+        console.error('Failed to save test results:', error);
+        setSaveState('error');
+      }
+    }
   };
 
   const handleProblemUpdate = (updatedProblem: any) => {
@@ -167,13 +199,37 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     setEditingProblemId(null);
   };
 
+  const resultBadge = (result: QuizResult | undefined) => {
+    if (!result) return null;
+    if (result.isCorrect === null) {
+      return (
+        <span className="px-3 py-1 text-xs font-semibold rounded bg-yellow-500 text-white">
+          {t.testSheet.ungraded}
+        </span>
+      );
+    }
+    return (
+      <span className={`px-3 py-1 text-xs font-semibold rounded ${result.isCorrect
+        ? 'bg-green-500 text-white'
+        : 'bg-red-500 text-white'
+        }`}>
+        {result.isCorrect ? (language === 'ko' ? '정답' : 'Correct') : (language === 'ko' ? '오답' : 'Wrong')}
+      </span>
+    );
+  };
+
+  const problemBorderClass = (result: QuizResult | undefined) => {
+    if (!isSubmitted) return 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800';
+    if (result?.isCorrect === true) return 'border-green-500 bg-green-50 dark:bg-green-900/20';
+    if (result?.isCorrect === false) return 'border-red-500 bg-red-50 dark:bg-red-900/20';
+    return 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20';
+  };
+
   const renderProblem = (problem: any, index: number) => {
     const currentProblemType = problem.problem_type || problemType;
     const userAnswer = userAnswers[problem.id]?.answer;
     const result = quizResults.find(r => r.problemId === problem.id);
-    const isAnswered = userAnswer !== null && userAnswer !== undefined && userAnswer !== '';
 
-    // 출처 정보 확인 (디버깅용)
     if (editingProblemId === problem.id && isTeacher) {
       return (
         <ProblemEditMode
@@ -189,12 +245,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     return (
       <div
         key={problem.id || index}
-        className={`mb-6 p-4 border-2 rounded-lg ${isSubmitted
-          ? result?.isCorrect
-            ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-            : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-          : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
-          } ${isPrintMode ? 'break-inside-avoid' : ''}`}
+        className={`mb-6 p-4 border-2 rounded-lg ${problemBorderClass(result)}`}
       >
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
@@ -211,14 +262,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
                 {language === 'ko' ? '편집' : 'Edit'}
               </button>
             )}
-            {isSubmitted && (
-              <span className={`px-3 py-1 text-xs font-semibold rounded ${result?.isCorrect
-                ? 'bg-green-500 text-white'
-                : 'bg-red-500 text-white'
-                }`}>
-                {result?.isCorrect ? (language === 'ko' ? '정답' : 'Correct') : (language === 'ko' ? '오답' : 'Wrong')}
-              </span>
-            )}
+            {isSubmitted && resultBadge(result)}
           </div>
         </div>
 
@@ -323,6 +367,14 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
                 : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
                 } ${isSubmitted ? 'cursor-default' : ''}`}
             />
+            {isSubmitted && problem.correct_answer && (
+              <div className="mt-2 text-sm">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {language === 'ko' ? '모범 답안: ' : 'Model Answer: '}
+                </span>
+                <span className="text-green-600 dark:text-green-400 whitespace-pre-line">{problem.correct_answer}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -392,13 +444,17 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     if (!isSubmitted || quizResults.length === 0) return null;
 
     const totalProblems = quizResults.length;
-    const correctCount = quizResults.filter(r => r.isCorrect).length;
-    const wrongCount = totalProblems - correctCount;
-    const accuracy = totalProblems > 0 ? Math.round((correctCount / totalProblems) * 100) : 0;
+    const gradedResults = quizResults.filter(r => r.isCorrect !== null);
+    const gradedCount = gradedResults.length;
+    const correctCount = gradedResults.filter(r => r.isCorrect).length;
+    const wrongCount = gradedCount - correctCount;
+    const ungradedCount = totalProblems - gradedCount;
+    // 정답률은 채점 가능한 문제 기준(미채점 서술형을 오답으로 왜곡하지 않음)
+    const accuracy = gradedCount > 0 ? Math.round((correctCount / gradedCount) * 100) : 0;
 
-    // 문제 유형별 통계
+    // 문제 유형별 통계 (채점된 문제만)
     const typeStats: Record<string, { total: number; correct: number }> = {};
-    quizResults.forEach(result => {
+    gradedResults.forEach(result => {
       const type = result.problemType;
       if (!typeStats[type]) {
         typeStats[type] = { total: 0, correct: 0 };
@@ -409,9 +465,9 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
       }
     });
 
-    // 카테고리별 통계
+    // 카테고리별 통계 (채점된 문제만)
     const categoryStats: Record<string, { total: number; correct: number }> = {};
-    quizResults.forEach(result => {
+    gradedResults.forEach(result => {
       const classification = result.classification || {};
       const category = classification.depth1 || '기타';
       if (!categoryStats[category]) {
@@ -432,12 +488,32 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
 
     return (
       <div className="mt-8 p-6 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-6">
-          {language === 'ko' ? '시험 결과' : 'Test Results'}
-        </h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+            {language === 'ko' ? '시험 결과' : 'Test Results'}
+          </h2>
+          {saveState && (
+            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${saveState === 'saved'
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+              : saveState === 'error'
+                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+              }`}>
+              {saveState === 'saved' ? t.testSheet.saved : saveState === 'error' ? t.testSheet.saveFailed : t.testSheet.saving}
+            </span>
+          )}
+        </div>
+
+        {ungradedCount > 0 && (
+          <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              {t.testSheet.ungradedNotice.replace('{count}', String(ungradedCount))}
+            </p>
+          </div>
+        )}
 
         {/* 기본 통계 */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className={`grid grid-cols-1 ${ungradedCount > 0 ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 mb-6`}>
           <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
             <div className="text-sm text-blue-600 dark:text-blue-400 mb-1">
               {language === 'ko' ? '소요 시간' : 'Time Taken'}
@@ -451,7 +527,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               {language === 'ko' ? '정답' : 'Correct'}
             </div>
             <div className="text-2xl font-bold text-green-800 dark:text-green-200">
-              {correctCount} / {totalProblems}
+              {correctCount} / {gradedCount}
             </div>
           </div>
           <div className="p-4 bg-red-50 dark:bg-red-900/30 rounded-lg">
@@ -459,9 +535,19 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               {language === 'ko' ? '오답' : 'Wrong'}
             </div>
             <div className="text-2xl font-bold text-red-800 dark:text-red-200">
-              {wrongCount} / {totalProblems}
+              {wrongCount} / {gradedCount}
             </div>
           </div>
+          {ungradedCount > 0 && (
+            <div className="p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg">
+              <div className="text-sm text-yellow-600 dark:text-yellow-400 mb-1">
+                {t.testSheet.ungraded}
+              </div>
+              <div className="text-2xl font-bold text-yellow-800 dark:text-yellow-200">
+                {ungradedCount} / {totalProblems}
+              </div>
+            </div>
+          )}
           <div className="p-4 bg-purple-50 dark:bg-purple-900/30 rounded-lg">
             <div className="text-sm text-purple-600 dark:text-purple-400 mb-1">
               {language === 'ko' ? '정답률' : 'Accuracy'}
@@ -469,29 +555,36 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
             <div className="text-2xl font-bold text-purple-800 dark:text-purple-200">
               {accuracy}%
             </div>
+            {ungradedCount > 0 && (
+              <div className="text-xs text-purple-500 dark:text-purple-400 mt-1">
+                {t.testSheet.accuracyGradedOnly.replace('{count}', String(gradedCount))}
+              </div>
+            )}
           </div>
         </div>
 
         {/* 맞춘/틀린 문제 그래프 */}
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-3">
-            {language === 'ko' ? '정답/오답 현황' : 'Correct/Wrong Status'}
-          </h3>
-          <div className="flex items-center gap-2 h-12 bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
-            <div
-              className="h-full bg-green-500 flex items-center justify-center text-white font-semibold transition-all"
-              style={{ width: `${(correctCount / totalProblems) * 100}%` }}
-            >
-              {correctCount > 0 && `${correctCount}`}
-            </div>
-            <div
-              className="h-full bg-red-500 flex items-center justify-center text-white font-semibold transition-all"
-              style={{ width: `${(wrongCount / totalProblems) * 100}%` }}
-            >
-              {wrongCount > 0 && `${wrongCount}`}
+        {gradedCount > 0 && (
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-3">
+              {language === 'ko' ? '정답/오답 현황' : 'Correct/Wrong Status'}
+            </h3>
+            <div className="flex items-center gap-2 h-12 bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
+              <div
+                className="h-full bg-green-500 flex items-center justify-center text-white font-semibold transition-all"
+                style={{ width: `${(correctCount / gradedCount) * 100}%` }}
+              >
+                {correctCount > 0 && `${correctCount}`}
+              </div>
+              <div
+                className="h-full bg-red-500 flex items-center justify-center text-white font-semibold transition-all"
+                style={{ width: `${(wrongCount / gradedCount) * 100}%` }}
+              >
+                {wrongCount > 0 && `${wrongCount}`}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* 문제 유형별 통계 */}
         <div className="mb-6">
@@ -556,51 +649,142 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     );
   };
 
+  // ---------- 인쇄 전용 시트 (React Portal → document.body) ----------
+
+  const printAnswerText = (problem: any): string => {
+    const type = problem.problem_type || problemType;
+    if (type === 'multiple_choice') {
+      const idx = problem.correct_answer_index;
+      if (idx === null || idx === undefined) return String(problem.correct_answer ?? '-');
+      const choiceText = problem.choices?.[idx]?.text ?? problem.choices?.[idx] ?? '';
+      return `${String.fromCharCode(65 + idx)}. ${choiceText}`;
+    }
+    if (type === 'ox') {
+      const isTrue = problem.correct_answer === true || problem.correct_answer === 'true';
+      return isTrue ? 'O (True)' : 'X (False)';
+    }
+    // short_answer / essay: 정답·모범답안
+    return String(problem.correct_answer || problem.guidelines || '-');
+  };
+
+  const renderPrintSheet = () => {
+    if (!printMode) return null;
+    const isAnswerMode = printMode === 'answers';
+
+    return createPortal(
+      <div className="test-sheet-print">
+        <div className="tsp-header">
+          <h1>{isAnswerMode ? t.testSheet.answerKeyTitle : t.testSheet.sheetTitle}</h1>
+          {!isAnswerMode && (
+            <div className="tsp-fields">
+              <span>{t.testSheet.nameField} ____________</span>
+              <span>{t.testSheet.dateField} ____________</span>
+              <span>{t.testSheet.scoreField} ________</span>
+            </div>
+          )}
+        </div>
+
+        {problemsList.map((problem, index) => {
+          const type = problem.problem_type || problemType;
+          return (
+            <div key={problem.id || index} className="tsp-problem">
+              <div className="tsp-stem">{index + 1}. {problem.stem}</div>
+
+              {!isAnswerMode && problem.passage && (
+                <div className="tsp-passage">{problem.passage}</div>
+              )}
+
+              {!isAnswerMode && type === 'multiple_choice' && problem.choices && (
+                <ol className="tsp-choices">
+                  {problem.choices.map((choice: any, cIdx: number) => (
+                    <li key={cIdx}>{String.fromCharCode(65 + cIdx)}. {choice.text || choice}</li>
+                  ))}
+                </ol>
+              )}
+
+              {!isAnswerMode && type === 'ox' && (
+                <div className="tsp-ox">O (True)　／　X (False)</div>
+              )}
+
+              {!isAnswerMode && type === 'short_answer' && (
+                <div className="tsp-blank">{t.testSheet.answerBlank} ______________________________</div>
+              )}
+
+              {!isAnswerMode && type === 'essay' && (
+                <>
+                  {problem.guidelines && <div className="tsp-guidelines">{problem.guidelines}</div>}
+                  <div className="tsp-essay-box" />
+                </>
+              )}
+
+              {isAnswerMode && (
+                <div className="tsp-answer">
+                  <strong>{language === 'ko' ? '정답: ' : 'Answer: '}</strong>
+                  {printAnswerText(problem)}
+                </div>
+              )}
+              {isAnswerMode && problem.explanation && (
+                <div className="tsp-explanation">
+                  <strong>{language === 'ko' ? '해설: ' : 'Explanation: '}</strong>
+                  {problem.explanation}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>,
+      document.body
+    );
+  };
+
   const allAnswered = problemsList.every(problem => {
     const answer = userAnswers[problem.id]?.answer;
     return answer !== null && answer !== undefined && answer !== '';
   });
 
   return (
-    <div className={`${isPrintMode ? 'print-mode' : ''}`}>
-      {/* 인쇄 모드가 아닐 때만 표시되는 컨트롤 */}
-      {!isPrintMode && (
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-sm text-slate-600 dark:text-slate-400">
-              {language === 'ko'
-                ? `총 ${problemsList.length}문제`
-                : `Total ${problemsList.length} problems`}
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-slate-600 dark:text-slate-400">
+            {language === 'ko'
+              ? `총 ${problemsList.length}문제`
+              : `Total ${problemsList.length} problems`}
+          </div>
+          {!isSubmitted && (
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              {language === 'ko' ? '소요 시간: ' : 'Time: '}
+              {formatTime(elapsedTime)}
             </div>
-            {!isSubmitted && (
-              <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                {language === 'ko' ? '소요 시간: ' : 'Time: '}
-                {formatTime(elapsedTime)}
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2">
-            {!isSubmitted && (
-              <button
-                onClick={handleSubmit}
-                disabled={!allAnswered}
-                className={`px-6 py-2 rounded-lg font-semibold transition-colors ${allAnswered
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
-                  }`}
-              >
-                {language === 'ko' ? '제출' : 'Submit'}
-              </button>
-            )}
-            <button
-              onClick={handlePrint}
-              className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
-            >
-              {language === 'ko' ? '인쇄' : 'Print'}
-            </button>
-          </div>
+          )}
         </div>
-      )}
+        <div className="flex gap-2">
+          {!isSubmitted && (
+            <button
+              onClick={handleSubmit}
+              disabled={!allAnswered}
+              className={`px-6 py-2 rounded-lg font-semibold transition-colors ${allAnswered
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                }`}
+            >
+              {language === 'ko' ? '제출' : 'Submit'}
+            </button>
+          )}
+          <button
+            onClick={() => setPrintMode('questions')}
+            className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+          >
+            {t.testSheet.printQuestions}
+          </button>
+          <button
+            onClick={() => setPrintMode('answers')}
+            className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+          >
+            {t.testSheet.printAnswers}
+          </button>
+        </div>
+      </div>
 
       {!allAnswered && !isSubmitted && (
         <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
@@ -613,10 +797,10 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
       )}
 
       {/* 시험지 본문 */}
-      <div className={`bg-white dark:bg-slate-800 p-6 rounded-lg ${isPrintMode ? 'shadow-none' : 'shadow-lg'}`}>
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-lg">
         <div className="mb-6 text-center border-b-2 border-slate-300 dark:border-slate-600 pb-4">
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">
-            {language === 'ko' ? '영어 문제 시험지' : 'English Test Sheet'}
+            {t.testSheet.sheetTitle}
           </h1>
           <div className="text-sm text-slate-600 dark:text-slate-400">
             {language === 'ko'
@@ -633,17 +817,39 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
       {/* 결과 요약 */}
       {renderResultSummary()}
 
+      {/* 인쇄 전용 시트 (화면에서는 display:none, 인쇄 시 앱 대신 출력) */}
+      {renderPrintSheet()}
+
       <style>{`
+        .test-sheet-print { display: none; }
         @media print {
-          .print-mode {
-            page-break-after: always;
+          body.test-sheet-printing #root { display: none !important; }
+          body.test-sheet-printing .test-sheet-print {
+            display: block !important;
+            background: #fff !important;
+            color: #000 !important;
+            font-size: 12pt;
+            line-height: 1.6;
+            padding: 8mm;
           }
-          .print-mode > div {
-            page-break-inside: avoid;
+          .test-sheet-print * {
+            color: #000 !important;
+            background: transparent !important;
           }
-          button {
-            display: none !important;
-          }
+          .tsp-header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 16px; }
+          .tsp-header h1 { font-size: 18pt; font-weight: 700; margin: 0 0 8px; }
+          .tsp-fields { display: flex; justify-content: center; gap: 24px; font-size: 11pt; }
+          .tsp-problem { break-inside: avoid; page-break-inside: avoid; margin-bottom: 18px; }
+          .tsp-stem { font-weight: 600; margin-bottom: 6px; }
+          .tsp-passage { border: 1px solid #999; padding: 8px; margin: 6px 0; white-space: pre-wrap; font-size: 11pt; }
+          .tsp-choices { list-style: none; padding-left: 12px; margin: 4px 0; }
+          .tsp-choices li { margin: 2px 0; }
+          .tsp-ox { padding-left: 12px; margin: 6px 0; }
+          .tsp-blank { padding-left: 12px; margin: 8px 0; }
+          .tsp-guidelines { font-style: italic; font-size: 10.5pt; padding-left: 12px; margin: 4px 0; }
+          .tsp-essay-box { border: 1px solid #666; height: 90px; margin: 6px 0 0 12px; }
+          .tsp-answer { padding-left: 12px; margin: 4px 0; }
+          .tsp-explanation { padding-left: 12px; margin: 2px 0; font-size: 11pt; white-space: pre-wrap; }
         }
       `}</style>
     </div>

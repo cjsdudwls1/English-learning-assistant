@@ -46,14 +46,15 @@ export const DirectorDashboardPage: React.FC = () => {
         const filteredClasses = activeAcademyId
           ? allClasses.filter(c => c.academy_id === activeAcademyId)
           : allClasses;
-        const [o, t, h] = await Promise.all([
+        // tp로 명명: t로 받으면 번역 사전 t를 섀도잉해 아래 catch의 translateError가 오동작
+        const [o, tp, h] = await Promise.all([
           fetchDirectorOverview(activeAcademyId),
           fetchTeacherPerformances(activeAcademyId),
           activeAcademyId ? fetchAcademyHierarchy(activeAcademyId) : Promise.resolve(null),
         ]);
         setOverview(o);
         setClasses(filteredClasses);
-        setTeachers(t);
+        setTeachers(tp);
         setHierarchy(h);
         setSelectedClassId(filteredClasses.length > 0 ? filteredClasses[0].id : null);
       } catch (e) {
@@ -183,14 +184,14 @@ export const DirectorDashboardPage: React.FC = () => {
             {students.map((s) => (
               <button
                 key={s.user_id}
-                onClick={() => handleSelectStudent(s.user_id, s.email)}
+                onClick={() => handleSelectStudent(s.user_id, s.name || s.email)}
                 className={`w-full text-left flex items-center justify-between py-2 px-3 rounded-lg text-sm transition-colors ${
                   selectedStudentId === s.user_id
                     ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300'
                     : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-300'
                 }`}
               >
-                <span>{s.email || s.user_id.slice(0, 8)}</span>
+                <span>{s.name || s.email || s.user_id.slice(0, 8)}</span>
                 <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
                   {selectedStudentId === s.user_id ? `(${t.teacher.viewing})` : t.teacher.viewStats}
                 </span>

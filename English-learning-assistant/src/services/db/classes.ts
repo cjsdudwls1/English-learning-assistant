@@ -86,16 +86,21 @@ export async function fetchClassMembers(classId: string): Promise<ClassMember[]>
     .order('joined_at', { ascending: true });
   if (error) throw error;
 
-  const members: ClassMember[] = [];
-  for (const m of data || []) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('user_id', m.user_id)
-      .maybeSingle();
-    members.push({ ...m, email: profile?.email ?? '' });
-  }
-  return members;
+  const rows = data || [];
+  if (rows.length === 0) return [];
+
+  // 프로필은 .in() 일괄 조회(멤버별 단건 N+1 제거). 조회 실패해도 멤버 목록은 반환.
+  const userIds = Array.from(new Set(rows.map(m => m.user_id)));
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, email, name')
+    .in('user_id', userIds);
+  const byId = new Map((profiles || []).map(p => [p.user_id, p]));
+
+  return rows.map(m => {
+    const p = byId.get(m.user_id);
+    return { ...m, email: p?.email ?? '', name: p?.name ?? null };
+  });
 }
 
 export async function addClassMember(classId: string, email: string, role: 'teacher' | 'student'): Promise<void> {

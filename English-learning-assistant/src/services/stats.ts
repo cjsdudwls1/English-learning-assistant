@@ -302,7 +302,9 @@ function addToStatsMap(
     });
   }
   const s = statsMap.get(key)!;
-  if (row.user_mark !== null && row.user_mark !== undefined) {
+  // 채점 계약: is_correct null(미채점·보류)은 오답으로 위조하지 않고 집계에서 제외
+  // → correct + incorrect === total 불변식 유지(정답률 = correct/total 소비처 정합)
+  if (row.user_mark !== null && row.user_mark !== undefined && typeof row.is_correct === 'boolean') {
     s.total_count++;
     if (row.is_correct) s.correct_count++; else s.incorrect_count++;
     const p = Array.isArray(row.problems) ? row.problems[0] : row.problems;
@@ -413,6 +415,7 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date, languag
       const labels = await fetchLabelsForProblems(problems.map((p) => p.id));
       for (const row of labels) {
         if (row.user_mark === null || row.user_mark === undefined) continue;
+        if (typeof row.is_correct !== 'boolean') continue; // 미채점(null)은 유형 통계 제외
         accumulate(row.classification || {}, row.is_correct);
         labelMarked++;
       }
@@ -422,6 +425,7 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date, languag
   // (2) 생성문제 기반 풀이(과제 응답 + 완료된 생성문제 풀이) — 월별/일별 통계와 정합
   const genRows = await fetchGeneratedSolvedRowsForUser(userId, startDate, endDate);
   for (const row of genRows) {
+    if (typeof row.is_correct !== 'boolean') continue; // 미채점(서술형 등)은 유형 통계 제외
     accumulate(row.classification || {}, row.is_correct);
     genSolved++;
   }
@@ -448,7 +452,7 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
         statsMap.set(uncKey, { depth1: uncLabel, correct_count: 0, incorrect_count: 0, total_count: 0, children: [], sessionIds: [] });
       }
       const s = statsMap.get(uncKey)!;
-      if (wrapped.user_mark !== null && wrapped.user_mark !== undefined) {
+      if (wrapped.user_mark !== null && wrapped.user_mark !== undefined && typeof wrapped.is_correct === 'boolean') {
         s.total_count++;
         if (wrapped.is_correct) s.correct_count++; else s.incorrect_count++;
         const p = Array.isArray(wrapped.problems) ? wrapped.problems[0] : wrapped.problems;
