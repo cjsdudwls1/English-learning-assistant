@@ -28,6 +28,7 @@ const ERROR_MESSAGE_MAP: Record<string, (t: Translations) => string> = {
   '해당 이메일의 학생을 찾을 수 없습니다.': (t) => t.errors.studentNotFoundByEmail,
   '학생 계정만 자녀로 등록할 수 있습니다.': (t) => t.errors.onlyStudentCanBeChild,
   '로그인이 필요합니다.': (t) => t.errors.loginRequired,
+  '이미 연결된 자녀입니다.': (t) => t.errors.childAlreadyLinked,
 };
 
 /**

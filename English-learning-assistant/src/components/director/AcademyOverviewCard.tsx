@@ -1,6 +1,7 @@
 import React from 'react';
 import type { DirectorOverview } from '../../services/db';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { getTranslation } from '../../utils/translations';
 
 interface Props {
   overview: DirectorOverview;
@@ -8,15 +9,18 @@ interface Props {
 
 export const AcademyOverviewCard: React.FC<Props> = ({ overview }) => {
   const { language } = useLanguage();
+  const t = getTranslation(language);
+  const suffix = (s: string) => (language === 'ko' ? s : '');
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">{language === 'ko' ? '학원 전체 현황' : 'Academy Overview'}</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <OverviewStat label={language === 'ko' ? '전체 학급' : 'Total Classes'} value={language === 'ko' ? `${overview.totalClasses}개` : `${overview.totalClasses}`} />
-        <OverviewStat label={language === 'ko' ? '전체 학생' : 'Total Students'} value={language === 'ko' ? `${overview.totalStudents}명` : `${overview.totalStudents}`} />
-        <OverviewStat label={language === 'ko' ? '총 과제' : 'Total Assignments'} value={language === 'ko' ? `${overview.totalAssignments}개` : `${overview.totalAssignments}`} />
-        <OverviewStat label={language === 'ko' ? '총 응답' : 'Total Responses'} value={language === 'ko' ? `${overview.totalResponses}건` : `${overview.totalResponses}`} />
-        <OverviewStat label={language === 'ko' ? '전체 정답률' : 'Overall Accuracy'} value={`${overview.overallCorrectRate}%`} highlight />
+      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">{t.director.academyOverview}</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <OverviewStat label={t.director.totalClasses} value={`${overview.totalClasses}${suffix(t.director.countSuffixGae)}`} />
+        <OverviewStat label={t.director.totalStudents} value={`${overview.totalStudents}${suffix(t.director.countSuffixMyeong)}`} />
+        <OverviewStat label={t.director.totalAssignments} value={`${overview.totalAssignments}${suffix(t.director.countSuffixGae)}`} />
+        <OverviewStat label={t.director.totalResponses} value={`${overview.totalResponses}${suffix(t.director.countSuffixGeon)}`} />
+        <OverviewStat label={t.director.ungradedResponses} value={`${overview.ungradedResponses}${suffix(t.director.countSuffixGeon)}`} />
+        <OverviewStat label={t.director.overallAccuracy} value={`${overview.overallCorrectRate}%`} highlight />
       </div>
     </div>
   );

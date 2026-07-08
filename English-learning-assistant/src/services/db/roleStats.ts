@@ -8,11 +8,14 @@ import {
   fetchLabelsForProblems,
 } from '../stats';
 
-interface StatsRow { date: string; is_correct: boolean; time: number }
+// is_correct null = 자동 채점 불가(서술형 등 미채점) — 채점 계약상 오답으로 위조하지 않고
+// 월별/일별 집계에서 제외한다(correct + incorrect === total 불변식 유지).
+interface StatsRow { date: string; is_correct: boolean | null; time: number }
 
 function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
   const map = new Map<number, { total: number; correct: number; incorrect: number; totalTime: number }>();
   for (const r of rows) {
+    if (typeof r.is_correct !== 'boolean') continue;
     const month = new Date(r.date).getMonth() + 1;
     const e = map.get(month) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0 };
     e.total++;
@@ -32,6 +35,7 @@ function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
 function aggregateByDay(rows: StatsRow[]): DailyStats[] {
   const map = new Map<string, { total: number; correct: number; incorrect: number; totalTime: number }>();
   for (const r of rows) {
+    if (typeof r.is_correct !== 'boolean') continue;
     const date = r.date.slice(0, 10);
     const e = map.get(date) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0 };
     e.total++;
@@ -64,7 +68,7 @@ async function fetchLabelStatsRowsForUser(targetId: string, startDate: string, e
   for (const l of labels) {
     const sid = problemToSession.get(l.problem_id);
     const created = sid ? sessionDateMap.get(sid) : undefined;
-    if (created) rows.push({ date: created, is_correct: l.is_correct ?? false, time: 0 });
+    if (created) rows.push({ date: created, is_correct: l.is_correct ?? null, time: 0 });
   }
   return rows;
 }
@@ -85,7 +89,7 @@ async function fetchLabelStatsRowsForUsers(studentIds: string[], startDate: stri
   for (const l of labels) {
     const sid = problemToSession.get(l.problem_id);
     const created = sid ? sessionDateMap.get(sid) : undefined;
-    if (created) rows.push({ date: created, is_correct: l.is_correct ?? false, time: 0 });
+    if (created) rows.push({ date: created, is_correct: l.is_correct ?? null, time: 0 });
   }
   return rows;
 }
@@ -137,7 +141,7 @@ export async function fetchDailySolvingStats(year: number, month: number, studen
 export interface WeeklySolvingSummary {
   thisWeekCount: number;
   lastWeekCount: number;
-  /** 이번 주 정답률(0-100). 표본 없으면 0 */
+  /** 이번 주 정답률(0-100). 채점된 문항(is_correct not null) 기준, 표본 없으면 0 */
   thisWeekCorrectRate: number;
   /** 이번 주 시작(월요일 00:00, 로컬) — 취약 카테고리 조회 등 동일 범위 재사용용 */
   weekStart: Date;
@@ -156,11 +160,13 @@ export async function fetchWeeklySolvingSummary(studentId?: string): Promise<Wee
     fetchAllStatsRows(targetId, thisWeekStart.toISOString(), now.toISOString()),
     fetchAllStatsRows(targetId, lastWeekStart.toISOString(), thisWeekStart.toISOString()),
   ]);
-  const correct = thisRows.filter((r) => r.is_correct).length;
+  // 풀이량(thisWeekCount)은 미채점 포함 전체, 정답률은 채점된 문항만 기준
+  const graded = thisRows.filter((r) => typeof r.is_correct === 'boolean');
+  const correct = graded.filter((r) => r.is_correct === true).length;
   return {
     thisWeekCount: thisRows.length,
     lastWeekCount: lastRows.length,
-    thisWeekCorrectRate: thisRows.length > 0 ? Math.round((correct / thisRows.length) * 100) : 0,
+    thisWeekCorrectRate: graded.length > 0 ? Math.round((correct / graded.length) * 100) : 0,
     weekStart: thisWeekStart,
   };
 }
@@ -217,6 +223,9 @@ export interface DirectorOverview {
   totalClasses: number;
   totalAssignments: number;
   totalResponses: number;
+  /** 채점 대기(is_correct null) 응답 수 — 서술형 등 수동 확인 필요 */
+  ungradedResponses: number;
+  /** 채점된 응답(is_correct not null) 기준 정답률(0-100). 표본 없으면 0 */
   overallCorrectRate: number;
 }
 
@@ -233,28 +242,58 @@ export async function fetchDirectorOverview(academyId?: string | null): Promise<
   if (academyId) assignmentsQuery = assignmentsQuery.eq('academy_id', academyId);
   const { count: totalAssignments } = await assignmentsQuery;
 
-  const { count: totalResponses, error: trErr } = await supabase
-    .from('assignment_responses')
-    .select('*', { count: 'exact', head: true });
-  if (trErr) throw trErr;
+  // 응답 집계 — academyId가 있으면 해당 학원 과제의 응답만 카운트(타 학원/개인 과제 혼입 방지)
+  let assignmentIds: string[] | null = null;
+  if (academyId) {
+    const { data: aRows, error: aErr } = await supabase
+      .from('shared_assignments')
+      .select('id')
+      .eq('academy_id', academyId);
+    if (aErr) throw aErr;
+    assignmentIds = (aRows || []).map((r) => r.id);
+  }
 
-  const { count: correctCount, error: ccErr } = await supabase
-    .from('assignment_responses')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_correct', true);
-  if (ccErr) throw ccErr;
+  const CHUNK = 500;
+  const countResponses = async (filter: 'all' | 'graded' | 'correct'): Promise<number> => {
+    const buildQuery = (ids?: string[]) => {
+      let q = supabase.from('assignment_responses').select('*', { count: 'exact', head: true });
+      if (ids) q = q.in('assignment_id', ids);
+      if (filter === 'graded') q = q.not('is_correct', 'is', null);
+      if (filter === 'correct') q = q.eq('is_correct', true);
+      return q;
+    };
+    if (!assignmentIds) {
+      const { count, error } = await buildQuery();
+      if (error) throw error;
+      return count ?? 0;
+    }
+    if (assignmentIds.length === 0) return 0;
+    let total = 0;
+    for (let i = 0; i < assignmentIds.length; i += CHUNK) {
+      const { count, error } = await buildQuery(assignmentIds.slice(i, i + CHUNK));
+      if (error) throw error;
+      total += count ?? 0;
+    }
+    return total;
+  };
 
-  const total = totalResponses ?? 0;
-  const correct = correctCount ?? 0;
-  const overallCorrectRate = total > 0
-    ? Math.round((correct / total) * 100)
+  const [totalResponses, gradedCount, correctCount] = await Promise.all([
+    countResponses('all'),
+    countResponses('graded'),
+    countResponses('correct'),
+  ]);
+
+  // 정답률은 채점된 응답 기준 — 미채점(null)을 오답으로 위조하지 않음
+  const overallCorrectRate = gradedCount > 0
+    ? Math.round((correctCount / gradedCount) * 100)
     : 0;
 
   return {
     totalStudents: totalStudents ?? 0,
     totalClasses: totalClasses ?? 0,
     totalAssignments: totalAssignments ?? 0,
-    totalResponses: total,
+    totalResponses,
+    ungradedResponses: totalResponses - gradedCount,
     overallCorrectRate,
   };
 }

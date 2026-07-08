@@ -349,6 +349,7 @@ const ko = {
     userNotFoundByEmail: '해당 이메일의 사용자를 찾을 수 없습니다.',
     studentNotFoundByEmail: '해당 이메일의 학생을 찾을 수 없습니다.',
     onlyStudentCanBeChild: '학생 계정만 자녀로 등록할 수 있습니다.',
+    childAlreadyLinked: '이미 연결된 자녀입니다.',
   },
 
   // 문제 생성 (generator)
@@ -591,6 +592,9 @@ const ko = {
     aiVerdictCorrect: 'AI 판단: 정답',
     aiVerdictIncorrect: 'AI 판단: 오답',
     aiVerdictUncertain: 'AI 판단: 보류',
+    overdue: '마감 지남',
+    overdueNotice: '마감일이 지나 답안을 제출할 수 없습니다.',
+    ungradedCount: '미채점: {count}',
   },
 
   // 원장 (director)
@@ -625,6 +629,14 @@ const ko = {
     totalResponses: '전체 응답',
     overallAccuracy: '전체 정답률',
     dashboardTitle: '원장 대시보드',
+    ungradedResponses: '미채점 응답',
+    noTeachersRegistered: '등록된 선생님이 없습니다.',
+    colName: '이름',
+    colClassCount: '학급',
+    colAssignmentCount: '과제',
+    colResponses: '응답',
+    colCorrectRate: '정답률',
+    colUngraded: '미채점',
   },
 
   // 학부모 (parent)
@@ -652,6 +664,7 @@ const ko = {
     weeklyAccuracy: '이번 주 정답률',
     weakCategories: '취약 카테고리',
     noWeeklyData: '이번 주 학습 기록이 없습니다.',
+    gradedSummary: '정답 {correct} · 오답 {wrong} · 미채점 {ungraded}',
   },
 
   // 분석 진행 (analyzing)
@@ -1104,6 +1117,7 @@ const en: Translations = {
     userNotFoundByEmail: 'No user found with that email.',
     studentNotFoundByEmail: 'No student found with that email.',
     onlyStudentCanBeChild: 'Only student accounts can be added as a child.',
+    childAlreadyLinked: 'This child is already linked.',
   },
   generator: {
     typeMultipleChoice: 'Multiple Choice',
@@ -1326,6 +1340,9 @@ const en: Translations = {
     aiVerdictCorrect: 'AI: Correct',
     aiVerdictIncorrect: 'AI: Incorrect',
     aiVerdictUncertain: 'AI: Uncertain',
+    overdue: 'Overdue',
+    overdueNotice: 'The due date has passed — answers can no longer be submitted.',
+    ungradedCount: 'Ungraded: {count}',
   },
   director: {
     ratePillLabel: 'Accuracy',
@@ -1358,6 +1375,14 @@ const en: Translations = {
     totalResponses: 'Total Responses',
     overallAccuracy: 'Overall Accuracy',
     dashboardTitle: 'Director Dashboard',
+    ungradedResponses: 'Ungraded Responses',
+    noTeachersRegistered: 'No teachers registered.',
+    colName: 'Name',
+    colClassCount: 'Classes',
+    colAssignmentCount: 'Assignments',
+    colResponses: 'Responses',
+    colCorrectRate: 'Accuracy',
+    colUngraded: 'Ungraded',
   },
   parent: {
     linkChildFailed: "Couldn't link the child.",
@@ -1383,6 +1408,7 @@ const en: Translations = {
     weeklyAccuracy: 'Accuracy this week',
     weakCategories: 'Weak categories',
     noWeeklyData: 'No activity this week.',
+    gradedSummary: 'Correct {correct} · Wrong {wrong} · Ungraded {ungraded}',
   },
   analyzing: {
     analyzing: 'Analyzing...',

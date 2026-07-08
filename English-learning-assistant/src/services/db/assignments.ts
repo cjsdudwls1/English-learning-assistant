@@ -95,6 +95,17 @@ export async function fetchAssignedToMe(): Promise<SharedAssignment[]> {
   }));
 }
 
+/** 과제 단건 조회 — 풀이 화면의 제목/마감일 표시·마감 판정용. 없거나 권한 없으면 null */
+export async function fetchAssignmentById(assignmentId: string): Promise<SharedAssignment | null> {
+  const { data, error } = await supabase
+    .from('shared_assignments')
+    .select('id, title, description, created_by, class_id, due_date, created_at')
+    .eq('id', assignmentId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as SharedAssignment | null) ?? null;
+}
+
 interface SubmitResponseParams {
   assignmentId: string;
   problemId: string;
@@ -192,16 +203,22 @@ export async function fetchChildAssignments(childId: string): Promise<SharedAssi
 
   const { data: arRows, error: arErr } = await supabase
     .from('assignment_responses')
-    .select('assignment_id')
+    .select('assignment_id, is_correct')
     .in('assignment_id', ids)
     .eq('student_id', childId);
   if (arErr) throw arErr;
 
-  return (assignments || []).map(a => ({
-    ...a,
-    problem_count: (apRows || []).filter(r => r.assignment_id === a.id).length,
-    completed_count: (arRows || []).filter(r => r.assignment_id === a.id).length,
-  }));
+  return (assignments || []).map(a => {
+    const responses = (arRows || []).filter(r => r.assignment_id === a.id);
+    return {
+      ...a,
+      problem_count: (apRows || []).filter(r => r.assignment_id === a.id).length,
+      completed_count: responses.length,
+      correct_count: responses.filter(r => r.is_correct === true).length,
+      incorrect_count: responses.filter(r => r.is_correct === false).length,
+      ungraded_count: responses.filter(r => r.is_correct === null).length,
+    };
+  });
 }
 
 export async function fetchAssignmentProblems(assignmentId: string) {

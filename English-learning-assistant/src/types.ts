@@ -171,6 +171,7 @@ export interface ClassMember {
   role: 'teacher' | 'student';
   joined_at: string;
   email?: string;
+  name?: string | null;
 }
 
 export interface SharedAssignment {
@@ -183,6 +184,10 @@ export interface SharedAssignment {
   created_at: string;
   problem_count?: number;
   completed_count?: number;
+  // 채점 상세(학생 1명 기준) — fetchChildAssignments 등에서 채움. null 채점은 ungraded로 분리
+  correct_count?: number;
+  incorrect_count?: number;
+  ungraded_count?: number;
 }
 
 export interface AssignmentProblem {

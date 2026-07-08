@@ -4,6 +4,7 @@ import { getCurrentUserId } from './auth';
 export interface ChildInfo {
   user_id: string;
   email: string;
+  name: string | null;
   grade: string | null;
 }
 
@@ -21,6 +22,8 @@ export async function linkChild(childEmail: string): Promise<void> {
   const { error } = await supabase
     .from('parent_children')
     .insert({ parent_id: parentId, child_id: profile.user_id });
+  // 23505 = unique_violation: 이미 연결된 자녀 재연결 시 raw DB 에러 대신 사용자 메시지
+  if (error && error.code === '23505') throw new Error('이미 연결된 자녀입니다.');
   if (error) throw error;
 }
 
@@ -37,13 +40,14 @@ export async function fetchMyChildren(): Promise<ChildInfo[]> {
 
   const { data: profiles, error: pErr } = await supabase
     .from('profiles')
-    .select('user_id, email, grade')
+    .select('user_id, email, name, grade')
     .in('user_id', childIds);
   if (pErr) throw pErr;
 
   return (profiles || []).map(p => ({
     user_id: p.user_id,
     email: p.email ?? '',
+    name: p.name ?? null,
     grade: p.grade ?? null,
   }));
 }

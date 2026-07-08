@@ -75,6 +75,7 @@ export {
   createAssignment,
   fetchMyAssignments,
   fetchAssignedToMe,
+  fetchAssignmentById,
   fetchChildAssignments,
   submitAssignmentResponse,
   fetchAssignmentResponses,
