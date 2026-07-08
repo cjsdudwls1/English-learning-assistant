@@ -3,6 +3,7 @@ import { fetchMyChildren, fetchMonthlySolvingStats, fetchDailySolvingStats, type
 import { fetchHierarchicalStats, type StatsNode } from '../services/stats';
 import { ChildSelector } from '../components/parent/ChildSelector';
 import { ChildStatsCard } from '../components/parent/ChildStatsCard';
+import { WeeklySummaryCard } from '../components/parent/WeeklySummaryCard';
 import { ChildAssignmentsCard } from '../components/parent/ChildAssignmentsCard';
 import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -78,6 +79,8 @@ export const ParentDashboardPage: React.FC = () => {
 
       {selectedChildId && (
         <>
+          <WeeklySummaryCard childId={selectedChildId} />
+
           <ChildStatsCard
             monthlyStats={monthlyStats}
             dailyStats={dailyStats}

@@ -41,7 +41,17 @@ export {
   startProblemSolving,
   completeProblemSolving,
   getProblemSolvingSession,
+  saveGeneratedProblemResults,
+  type GeneratedProblemResult,
 } from './db/problemSolving';
+
+// Retry Attempts (등록 문제 재풀이 이력)
+export {
+  saveRetryAttempts,
+  fetchRetryAttempts,
+  type RetryAttempt,
+  type RetryAttemptInput,
+} from './db/retryAttempts';
 
 // Metadata
 export {
@@ -68,6 +78,7 @@ export {
   fetchChildAssignments,
   submitAssignmentResponse,
   fetchAssignmentResponses,
+  gradeAssignmentResponse,
   fetchAssignmentProblems,
   deleteAssignment,
 } from './db/assignments';
@@ -84,9 +95,11 @@ export {
 export {
   fetchMonthlySolvingStats,
   fetchDailySolvingStats,
+  fetchWeeklySolvingSummary,
   fetchClassAssignmentStats,
   fetchDirectorOverview,
   type DirectorOverview,
+  type WeeklySolvingSummary,
 } from './db/roleStats';
 
 // Teacher Stats

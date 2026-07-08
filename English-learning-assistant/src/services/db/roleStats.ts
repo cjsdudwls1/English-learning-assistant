@@ -134,6 +134,37 @@ export async function fetchDailySolvingStats(year: number, month: number, studen
   return aggregateByDay(rows);
 }
 
+export interface WeeklySolvingSummary {
+  thisWeekCount: number;
+  lastWeekCount: number;
+  /** 이번 주 정답률(0-100). 표본 없으면 0 */
+  thisWeekCorrectRate: number;
+  /** 이번 주 시작(월요일 00:00, 로컬) — 취약 카테고리 조회 등 동일 범위 재사용용 */
+  weekStart: Date;
+}
+
+/** 이번 주(월요일 시작)와 지난주의 풀이량·정답률 비교 — 학부모 주간 요약용 */
+export async function fetchWeeklySolvingSummary(studentId?: string): Promise<WeeklySolvingSummary> {
+  const targetId = studentId ?? await getCurrentUserId();
+  const now = new Date();
+  const mondayOffset = (now.getDay() + 6) % 7;
+  const thisWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+
+  const [thisRows, lastRows] = await Promise.all([
+    fetchAllStatsRows(targetId, thisWeekStart.toISOString(), now.toISOString()),
+    fetchAllStatsRows(targetId, lastWeekStart.toISOString(), thisWeekStart.toISOString()),
+  ]);
+  const correct = thisRows.filter((r) => r.is_correct).length;
+  return {
+    thisWeekCount: thisRows.length,
+    lastWeekCount: lastRows.length,
+    thisWeekCorrectRate: thisRows.length > 0 ? Math.round((correct / thisRows.length) * 100) : 0,
+    weekStart: thisWeekStart,
+  };
+}
+
 export async function fetchClassAssignmentStats(classId: string, year: number, month?: number): Promise<MonthlyStats[]> {
   const { data: members, error: mErr } = await supabase
     .from('class_members')

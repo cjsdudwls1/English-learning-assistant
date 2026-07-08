@@ -127,7 +127,36 @@ export async function fetchAssignmentResponses(assignmentId: string): Promise<As
     .eq('assignment_id', assignmentId)
     .order('submitted_at', { ascending: true });
   if (error) throw error;
-  return (data || []) as AssignmentResponse[];
+  const responses = (data || []) as AssignmentResponse[];
+
+  // 학생 이름/이메일 병합 — profiles와 FK 조인 관계가 없어 2-쿼리. 실패해도 응답 목록은 반환.
+  const studentIds = Array.from(new Set(responses.map((r) => r.student_id)));
+  if (studentIds.length > 0) {
+    const { data: profiles, error: pError } = await supabase
+      .from('profiles')
+      .select('user_id, name, email')
+      .in('user_id', studentIds);
+    if (!pError && profiles) {
+      const byId = new Map(profiles.map((p: any) => [p.user_id, p]));
+      for (const r of responses) {
+        const p = byId.get(r.student_id);
+        if (p) {
+          r.student_name = p.name ?? null;
+          r.student_email = p.email ?? null;
+        }
+      }
+    }
+  }
+  return responses;
+}
+
+/** 과제 작성자의 수동 채점(서술형 확정 포함) — RLS "Assignment creators can grade responses"로 허용 */
+export async function gradeAssignmentResponse(responseId: string, isCorrect: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('assignment_responses')
+    .update({ is_correct: isCorrect })
+    .eq('id', responseId);
+  if (error) throw error;
 }
 
 export async function deleteAssignment(assignmentId: string): Promise<void> {

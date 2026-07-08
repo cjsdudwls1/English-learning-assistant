@@ -202,6 +202,9 @@ export interface AssignmentResponse {
   is_correct: boolean | null;
   time_spent_seconds: number | null;
   submitted_at: string;
+  // 표시용 — fetchAssignmentResponses에서 profiles 병합(조회 실패 시 미설정)
+  student_name?: string | null;
+  student_email?: string | null;
 }
 
 export interface MonthlyStats {
