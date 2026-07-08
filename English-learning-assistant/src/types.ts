@@ -249,6 +249,8 @@ export interface StudentDetail {
   class_ids: string[];
   parents: ParentSummary[];
   total_count: number;
+  /** 채점 완료(is_correct boolean) 응답 수 — correct_rate의 분모 */
+  graded_count: number;
   correct_count: number;
   correct_rate: number;
 }
@@ -259,6 +261,8 @@ export interface TeacherDetail {
   classes: Array<{ id: string; name: string; student_count: number }>;
   student_ids: string[];
   total_count: number;
+  /** 채점 완료(is_correct boolean) 응답 수 — correct_rate의 분모 */
+  graded_count: number;
   correct_count: number;
   correct_rate: number;
 }

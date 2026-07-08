@@ -166,7 +166,7 @@ export async function removeAcademyMember(
   if (error) throw error;
 }
 
-interface ResponseStat { total: number; correct: number }
+interface ResponseStat { total: number; graded: number; correct: number }
 
 async function fetchResponseStatsByStudent(studentIds: string[]): Promise<Map<string, ResponseStat>> {
   const stats = new Map<string, ResponseStat>();
@@ -187,9 +187,13 @@ async function fetchResponseStatsByStudent(studentIds: string[]): Promise<Map<st
   if (solvingRes.error) throw solvingRes.error;
 
   const bump = (uid: string, ok: boolean | null) => {
-    const e = stats.get(uid) ?? { total: 0, correct: 0 };
+    const e = stats.get(uid) ?? { total: 0, graded: 0, correct: 0 };
     e.total++;
-    if (ok) e.correct++;
+    // 채점 계약: is_correct null(미채점)은 정답률 분모에서 제외
+    if (typeof ok === 'boolean') {
+      e.graded++;
+      if (ok) e.correct++;
+    }
     stats.set(uid, e);
   };
   for (const r of assignRes.data || []) bump(r.student_id, r.is_correct);
@@ -293,8 +297,9 @@ export async function fetchAcademyHierarchy(academyId: string): Promise<AcademyH
 
   const buildStudent = (uid: string): StudentDetail => {
     const prof = profileMap.get(uid) ?? { email: '', grade: null };
-    const s = stats.get(uid) ?? { total: 0, correct: 0 };
-    const rate = s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0;
+    const s = stats.get(uid) ?? { total: 0, graded: 0, correct: 0 };
+    // 정답률은 채점된 응답 기준 — 미채점(null)을 오답으로 위조하지 않음
+    const rate = s.graded > 0 ? Math.round((s.correct / s.graded) * 100) : 0;
     return {
       user_id: uid,
       email: prof.email,
@@ -302,6 +307,7 @@ export async function fetchAcademyHierarchy(academyId: string): Promise<AcademyH
       class_ids: studentClassMap.get(uid) ?? [],
       parents: parentsMap.get(uid) ?? [],
       total_count: s.total,
+      graded_count: s.graded,
       correct_count: s.correct,
       correct_rate: rate,
     };
@@ -318,10 +324,10 @@ export async function fetchAcademyHierarchy(academyId: string): Promise<AcademyH
     const tStudentIds = Array.from(new Set(
       tClassIds.flatMap(cid => classStudentMap.get(cid) ?? [])
     ));
-    let total = 0, correct = 0;
+    let total = 0, graded = 0, correct = 0;
     for (const sid of tStudentIds) {
       const s = stats.get(sid);
-      if (s) { total += s.total; correct += s.correct; }
+      if (s) { total += s.total; graded += s.graded; correct += s.correct; }
     }
     return {
       user_id: tid,
@@ -333,8 +339,9 @@ export async function fetchAcademyHierarchy(academyId: string): Promise<AcademyH
       })),
       student_ids: tStudentIds,
       total_count: total,
+      graded_count: graded,
       correct_count: correct,
-      correct_rate: total > 0 ? Math.round((correct / total) * 100) : 0,
+      correct_rate: graded > 0 ? Math.round((correct / graded) * 100) : 0,
     };
   });
 
