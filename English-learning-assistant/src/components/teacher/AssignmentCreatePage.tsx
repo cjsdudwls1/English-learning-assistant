@@ -24,14 +24,14 @@ export const AssignmentCreatePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchMyClasses().then(setClasses).catch(() => {});
+    fetchMyClasses().then(setClasses).catch((e) => setError(translateError(e, language, t, t.errors.loadFailed)));
   }, []);
 
   useEffect(() => {
     if (!selectedClassId) { setMembers([]); return; }
     fetchClassMembers(selectedClassId).then((m) => {
       setMembers(m.filter((mb) => mb.role === 'student'));
-    }).catch(() => {});
+    }).catch((e) => setError(translateError(e, language, t, t.errors.loadFailed)));
   }, [selectedClassId]);
 
   const handleCreate = async () => {

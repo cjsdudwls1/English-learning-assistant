@@ -3,7 +3,7 @@ import type { GeneratedProblem } from '../../types';
 
 export interface FetchExistingProblemsOptions {
   problemType: 'multiple_choice' | 'short_answer' | 'essay' | 'ox';
-  language?: 'ko' | 'en';
+  language?: 'ko' | 'en'; // 미사용 — generated_problems에 language 컬럼 없음(스키마 확인), 호출부 호환용으로 유지
   classification?: {
     depth1?: string;
     depth2?: string;
@@ -26,7 +26,6 @@ export async function fetchExistingProblems(
 ): Promise<GeneratedProblem[]> {
   const {
     problemType,
-    language,
     classification,
     excludeSolved = false,
     excludeRecentDays,
@@ -42,9 +41,7 @@ export async function fetchExistingProblems(
     .neq('stem', '__GENERATION_ERROR__')
     .neq('stem', '__TIMEOUT_ERROR__');
 
-  // 언어 필터링
-  // TODO: generated_problems 테이블에 language 컬럼이 있는지 확인 필요
-  // 현재는 classification에서 추론하거나, 일단 스킵
+  // 언어 필터링 없음: generated_problems에 language 컬럼이 없음 — 언어 구분은 classification 필터에 의존
 
   // 분류 필터링 - JSONB 필드 접근 방식: classification->>depth1
   // 분류가 제공되지 않으면 필터링하지 않고 문제 유형만으로 조회

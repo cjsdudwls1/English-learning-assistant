@@ -4,6 +4,7 @@ import { fetchAssignmentProblems, fetchAssignmentResponses, deleteAssignment, gr
 import { AssignmentResponseTable } from './AssignmentResponseTable';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getTranslation } from '../../utils/translations';
+import { translateError } from '../../utils/errorI18n';
 import type { AssignmentResponse } from '../../types';
 
 type AssignmentProblem = Awaited<ReturnType<typeof fetchAssignmentProblems>>[number];
@@ -16,17 +17,19 @@ export const AssignmentDetailPage: React.FC = () => {
   const [problems, setProblems] = useState<AssignmentProblem[]>([]);
   const [responses, setResponses] = useState<AssignmentResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!assignmentId) return;
+    setLoadError(null);
     Promise.all([
       fetchAssignmentProblems(assignmentId),
       fetchAssignmentResponses(assignmentId),
     ]).then(([p, r]) => {
       setProblems(p);
       setResponses(r);
-    }).catch(() => {})
+    }).catch((e) => setLoadError(translateError(e, language, t, t.errors.loadFailed)))
       .finally(() => setLoading(false));
   }, [assignmentId]);
 
@@ -52,6 +55,14 @@ export const AssignmentDetailPage: React.FC = () => {
   };
 
   if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+  if (loadError) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-20 space-y-4">
+        <p className="text-red-600 dark:text-red-400">{loadError}</p>
+        <Link to="/teacher/dashboard" className="inline-block px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">&larr; {t.teacher.dashboard}</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

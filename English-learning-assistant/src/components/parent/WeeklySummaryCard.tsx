@@ -63,7 +63,14 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
       <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">{t.parent.weeklySummaryTitle}</h2>
       {summary.thisWeekCount === 0 ? (
-        <p className="text-sm text-slate-400">{t.parent.noWeeklyData}</p>
+        <div className="space-y-1">
+          <p className="text-sm text-slate-400">{t.parent.noWeeklyData}</p>
+          {summary.lastWeekCount > 0 && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t.parent.vsLastWeek.replace('{count}', String(summary.lastWeekCount))}
+            </p>
+          )}
+        </div>
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">

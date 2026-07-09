@@ -45,7 +45,7 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
     if (!selectedMonth) { setDailyStats([]); return; }
     fetchDailySolvingStats(year, selectedMonth, studentId)
       .then(setDailyStats)
-      .catch(() => {});
+      .catch((e) => setError(translateError(e, language, t, t.errors.loadDailyStatsFailed)));
   }, [studentId, year, selectedMonth]);
 
   // 택사노미별 통계 로드
