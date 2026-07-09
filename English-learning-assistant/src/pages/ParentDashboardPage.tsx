@@ -53,7 +53,7 @@ export const ParentDashboardPage: React.FC = () => {
     setTaxonomyLoading(true);
     fetchHierarchicalStats(undefined, undefined, 'ko', selectedChildId)
       .then(setTaxonomyStats)
-      .catch(() => setTaxonomyStats([]))
+      .catch((e) => { setTaxonomyStats([]); setError(translateError(e, language, t, t.errors.loadTaxonomyFailed)); })
       .finally(() => setTaxonomyLoading(false));
   }, [selectedChildId, showTaxonomy]);
 

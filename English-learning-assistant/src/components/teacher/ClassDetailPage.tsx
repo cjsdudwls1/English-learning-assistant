@@ -62,7 +62,7 @@ export const ClassDetailPage: React.FC = () => {
       setTaxonomyLoading(true);
       fetchClassHierarchicalStats(classId)
         .then(setClassTaxonomy)
-        .catch(() => setClassTaxonomy([]))
+        .catch((e) => { setClassTaxonomy([]); setError(translateError(e, language, t, t.errors.loadTaxonomyFailed)); })
         .finally(() => setTaxonomyLoading(false));
     }
   };

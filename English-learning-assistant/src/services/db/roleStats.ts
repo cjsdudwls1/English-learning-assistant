@@ -10,17 +10,18 @@ import {
 
 // is_correct null = 자동 채점 불가(서술형 등 미채점) — 채점 계약상 오답으로 위조하지 않고
 // 월별/일별 집계에서 제외한다(correct + incorrect === total 불변식 유지).
-interface StatsRow { date: string; is_correct: boolean | null; time: number }
+// time null = 시간 정보가 없는 소스(labels 경로) — 평균 시간 분모에서 제외
+interface StatsRow { date: string; is_correct: boolean | null; time: number | null }
 
 function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
-  const map = new Map<number, { total: number; correct: number; incorrect: number; totalTime: number }>();
+  const map = new Map<number, { total: number; correct: number; incorrect: number; totalTime: number; timed: number }>();
   for (const r of rows) {
     if (typeof r.is_correct !== 'boolean') continue;
     const month = new Date(r.date).getMonth() + 1;
-    const e = map.get(month) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0 };
+    const e = map.get(month) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0, timed: 0 };
     e.total++;
     if (r.is_correct) e.correct++; else e.incorrect++;
-    e.totalTime += r.time;
+    if (r.time != null) { e.totalTime += r.time; e.timed++; }
     map.set(month, e);
   }
   return Array.from(map.entries()).map(([month, s]) => ({
@@ -28,21 +29,22 @@ function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
     total_count: s.total,
     correct_count: s.correct,
     incorrect_count: s.incorrect,
-    avg_time_seconds: s.total > 0 ? Math.round(s.totalTime / s.total) : 0,
+    avg_time_seconds: s.timed > 0 ? Math.round(s.totalTime / s.timed) : 0,
+    timed_count: s.timed,
   })).sort((a, b) => a.month - b.month);
 }
 
 function aggregateByDay(rows: StatsRow[]): DailyStats[] {
-  const map = new Map<string, { total: number; correct: number; incorrect: number; totalTime: number }>();
+  const map = new Map<string, { total: number; correct: number; incorrect: number; totalTime: number; timed: number }>();
   for (const r of rows) {
     if (typeof r.is_correct !== 'boolean') continue;
     // 로컬 날짜 키 — DailyStatsSelector가 로컬 달력으로 키를 만들므로 UTC slice면 저녁 풀이가 다음날로 밀림
     const d = new Date(r.date);
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const e = map.get(date) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0 };
+    const e = map.get(date) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0, timed: 0 };
     e.total++;
     if (r.is_correct) e.correct++; else e.incorrect++;
-    e.totalTime += r.time;
+    if (r.time != null) { e.totalTime += r.time; e.timed++; }
     map.set(date, e);
   }
   return Array.from(map.entries()).map(([date, s]) => ({
@@ -50,7 +52,8 @@ function aggregateByDay(rows: StatsRow[]): DailyStats[] {
     total_count: s.total,
     correct_count: s.correct,
     incorrect_count: s.incorrect,
-    avg_time_seconds: s.total > 0 ? Math.round(s.totalTime / s.total) : 0,
+    avg_time_seconds: s.timed > 0 ? Math.round(s.totalTime / s.timed) : 0,
+    timed_count: s.timed,
   })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -70,7 +73,7 @@ async function fetchLabelStatsRowsForUser(targetId: string, startDate: string, e
   for (const l of labels) {
     const sid = problemToSession.get(l.problem_id);
     const created = sid ? sessionDateMap.get(sid) : undefined;
-    if (created) rows.push({ date: created, is_correct: l.is_correct ?? null, time: 0 });
+    if (created) rows.push({ date: created, is_correct: l.is_correct ?? null, time: null });
   }
   return rows;
 }
@@ -91,7 +94,7 @@ async function fetchLabelStatsRowsForUsers(studentIds: string[], startDate: stri
   for (const l of labels) {
     const sid = problemToSession.get(l.problem_id);
     const created = sid ? sessionDateMap.get(sid) : undefined;
-    if (created) rows.push({ date: created, is_correct: l.is_correct ?? null, time: 0 });
+    if (created) rows.push({ date: created, is_correct: l.is_correct ?? null, time: null });
   }
   return rows;
 }
@@ -118,10 +121,10 @@ async function fetchAllStatsRows(targetId: string, startDate: string, endDate: s
 
   const rows: StatsRow[] = [...labelRows];
   for (const r of solvingRes.data || []) {
-    rows.push({ date: r.completed_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? 0 });
+    rows.push({ date: r.completed_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? null });
   }
   for (const r of assignmentRes.data || []) {
-    rows.push({ date: r.submitted_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? 0 });
+    rows.push({ date: r.submitted_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? null });
   }
   return rows;
 }
@@ -219,10 +222,10 @@ export async function fetchClassAssignmentStats(classId: string, year: number, m
 
   const rows: StatsRow[] = [...labelRows];
   for (const r of assignRes.data || []) {
-    rows.push({ date: r.submitted_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? 0 });
+    rows.push({ date: r.submitted_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? null });
   }
   for (const r of solvingRes.data || []) {
-    rows.push({ date: r.completed_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? 0 });
+    rows.push({ date: r.completed_at, is_correct: r.is_correct, time: r.time_spent_seconds ?? null });
   }
   return aggregateByMonth(rows);
 }

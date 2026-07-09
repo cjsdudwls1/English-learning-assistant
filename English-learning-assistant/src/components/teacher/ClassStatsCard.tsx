@@ -25,9 +25,10 @@ export const ClassStatsCard: React.FC<Props> = ({ monthlyStats, year, onYearChan
       total: acc.total + s.total_count,
       correct: acc.correct + s.correct_count,
       incorrect: acc.incorrect + s.incorrect_count,
-      time: acc.time + s.avg_time_seconds * s.total_count,
+      time: acc.time + s.avg_time_seconds * s.timed_count,
+      timed: acc.timed + s.timed_count,
     }),
-    { total: 0, correct: 0, incorrect: 0, time: 0 }
+    { total: 0, correct: 0, incorrect: 0, time: 0, timed: 0 }
   );
 
   return (
@@ -38,7 +39,7 @@ export const ClassStatsCard: React.FC<Props> = ({ monthlyStats, year, onYearChan
         totalCount={totals.total}
         correctCount={totals.correct}
         incorrectCount={totals.incorrect}
-        avgTimeSeconds={totals.total > 0 ? Math.round(totals.time / totals.total) : 0}
+        avgTimeSeconds={totals.timed > 0 ? Math.round(totals.time / totals.timed) : 0}
         label={t.stats.yearTotalLabel.replace('{year}', String(year))}
       />
 
