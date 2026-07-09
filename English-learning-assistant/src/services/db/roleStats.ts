@@ -36,7 +36,9 @@ function aggregateByDay(rows: StatsRow[]): DailyStats[] {
   const map = new Map<string, { total: number; correct: number; incorrect: number; totalTime: number }>();
   for (const r of rows) {
     if (typeof r.is_correct !== 'boolean') continue;
-    const date = r.date.slice(0, 10);
+    // 로컬 날짜 키 — DailyStatsSelector가 로컬 달력으로 키를 만들므로 UTC slice면 저녁 풀이가 다음날로 밀림
+    const d = new Date(r.date);
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const e = map.get(date) ?? { total: 0, correct: 0, incorrect: 0, totalTime: 0 };
     e.total++;
     if (r.is_correct) e.correct++; else e.incorrect++;
@@ -124,17 +126,25 @@ async function fetchAllStatsRows(targetId: string, startDate: string, endDate: s
   return rows;
 }
 
+// 조회 경계는 로컬 자정 기준 — 집계(aggregateBy*)가 로컬 시간으로 버킷팅하므로 UTC 경계면 연·월 가장자리 풀이가 이월됨
 export async function fetchMonthlySolvingStats(year: number, studentId?: string): Promise<MonthlyStats[]> {
   const targetId = studentId ?? await getCurrentUserId();
-  const rows = await fetchAllStatsRows(targetId, `${year}-01-01T00:00:00Z`, `${year}-12-31T23:59:59Z`);
+  const rows = await fetchAllStatsRows(
+    targetId,
+    new Date(year, 0, 1).toISOString(),
+    new Date(year, 11, 31, 23, 59, 59, 999).toISOString()
+  );
   return aggregateByMonth(rows);
 }
 
 export async function fetchDailySolvingStats(year: number, month: number, studentId?: string): Promise<DailyStats[]> {
   const targetId = studentId ?? await getCurrentUserId();
-  const mm = String(month).padStart(2, '0');
   const lastDay = new Date(year, month, 0).getDate();
-  const rows = await fetchAllStatsRows(targetId, `${year}-${mm}-01T00:00:00Z`, `${year}-${mm}-${lastDay}T23:59:59Z`);
+  const rows = await fetchAllStatsRows(
+    targetId,
+    new Date(year, month - 1, 1).toISOString(),
+    new Date(year, month - 1, lastDay, 23, 59, 59, 999).toISOString()
+  );
   return aggregateByDay(rows);
 }
 
@@ -182,12 +192,11 @@ export async function fetchClassAssignmentStats(classId: string, year: number, m
   const studentIds = (members || []).map((m) => m.user_id);
   if (studentIds.length === 0) return [];
 
-  const startDate = month
-    ? `${year}-${String(month).padStart(2, '0')}-01T00:00:00Z`
-    : `${year}-01-01T00:00:00Z`;
-  const endDate = month
-    ? `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}T23:59:59Z`
-    : `${year}-12-31T23:59:59Z`;
+  const startDate = (month ? new Date(year, month - 1, 1) : new Date(year, 0, 1)).toISOString();
+  const endDate = (month
+    ? new Date(year, month - 1, new Date(year, month, 0).getDate(), 23, 59, 59, 999)
+    : new Date(year, 11, 31, 23, 59, 59, 999)
+  ).toISOString();
 
   const [labelRows, assignRes, solvingRes] = await Promise.all([
     fetchLabelStatsRowsForUsers(studentIds, startDate, endDate),
