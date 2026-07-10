@@ -396,6 +396,7 @@ export const AllProblemsPage: React.FC = () => {
                         type="checkbox"
                         checked={selectedIds.has(p.id)}
                         onChange={() => toggleSelect(p.id)}
+                        aria-label={language === 'ko' ? `문제 ${idx + 1} 선택` : `Select problem ${idx + 1}`}
                         className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                       />
                     </td>
@@ -409,7 +410,7 @@ export const AllProblemsPage: React.FC = () => {
                     <td className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 font-mono">
                       {p.user_answer || '-'}
                     </td>
-                    <td className="px-4 py-3 text-center text-green-600 dark:text-green-400 font-mono font-medium">
+                    <td className="px-4 py-3 text-center text-green-700 dark:text-green-400 font-mono font-medium">
                       {p.correct_answer || '-'}
                     </td>
                     <td className="px-4 py-3 text-center">

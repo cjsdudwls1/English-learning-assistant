@@ -58,7 +58,7 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
         <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">{t.parent.weeklySummaryTitle}</h2>
-        <p className="text-sm text-slate-400">{t.common.loading}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{t.common.loading}</p>
       </div>
     );
   }
@@ -78,7 +78,7 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
       <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">{t.parent.weeklySummaryTitle}</h2>
       {summary.thisWeekCount === 0 ? (
         <div className="space-y-1">
-          <p className="text-sm text-slate-400">{t.parent.noWeeklyData}</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{t.parent.noWeeklyData}</p>
           {summary.lastWeekCount > 0 && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {t.parent.vsLastWeek.replace('{count}', String(summary.lastWeekCount))}
@@ -91,7 +91,7 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
             <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
               <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">{t.parent.thisWeekSolved}</div>
               <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">{summary.thisWeekCount}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 {t.parent.vsLastWeek.replace('{count}', String(summary.lastWeekCount))}
               </div>
             </div>
@@ -105,7 +105,7 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
               <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t.parent.weakCategories}</div>
               <div className="flex flex-wrap gap-2">
                 {weakCategories.map((c) => (
-                  <span key={c.name} className="px-3 py-1 text-xs rounded-full bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800">
+                  <span key={c.name} className="px-3 py-1 text-xs rounded-full bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
                     {c.name} · {c.rate}%
                   </span>
                 ))}

@@ -14,7 +14,7 @@ export const TeacherPerformanceCard: React.FC<Props> = ({ teachers }) => {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
         <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">{t.director.teacherPerformance}</h2>
-        <p className="text-slate-400 text-sm text-center py-4">{t.director.noTeachersRegistered}</p>
+        <p className="text-slate-600 dark:text-slate-400 text-sm text-center py-4">{t.director.noTeachersRegistered}</p>
       </div>
     );
   }
@@ -39,7 +39,7 @@ export const TeacherPerformanceCard: React.FC<Props> = ({ teachers }) => {
               <tr key={tc.userId} className="border-b border-slate-100 dark:border-slate-700/50">
                 <td className="py-2 text-slate-700 dark:text-slate-300">
                   {tc.name || tc.email}
-                  {tc.name && <span className="ml-1 text-xs text-slate-400">{tc.email}</span>}
+                  {tc.name && <span className="ml-1 text-xs text-slate-600 dark:text-slate-400">{tc.email}</span>}
                 </td>
                 <td className="py-2 text-center text-slate-600 dark:text-slate-400">{tc.classCount}</td>
                 <td className="py-2 text-center text-slate-600 dark:text-slate-400">{tc.assignmentCount}</td>

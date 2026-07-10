@@ -33,8 +33,9 @@ export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClas
       <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.assignments.selectTarget}</h3>
 
       <div>
-        <label className="text-xs font-semibold text-slate-500 mb-1 block">{t.teacher.selectClass}</label>
+        <label htmlFor="target-class-select" className="text-xs font-semibold text-slate-500 mb-1 block">{t.teacher.selectClass}</label>
         <select
+          id="target-class-select"
           value={selectedClassId ?? ''}
           onChange={(e) => {
             const v = e.target.value || null;

@@ -28,7 +28,7 @@ export const AcademyOverviewCard: React.FC<Props> = ({ overview }) => {
 
 const OverviewStat: React.FC<{ label: string; value: string; highlight?: boolean }> = ({ label, value, highlight }) => (
   <div className={`rounded-xl p-4 text-center ${highlight ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'bg-slate-50 dark:bg-slate-700/50'}`}>
-    <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
+    <p className="text-xs text-slate-600 dark:text-slate-400">{label}</p>
     <p className={`text-xl font-bold mt-1 ${highlight ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}>{value}</p>
   </div>
 );

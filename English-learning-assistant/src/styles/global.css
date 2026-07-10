@@ -35,9 +35,9 @@ body {
   min-height: 100vh;
 }
 
-a {
-  color: inherit;
-}
+/* 주의: 여기(unlayered)에 a/button 등의 color 규칙을 두면 Tailwind v4의
+   @layer utilities(text-white 등)를 항상 이겨 색상 유틸리티가 전부 무시된다.
+   a { color: inherit }은 v4 preflight(base layer)가 이미 제공하므로 선언하지 않는다. */
 
 button,
 input,
