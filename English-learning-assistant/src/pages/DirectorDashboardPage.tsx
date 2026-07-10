@@ -117,7 +117,8 @@ export const DirectorDashboardPage: React.FC = () => {
         return prevId;
       });
       // 통계 업데이트
-      fetchDirectorOverview(activeAcademyId).then(setOverview).catch(console.error);
+      fetchDirectorOverview(activeAcademyId).then(setOverview)
+        .catch((e) => setError(translateError(e, language, t, t.errors.loadFailed)));
     } catch (e) {
       alert(translateError(e, language, t, t.errors.deleteClassFailed));
     }
