@@ -3,6 +3,7 @@ import { fetchWeeklySolvingSummary, type WeeklySolvingSummary } from '../../serv
 import { fetchHierarchicalStats, type StatsNode } from '../../services/stats';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getTranslation } from '../../utils/translations';
+import { translateError } from '../../utils/errorI18n';
 
 interface Props {
   childId: string;
@@ -18,10 +19,12 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
   const [summary, setSummary] = useState<WeeklySolvingSummary | null>(null);
   const [weakCategories, setWeakCategories] = useState<Array<{ name: string; rate: number }>>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError(null);
     (async () => {
       try {
         const s = await fetchWeeklySolvingSummary(childId);
@@ -40,8 +43,10 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
         }
         if (!cancelled) setWeakCategories(weak);
       } catch (e) {
-        console.error('Failed to load weekly summary:', e);
-        if (!cancelled) setSummary(null);
+        if (!cancelled) {
+          setSummary(null);
+          setError(translateError(e, language, t, t.errors.loadWeeklySummaryFailed));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -57,7 +62,16 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
       </div>
     );
   }
-  if (!summary) return null;
+  // 로드 실패 시 카드를 숨기지 않고 실패 사실을 표시한다 (조용한 실패 방지)
+  if (!summary) {
+    if (!error) return null;
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+        <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">{t.parent.weeklySummaryTitle}</h2>
+        <p className="text-sm text-red-500">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">

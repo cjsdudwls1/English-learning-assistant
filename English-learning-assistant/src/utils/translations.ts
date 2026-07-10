@@ -343,6 +343,7 @@ const ko = {
     loadMonthlyStatsFailed: '월별 통계를 불러오는 데 실패했습니다.',
     loadDailyStatsFailed: '일별 통계를 불러오는 데 실패했습니다.',
     loadTaxonomyFailed: '유형별 통계를 불러오는 데 실패했습니다.',
+    loadWeeklySummaryFailed: '주간 학습 요약을 불러오는 데 실패했습니다.',
     loadDataError: '데이터를 불러오는 중 오류가 발생했습니다: {message}',
     // 서비스 레이어(src/services/**) throw — UI 경계에서 처리
     sessionAccessDenied: '이 세션에 접근할 권한이 없습니다.',
@@ -1113,6 +1114,7 @@ const en: Translations = {
     loadMonthlyStatsFailed: "Couldn't load monthly statistics.",
     loadDailyStatsFailed: "Couldn't load daily statistics.",
     loadTaxonomyFailed: "Couldn't load category statistics.",
+    loadWeeklySummaryFailed: "Couldn't load the weekly summary.",
     loadDataError: "Couldn't load the data: {message}",
     sessionAccessDenied: "You don't have permission to access this session.",
     problemAccessDenied: "You don't have permission to access this problem.",
