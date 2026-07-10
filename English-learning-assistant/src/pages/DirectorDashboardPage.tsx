@@ -74,7 +74,7 @@ export const DirectorDashboardPage: React.FC = () => {
     // 학급 학생 목록 로드
     fetchClassMembers(selectedClassId)
       .then((members) => setStudents(members.filter((m) => m.role === 'student')))
-      .catch(() => setStudents([]));
+      .catch((e) => { setStudents([]); setError(translateError(e, language, t, t.errors.loadFailed)); });
 
     // 학급 변경 시 초기화
     setSelectedStudentId(null);
@@ -100,7 +100,7 @@ export const DirectorDashboardPage: React.FC = () => {
       setTaxonomyLoading(true);
       fetchClassHierarchicalStats(selectedClassId)
         .then(setClassTaxonomy)
-        .catch(() => setClassTaxonomy([]))
+        .catch((e) => { setClassTaxonomy([]); setError(translateError(e, language, t, t.errors.loadTaxonomyFailed)); })
         .finally(() => setTaxonomyLoading(false));
     }
   };

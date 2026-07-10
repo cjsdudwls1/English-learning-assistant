@@ -28,9 +28,10 @@ export const SolvingStatsCard: React.FC = () => {
       total: acc.total + s.total_count,
       correct: acc.correct + s.correct_count,
       incorrect: acc.incorrect + s.incorrect_count,
-      time: acc.time + s.avg_time_seconds * s.total_count,
+      time: acc.time + s.avg_time_seconds * s.timed_count,
+      timed: acc.timed + s.timed_count,
     }),
-    { total: 0, correct: 0, incorrect: 0, time: 0 }
+    { total: 0, correct: 0, incorrect: 0, time: 0, timed: 0 }
   );
 
   if (loading) {
@@ -52,7 +53,7 @@ export const SolvingStatsCard: React.FC = () => {
         totalCount={yearTotals.total}
         correctCount={yearTotals.correct}
         incorrectCount={yearTotals.incorrect}
-        avgTimeSeconds={yearTotals.total > 0 ? Math.round(yearTotals.time / yearTotals.total) : 0}
+        avgTimeSeconds={yearTotals.timed > 0 ? Math.round(yearTotals.time / yearTotals.timed) : 0}
         label={t.stats.yearTotalLabel.replace('{year}', String(year))}
       />
 

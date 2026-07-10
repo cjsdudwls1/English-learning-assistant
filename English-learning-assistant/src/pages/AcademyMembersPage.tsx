@@ -80,7 +80,7 @@ export const AcademyMembersPage: React.FC = () => {
     }
     fetchClassMembers(selectedClassId)
       .then(setClassMembers)
-      .catch(() => setClassMembers([]));
+      .catch((e) => { setClassMembers([]); setError(translateError(e, language, t, t.academy.loadError)); });
   }, [selectedClassId]);
 
   const handleAdd = async (e: React.FormEvent) => {

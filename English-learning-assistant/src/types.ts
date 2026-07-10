@@ -218,6 +218,8 @@ export interface MonthlyStats {
   correct_count: number;
   incorrect_count: number;
   avg_time_seconds: number;
+  /** 시간 정보가 있는 문항 수 — avg_time_seconds의 분모 (labels 경로 문항은 시간 정보 없음) */
+  timed_count: number;
 }
 
 export interface DailyStats {
@@ -226,6 +228,8 @@ export interface DailyStats {
   correct_count: number;
   incorrect_count: number;
   avg_time_seconds: number;
+  /** 시간 정보가 있는 문항 수 — avg_time_seconds의 분모 (labels 경로 문항은 시간 정보 없음) */
+  timed_count: number;
 }
 
 export interface CreateAssignmentParams {
