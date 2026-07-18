@@ -17,7 +17,8 @@ export interface ApiKeyInfo {
 async function callManageApiKeys(body: Record<string, unknown>): Promise<any> {
   const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-api-keys`;
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error('로그인이 필요합니다');
+  // 마침표 포함 원문이어야 errorI18n ERROR_MESSAGE_MAP에 매핑된다
+  if (!session?.access_token) throw new Error('로그인이 필요합니다.');
 
   const res = await fetch(functionUrl, {
     method: 'POST',

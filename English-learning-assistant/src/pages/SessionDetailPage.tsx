@@ -150,7 +150,7 @@ export const SessionDetailPage: React.FC = () => {
       if (!rawPath) throw new Error(t.session.imagePathNotFound);
 
       const parsed = parseStoragePath(rawPath);
-      if (!parsed) throw new Error('스토리지 경로를 파싱할 수 없습니다.');
+      if (!parsed) throw new Error(t.session.storagePathParseFailed);
       const { bucket, path } = parsed;
 
       const rotatedFile = new File([rotatedBlob], path.split('/').pop() || `rotated_${Date.now()}.jpg`, {

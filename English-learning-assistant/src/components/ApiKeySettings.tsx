@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { getTranslation } from '../utils/translations';
+import { translateError } from '../utils/errorI18n';
 import {
   listApiKeys,
   saveApiKey,
@@ -58,6 +60,7 @@ const PROVIDER_META: Record<ApiKeyProvider, { ko: string; en: string; placeholde
 export const ApiKeySettings: React.FC = () => {
   const { language } = useLanguage();
   const ko = language === 'ko';
+  const t = getTranslation(language);
 
   const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +94,7 @@ export const ApiKeySettings: React.FC = () => {
         return next;
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(translateError(e, language, t, t.errors.generic));
     } finally {
       setLoading(false);
     }
@@ -117,7 +120,7 @@ export const ApiKeySettings: React.FC = () => {
       setMessage(ko ? '시스템 AI(Gemini)로 설정되었습니다.' : 'Switched to system AI (Gemini).');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(translateError(e, language, t, t.errors.generic));
     } finally {
       setSaving(false);
     }
@@ -132,7 +135,7 @@ export const ApiKeySettings: React.FC = () => {
       setMessage(ko ? `${PROVIDER_META[p].ko}(으)로 전환되었습니다.` : `Switched to ${PROVIDER_META[p].en}.`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(translateError(e, language, t, t.errors.generic));
     } finally {
       setSaving(false);
     }
@@ -152,7 +155,7 @@ export const ApiKeySettings: React.FC = () => {
       setMessage(ko ? '키가 저장되고 활성화되었습니다.' : 'Key saved and activated.');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(translateError(e, language, t, t.errors.generic));
     } finally {
       setSaving(false);
     }
@@ -170,7 +173,7 @@ export const ApiKeySettings: React.FC = () => {
       setMessage(ko ? '모델이 변경되었습니다.' : 'Model updated.');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(translateError(e, language, t, t.errors.generic));
     } finally {
       setSaving(false);
     }
@@ -185,7 +188,7 @@ export const ApiKeySettings: React.FC = () => {
       setMessage(ko ? '키가 삭제되었습니다.' : 'Key deleted.');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(translateError(e, language, t, t.errors.generic));
     } finally {
       setSaving(false);
     }
