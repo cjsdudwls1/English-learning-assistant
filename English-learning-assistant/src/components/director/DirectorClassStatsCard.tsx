@@ -63,7 +63,7 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
                     onDeleteClass(selectedClassId);
                   }
                 }}
-                className="px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800/50 rounded-lg text-sm font-medium transition-colors"
+                className="px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800/50 rounded-lg text-sm font-medium transition-colors"
               >
                 {language === 'ko' ? '현재 학급 삭제' : 'Delete Current Class'}
               </button>
