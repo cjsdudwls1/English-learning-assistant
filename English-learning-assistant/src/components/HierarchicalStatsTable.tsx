@@ -102,6 +102,9 @@ const StatsRow: React.FC<StatsRowProps> = ({ node, level, onImageClick, onNumber
                 onChange={handleCheckboxChange}
                 onClick={(e) => e.stopPropagation()}
                 className="w-4 h-4 cursor-pointer"
+                aria-label={language === 'ko'
+                  ? `${node.depth4 || node.depth3 || node.depth2 || node.depth1} 선택`
+                  : `Select ${node.depth4 || node.depth3 || node.depth2 || node.depth1}`}
               />
             )}
             {hasChildren && (

@@ -297,7 +297,7 @@ export const StatsPage: React.FC = () => {
           <div className="min-w-0">
             <div className="text-slate-700 dark:text-slate-300 text-sm sm:text-base break-words">{t.stats.total}: {statsData.summary.total} / {t.stats.correct}: {statsData.summary.correct} / {t.stats.incorrect}: {statsData.summary.incorrect} / {language === 'ko' ? '미채점' : 'Ungraded'}: {statsData.summary.ungraded}</div>
             {statsData.summary.total > 0 && (
-              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500 break-words">
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 break-words">
                 {language === 'ko'
                   ? `등록 문제 ${statsData.summary.registered} (채점완료 ${statsData.summary.regCorrect + statsData.summary.regIncorrect} / 미채점 ${statsData.summary.regUngraded}) + 과제·생성 풀이 ${statsData.summary.gen} · '문제관리'와 동일 기준`
                   : `${statsData.summary.registered} registered (${statsData.summary.regCorrect + statsData.summary.regIncorrect} graded / ${statsData.summary.regUngraded} ungraded) + ${statsData.summary.gen} assignment/generated solves · same basis as "Problems"`}

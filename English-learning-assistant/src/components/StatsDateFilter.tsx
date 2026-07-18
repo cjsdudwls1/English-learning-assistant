@@ -65,8 +65,9 @@ export const StatsDateFilter: React.FC<StatsDateFilterProps> = ({
       </div>
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
         <div>
-          <label className="text-sm text-slate-600 mr-2">{t.stats.startDate}</label>
+          <label htmlFor="stats-start-date" className="text-sm text-slate-600 mr-2">{t.stats.startDate}</label>
           <DatePicker
+            id="stats-start-date"
             selected={startDate}
             onChange={onStartDateChange}
             dateFormat="yyyy-MM-dd"
@@ -75,8 +76,9 @@ export const StatsDateFilter: React.FC<StatsDateFilterProps> = ({
           />
         </div>
         <div>
-          <label className="text-sm text-slate-600 mr-2">{t.stats.endDate}</label>
+          <label htmlFor="stats-end-date" className="text-sm text-slate-600 mr-2">{t.stats.endDate}</label>
           <DatePicker
+            id="stats-end-date"
             selected={endDate}
             onChange={onEndDateChange}
             dateFormat="yyyy-MM-dd"
