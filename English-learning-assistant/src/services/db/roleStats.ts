@@ -11,9 +11,9 @@ import {
 // is_correct null = 자동 채점 불가(서술형 등 미채점) — 채점 계약상 오답으로 위조하지 않고
 // 월별/일별 집계에서 제외한다(correct + incorrect === total 불변식 유지).
 // time null = 시간 정보가 없는 소스(labels 경로) — 평균 시간 분모에서 제외
-interface StatsRow { date: string; is_correct: boolean | null; time: number | null }
+export interface StatsRow { date: string; is_correct: boolean | null; time: number | null }
 
-function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
+export function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
   const map = new Map<number, { total: number; correct: number; incorrect: number; totalTime: number; timed: number }>();
   for (const r of rows) {
     if (typeof r.is_correct !== 'boolean') continue;
@@ -34,7 +34,7 @@ function aggregateByMonth(rows: StatsRow[]): MonthlyStats[] {
   })).sort((a, b) => a.month - b.month);
 }
 
-function aggregateByDay(rows: StatsRow[]): DailyStats[] {
+export function aggregateByDay(rows: StatsRow[]): DailyStats[] {
   const map = new Map<string, { total: number; correct: number; incorrect: number; totalTime: number; timed: number }>();
   for (const r of rows) {
     if (typeof r.is_correct !== 'boolean') continue;

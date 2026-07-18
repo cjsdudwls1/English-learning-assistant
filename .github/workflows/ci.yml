@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # 사용자 기준 시간대 — aggregateByDay 로컬 날짜 버킷팅 회귀를 UTC 러너에서도 잡기 위함
+      TZ: Asia/Seoul
+    defaults:
+      run:
+        working-directory: English-learning-assistant
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: English-learning-assistant/package-lock.json
+      # --ignore-scripts: supabase CLI postinstall의 바이너리 다운로드가 불필요하고 플래키함
+      - run: npm ci --ignore-scripts
+      - run: npx tsc --noEmit
+      - run: npx vitest run

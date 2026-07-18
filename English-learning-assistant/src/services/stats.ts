@@ -280,7 +280,7 @@ export async function fetchUnifiedProblemSummary(
 }
 
 // statsMap에 단일 row의 집계를 누적하는 헬퍼
-function addToStatsMap(
+export function addToStatsMap(
   statsMap: Map<string, StatsNode>,
   row: LabelRowWithProblems,
   key: string,
