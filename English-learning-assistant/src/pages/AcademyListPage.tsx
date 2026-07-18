@@ -23,7 +23,7 @@ export const AcademyListPage: React.FC = () => {
 
       {availableAcademies.length === 0 ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center">
-          <p className="text-slate-400 text-sm mb-4">{t.academy.emptyTitle}</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">{t.academy.emptyTitle}</p>
           <Link to="/academies/new" className="text-indigo-600 dark:text-indigo-400 underline text-sm">
             {t.academy.createNew}
           </Link>

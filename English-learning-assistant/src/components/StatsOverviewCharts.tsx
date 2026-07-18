@@ -953,6 +953,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
               <Doughnut
                 key={doughnutKey}
                 ref={setDoughnutChartRef}
+                aria-label={doughnutTitle}
                 data={doughnutData}
                 onClick={(event: any) => {
                   if (doughnutData) {
@@ -1041,11 +1042,12 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           </h3>
           {barData ? (
             <div className="relative h-64">
-              <Bar 
+              <Bar
                 key={barKey}
-                ref={setBarChartRef} 
-                data={barData} 
-                options={barOptions} 
+                ref={setBarChartRef}
+                aria-label={barTitle}
+                data={barData}
+                options={barOptions}
               />
             </div>
           ) : (

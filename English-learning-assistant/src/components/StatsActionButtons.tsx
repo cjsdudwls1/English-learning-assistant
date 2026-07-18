@@ -33,7 +33,7 @@ export const StatsActionButtons: React.FC<StatsActionButtonsProps> = ({
       <button
         onClick={onReclassify}
         disabled={isReclassifying}
-        className="px-4 py-2 bg-orange-600 dark:bg-orange-500 text-white rounded-lg hover:bg-orange-700 dark:hover:bg-orange-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+        className="px-4 py-2 bg-orange-700 dark:bg-orange-600 text-white rounded-lg hover:bg-orange-800 dark:hover:bg-orange-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         title={language === 'ko' ? '기존 문제들을 새로운 분류 체계로 재분류합니다' : 'Reclassify all problems with the new classification system'}
       >
         {isReclassifying ? t.stats.reclassifying : t.stats.reclassifyAll}
