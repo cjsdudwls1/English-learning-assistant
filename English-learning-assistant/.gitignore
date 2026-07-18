@@ -32,3 +32,8 @@ env.txt
 
 # Netlify
 .netlify
+
+# Playwright
+test-results
+playwright-report
+
