@@ -1,10 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
+import { accounts, auditPages, login, password, waitForRenderSettled, type Role } from './helpers';
 
 // 모바일 뷰포트 레이아웃 점검 — 가로 오버플로(콘텐츠 잘림/가로 스크롤) 검출.
 // global.css가 768px 이하에서 body{overflow-x:hidden}을 걸어 페이지 레벨 스크롤은
 // 가려지므로, 요소 레벨로 뷰포트 밖으로 나간 요소를 직접 찾는다.
-// 자격증명은 env로만 주입한다 — 비밀번호를 커밋하지 않는다. (a11y.spec.ts와 동일 규약)
-const password = process.env.E2E_PASSWORD;
 
 // iPhone 13/14(390) + 보급형 Android(360) — 좁을수록 오버플로 검출 확률이 높다
 const VIEWPORTS = [
@@ -12,44 +11,11 @@ const VIEWPORTS = [
   { width: 360, height: 800 },
 ] as const;
 
-const audits = [
-  {
-    role: 'student',
-    email: process.env.E2E_STUDENT_EMAIL || 'test111@test.com',
-    pages: ['/upload', '/stats', '/recent', '/problems', '/profile', '/assignments', '/retry'],
-  },
-  {
-    role: 'teacher',
-    email: process.env.E2E_TEACHER_EMAIL || 'teacher_c@test.com',
-    pages: ['/teacher/dashboard', '/teacher/assignments/create'],
-  },
-  {
-    role: 'parent',
-    email: process.env.E2E_PARENT_EMAIL || 'parent_c@test.com',
-    pages: ['/parent/dashboard'],
-  },
-  {
-    role: 'director',
-    email: process.env.E2E_DIRECTOR_EMAIL || 'director@test.com',
-    pages: ['/director/dashboard', '/academies'],
-  },
-] as const;
-
-async function login(page: Page, email: string) {
-  await page.goto('/');
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password!);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/upload', { timeout: 30_000 });
-}
-
 // 뷰포트 가로 범위를 벗어난 가시 요소를 찾는다.
 // overflow-x가 visible이 아닌 조상(스크롤 컨테이너/클리핑) 안에 있으면 의도된 패턴으로 허용.
 async function findOverflows(page: Page, path: string) {
   await page.goto(path);
-  // Supabase Realtime WebSocket이 상시 연결이라 networkidle은 영원히 오지 않는다 — load 후 데이터 렌더를 고정 대기
-  await page.waitForLoadState('load');
-  await page.waitForTimeout(5_000);
+  await waitForRenderSettled(page);
   return page.evaluate(() => {
     const vw = document.documentElement.clientWidth;
     const TOLERANCE = 1; // 서브픽셀 오차 허용
@@ -91,13 +57,13 @@ for (const viewport of VIEWPORTS) {
       expect(offenders, offenders.join('\n')).toEqual([]);
     });
 
-    for (const { role, email, pages } of audits) {
+    for (const [role, pages] of Object.entries(auditPages) as Array<[Role, readonly string[]]>) {
       test.describe(role, () => {
         test.skip(!password, 'E2E_PASSWORD 환경변수가 필요합니다 (QA 시드 계정 비밀번호)');
 
         for (const path of pages) {
           test(`${role}: ${path}`, async ({ page }) => {
-            await login(page, email);
+            await login(page, accounts[role]);
             const offenders = await findOverflows(page, path);
             expect(offenders, offenders.join('\n')).toEqual([]);
           });
