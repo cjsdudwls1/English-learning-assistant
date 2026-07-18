@@ -23,5 +23,48 @@ jobs:
           cache-dependency-path: English-learning-assistant/package-lock.json
       # --ignore-scripts: supabase CLI postinstall의 바이너리 다운로드가 불필요하고 플래키함
       - run: npm ci --ignore-scripts
-      - run: npx tsc --noEmit
-      - run: npx vitest run
+      # package.json 스크립트로 실행 — 로컬과 CI가 같은 명령을 쓰게 한다
+      - run: npm run typecheck
+      - run: npm test
+
+  # Playwright e2e — 리포 시크릿이 있을 때만 실질 실행.
+  # 대상은 프로덕션 Supabase의 QA 시드 계정(@test.com)이며, dev 서버는
+  # playwright.config.ts의 webServer가 VITE_SUPABASE_* env로 띄운다.
+  # jobs.<id>.if에서는 secrets 컨텍스트를 쓸 수 없으므로 job env로 승격한 뒤
+  # gate step의 output으로 이후 step 전부를 게이트한다(시크릿 없는 포크 PR은 통과 처리).
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Seoul
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    defaults:
+      run:
+        working-directory: English-learning-assistant
+    steps:
+      - name: 시크릿 존재 확인
+        id: gate
+        working-directory: .
+        run: echo "ready=${{ env.E2E_PASSWORD != '' && env.VITE_SUPABASE_URL != '' && env.VITE_SUPABASE_ANON_KEY != '' }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: English-learning-assistant/package-lock.json
+      - run: npm ci --ignore-scripts
+        if: steps.gate.outputs.ready == 'true'
+      - run: npx playwright install --with-deps chromium
+        if: steps.gate.outputs.ready == 'true'
+      - run: npm run test:e2e
+        if: steps.gate.outputs.ready == 'true'
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.gate.outputs.ready == 'true'
+        with:
+          name: playwright-results
+          path: English-learning-assistant/test-results
+          retention-days: 7
