@@ -83,11 +83,13 @@ export async function fetchLabelsForProblems(
   const out: LabelRowFlat[] = [];
   for (let i = 0; i < problemIds.length; i += ID_CHUNK) {
     const chunk = problemIds.slice(i, i + ID_CHUNK);
+    // user_mark로 거르지 않는다 — 분석 파이프라인이 user_mark 없이 is_correct를 채점하므로
+    // (dbOperations.js saveLabels: user_mark=null + computeIsCorrect), user_mark 필터는
+    // AI 채점분을 통계에서 누락시킨다. graded 판정은 is_correct(boolean)가 단일 기준.
     const { data, error } = await supabase
       .from('labels')
       .select('problem_id, classification, is_correct, user_mark')
-      .in('problem_id', chunk)
-      .not('user_mark', 'is', null);
+      .in('problem_id', chunk);
     if (error) throw error;
     out.push(...((data || []) as LabelRowFlat[]));
   }
@@ -304,7 +306,7 @@ function addToStatsMap(
   const s = statsMap.get(key)!;
   // 채점 계약: is_correct null(미채점·보류)은 오답으로 위조하지 않고 집계에서 제외
   // → correct + incorrect === total 불변식 유지(정답률 = correct/total 소비처 정합)
-  if (row.user_mark !== null && row.user_mark !== undefined && typeof row.is_correct === 'boolean') {
+  if (typeof row.is_correct === 'boolean') {
     s.total_count++;
     if (row.is_correct) s.correct_count++; else s.incorrect_count++;
     const p = Array.isArray(row.problems) ? row.problems[0] : row.problems;
@@ -357,7 +359,7 @@ export interface TypeStatsRow {
 
 // 통계 총계(total)의 출처별 구성 — "문제관리" 등록 수와의 차이를 투명하게 설명하기 위함.
 export interface StatsComposition {
-  labelMarked: number; // 채점 완료된 이미지 분석 문항(labels, user_mark != null). 미채점은 제외됨
+  labelMarked: number; // 채점 완료된 이미지 분석 문항(labels, is_correct 확정). 미채점(null)은 제외됨
   genSolved: number;   // 과제 응답 + 완료된 생성문제 풀이
 }
 
@@ -414,7 +416,6 @@ export async function fetchStatsByType(startDate?: Date, endDate?: Date, languag
     if (problems.length > 0) {
       const labels = await fetchLabelsForProblems(problems.map((p) => p.id));
       for (const row of labels) {
-        if (row.user_mark === null || row.user_mark === undefined) continue;
         if (typeof row.is_correct !== 'boolean') continue; // 미채점(null)은 유형 통계 제외
         accumulate(row.classification || {}, row.is_correct);
         labelMarked++;
@@ -452,7 +453,7 @@ export async function fetchHierarchicalStats(startDate?: Date, endDate?: Date, l
         statsMap.set(uncKey, { depth1: uncLabel, correct_count: 0, incorrect_count: 0, total_count: 0, children: [], sessionIds: [] });
       }
       const s = statsMap.get(uncKey)!;
-      if (wrapped.user_mark !== null && wrapped.user_mark !== undefined && typeof wrapped.is_correct === 'boolean') {
+      if (typeof wrapped.is_correct === 'boolean') {
         s.total_count++;
         if (wrapped.is_correct) s.correct_count++; else s.incorrect_count++;
         const p = Array.isArray(wrapped.problems) ? wrapped.problems[0] : wrapped.problems;
