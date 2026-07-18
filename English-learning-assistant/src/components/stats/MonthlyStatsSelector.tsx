@@ -43,7 +43,7 @@ export const MonthlyStatsSelector: React.FC<Props> = ({ year, monthlyData, selec
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
                   : hasData
                     ? 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:border-indigo-400'
-                    : 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 border border-transparent'
+                    : 'bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 border border-transparent'
               }`}
             >
               {label}

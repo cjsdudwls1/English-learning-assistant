@@ -17,7 +17,7 @@ export const AssignmentStatsDisplay: React.FC<Props> = ({ totalCount, correctCou
 
   if (totalCount === 0) {
     return (
-      <div className="text-center py-8 text-slate-400 dark:text-slate-500">
+      <div className="text-center py-8 text-slate-600 dark:text-slate-400">
         {label ? `${label}: ` : ''}{language === 'ko' ? '데이터가 없습니다.' : 'No data available.'}
       </div>
     );
@@ -55,7 +55,7 @@ const COLORS: Record<string, string> = {
 
 const StatCard: React.FC<{ title: string; value: string; color: string }> = ({ title, value, color }) => (
   <div className={`rounded-xl p-3 ${COLORS[color] ?? COLORS.slate}`}>
-    <p className="text-[11px] opacity-70">{title}</p>
+    <p className="text-[11px]">{title}</p>
     <p className="text-lg font-bold">{value}</p>
   </div>
 );

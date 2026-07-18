@@ -99,7 +99,7 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
       )}
 
       {classes.length === 0 && (
-        <p className="text-slate-400 text-sm py-4 text-center">{language === 'ko' ? '등록된 학급이 없습니다.' : 'No classes registered.'}</p>
+        <p className="text-slate-600 dark:text-slate-400 text-sm py-4 text-center">{language === 'ko' ? '등록된 학급이 없습니다.' : 'No classes registered.'}</p>
       )}
     </div>
   );

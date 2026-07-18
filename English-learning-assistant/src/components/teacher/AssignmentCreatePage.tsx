@@ -70,8 +70,8 @@ export const AssignmentCreatePage: React.FC = () => {
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.assignments.titlePlaceholder} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t.teacher.descriptionOptional} rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm resize-none" />
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.assignments.dueDateOptional}</label>
-          <input type="datetime-local" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
+          <label htmlFor="assignment-due-date" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.assignments.dueDateOptional}</label>
+          <input id="assignment-due-date" type="datetime-local" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
         </div>
       </div>
 

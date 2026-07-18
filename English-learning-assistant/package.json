@@ -25,6 +25,7 @@
     "react-router-dom": "^7.0.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4.1.16",
     "@types/node": "^22.14.0",

@@ -105,7 +105,7 @@ export const ParentDashboardPage: React.FC = () => {
                 {taxonomyLoading ? (
                   <p className="text-sm text-slate-500 py-4 text-center">{t.stats.loadingTaxonomy}</p>
                 ) : taxonomyStats.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-4 text-center">{t.stats.noTaxonomyData}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 py-4 text-center">{t.stats.noTaxonomyData}</p>
                 ) : (
                   <HierarchicalStatsTable data={taxonomyStats} />
                 )}

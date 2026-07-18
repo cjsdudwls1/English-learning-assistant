@@ -63,17 +63,17 @@ export const TeacherDashboardPage: React.FC = () => {
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
         <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">{t.teacher.recentAssignments}</h2>
         {assignments.length === 0 ? (
-          <p className="text-slate-400 text-sm py-4 text-center">{t.teacher.noAssignments}</p>
+          <p className="text-slate-600 dark:text-slate-400 text-sm py-4 text-center">{t.teacher.noAssignments}</p>
         ) : (
           <div className="space-y-2">
             {assignments.slice(0, 5).map((a) => (
               <Link to={`/teacher/assignments/${a.id}`} key={a.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                 <div>
                   <p className="font-medium text-slate-800 dark:text-slate-200">{a.title}</p>
-                  <p className="text-xs text-slate-500">{new Date(a.created_at).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US')} · {t.teacher.problemUnit.replace('{count}', String(a.problem_count ?? 0))} · {t.teacher.responseUnit.replace('{count}', String(a.completed_count ?? 0))}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">{new Date(a.created_at).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US')} · {t.teacher.problemUnit.replace('{count}', String(a.problem_count ?? 0))} · {t.teacher.responseUnit.replace('{count}', String(a.completed_count ?? 0))}</p>
                 </div>
                 {a.due_date && (
-                  <span className="text-xs text-orange-500">{t.teacher.dueDate.replace('{date}', new Date(a.due_date).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US'))}</span>
+                  <span className="text-xs text-orange-700 dark:text-orange-400">{t.teacher.dueDate.replace('{date}', new Date(a.due_date).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US'))}</span>
                 )}
               </Link>
             ))}

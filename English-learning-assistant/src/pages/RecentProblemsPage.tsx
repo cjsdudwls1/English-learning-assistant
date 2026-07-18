@@ -221,6 +221,7 @@ export const RecentProblemsPage: React.FC = () => {
                     type="checkbox"
                     checked={selectedSessions.has(session.id)}
                     onChange={() => toggleSessionSelection(session.id)}
+                    aria-label={language === 'ko' ? '세션 선택' : 'Select session'}
                     className="w-5 h-5"
                   />
                   {/* 다중 이미지 썸네일 */}
@@ -260,7 +261,7 @@ export const RecentProblemsPage: React.FC = () => {
                       </p>
                     )}
                     {sessionImageUrls.length > 1 && (
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-xs text-slate-500 mt-0.5">
                         {language === 'ko'
                           ? `이미지 ${sessionImageUrls.length}장`
                           : `${sessionImageUrls.length} images`}
