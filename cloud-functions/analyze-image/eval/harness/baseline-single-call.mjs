@@ -1,12 +1,12 @@
 /**
- * 단일 호출 베이스라인 (Gemini 3.5 Flash only)
+ * 단일 호출 베이스라인 (Gemini 3.6 Flash only)
  *
  * 목적: 현재 4-Pass 파이프라인(Pass A 구조 + Pass 0 bbox + 크롭 + Pass B 필기 + Pass C 분류
  *      + Document AI Pre-OCR + 모델 폴백 시퀀스 + 교차뷰 등)이 오버스펙인지 측정.
  *
  * 비교 대상:
  *  - prod 파이프라인 결과는 run-eval.mjs 의 결과와 동일 채점기로 정렬.
- *  - 본 스크립트는 동일 골드 5장에 대해 Gemini 3.5 Flash 단일 호출만 사용.
+ *  - 본 스크립트는 동일 골드 5장에 대해 Gemini 3.6 Flash 단일 호출만 사용.
  *    · pass 분리 X · Document AI X · bbox/크롭 X · 모델 폴백 X · 교차뷰 X
  *    · 전처리(preprocessImage, 긴변 1200px)와 채점기는 동일(공정 비교).
  *
@@ -27,7 +27,7 @@ const GT_PATH = path.resolve(__dirname, '../labels/ground-truth.json');
 const TEST_IMAGE_ROOT = path.resolve(__dirname, '../../../../test_image');
 const RESULTS_DIR = path.resolve(__dirname, '../results');
 
-export const MODEL = 'gemini-3.5-flash';
+export const MODEL = 'gemini-3.6-flash';
 
 // 통합 프롬프트 — 단일 호출로 problem_number + user_answer + correct_answer 추출.
 // prod 의 buildHandwritingDetectionPrompt 와 의도/규칙 동일(원형 → ASCII, X/O 분별,
