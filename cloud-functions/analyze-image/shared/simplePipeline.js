@@ -1,10 +1,10 @@
 /**
  * 단순 2-스텝 파이프라인 (SIMPLE_PIPELINE)
  *
- * - Step 1: 입력된 모든 이미지를 한 번에 Gemini 3.5 Flash에 넣어 자유형식으로 추출.
+ * - Step 1: 입력된 모든 이미지를 한 번에 Gemini 3.6 Flash에 넣어 자유형식으로 추출.
  *   프롬프트는 단순히 "문제 내용·지문·보기·학습자가 체크한 답·실제 정답을 추출".
  *   (페이지별 분리/크롭/Document AI/Pass 0·A·B·C 크롭 로직 전부 대체 — 모델 성능을 신뢰)
- * - Step 2: 추출된 자유텍스트를 Gemini 3 Flash로 문항별 JSON 구조화(DB 저장/프론트 출력용).
+ * - Step 2: 추출된 자유텍스트를 Gemini 3.6 Flash로 문항별 JSON 구조화(DB 저장/프론트 출력용).
  * - (옵션) 분류/메타: 기존 executePassC 재사용.
  *
  * 진입점(index.js runAnalysisPipeline)에서 SIMPLE_PIPELINE 플래그로 기존 4-Pass와 스위치한다.
@@ -15,10 +15,10 @@ import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from '.
 import { EXTRACTION_TEMPERATURE, THINKING_BUDGET } from './config.js';
 import { executePassC } from './passes.js';
 
-// Step 1(추출): 사용자 지정 3.5 Flash 1순위, GA 폴백.
-const EXTRACT_MODEL_SEQUENCE = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
-// Step 2(구조화): 사용자 지정 "3 플래시". preview burst 대비 GA 폴백.
-const STRUCTURE_MODEL_SEQUENCE = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
+// Step 1(추출): 사용자 지정 3.6 Flash 1순위, GA 폴백.
+const EXTRACT_MODEL_SEQUENCE = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'];
+// Step 2(구조화): 사용자 지정 3.6 Flash(GA). 폴백 3.5 Flash-Lite.
+const STRUCTURE_MODEL_SEQUENCE = ['gemini-3.6-flash', 'gemini-3.5-flash-lite'];
 
 const STEP1_TIMEOUT_MS = 300_000; // 다중 이미지 일괄 처리 → 넉넉히(worker 540s 내)
 

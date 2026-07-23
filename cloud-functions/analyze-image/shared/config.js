@@ -21,15 +21,14 @@ export const DOCUMENT_AI_ENABLED = Boolean(DOCUMENT_AI_PROCESSOR_ID);
  */
 export const MODEL_SEQUENCE = [
   'gemini-2.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-3-flash-preview',
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
 ];
 
 export const MODEL_RETRY_POLICY = {
-  'gemini-3.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
+  'gemini-3.6-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-2.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
-  'gemini-3.1-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },
-  'gemini-3-flash-preview': { maxRetries: 1, baseDelayMs: 1500 },
+  'gemini-3.5-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-flash-latest': { maxRetries: 1, baseDelayMs: 2000 },
 };
 
@@ -66,7 +65,7 @@ export const USER_ANSWER_CONSENSUS = process.env.USER_ANSWER_CONSENSUS === '1';
 export const CORRECT_SOURCE = process.env.CORRECT_SOURCE === 'fullpage' ? 'fullpage' : 'crop';
 
 /** 단순 2-스텝 파이프라인 스위치(기본 ON).
- *  ON: Gemini 3.5 Flash 단일 호출로 페이지 전체 통합 추출(문제/지문/보기/손글씨답/정답)
+ *  ON: Gemini 3.6 Flash 단일 호출로 페이지 전체 통합 추출(문제/지문/보기/손글씨답/정답)
  *      → Gemini 3.x Flash 분류(executePassC). 기존 4-Pass(processPage) 대체.
  *  롤백: env SIMPLE_PIPELINE=0 이면 기존 processPage 경로로 즉시 복귀(코드 보존).
  */
@@ -79,20 +78,20 @@ export const SIMPLE_PIPELINE = process.env.SIMPLE_PIPELINE !== '0';
  */
 export const LIGHTWEIGHT_MODEL_SEQUENCE = [
   'gemini-2.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-3-flash-preview',
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
 ];
 
 /** 정답 추론(correct_answer) 전용 모델 시퀀스 — 정확도 우선
  *  - 정답 추론은 '문제당 1회' 저빈도 호출 → 최상위 추론 모델을 1순위로 써도 부하 영향 작음
- *  - gemini-3.5-flash(GA, 2026-05): 최신·최강 Flash, near-Pro 추론력
- *  - 폴백 3.1-flash-lite(GA): 공식 벤치 기준 2.5-flash 추론 상회(GPQA 86.9% vs 79%)
+ *  - gemini-3.6-flash(GA, 2026-07): 최신·최강 Flash, near-Pro 추론력
+ *  - 폴백 3.5-flash-lite(GA): 공식 벤치 기준 2.5-flash 추론 상회(GPQA 86.9% vs 79%)
  *  - 폴백 2.5-flash(GA): 최종 안전망
  *  - preview 모델 제외: Vertex DSQ 공유풀 제약으로 burst 시 429 위험(실측 이력)
  */
 export const ANSWER_MODEL_SEQUENCE = [
-  'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
   'gemini-2.5-flash',
 ];
 
@@ -101,14 +100,14 @@ export const ANSWER_MODEL_SEQUENCE = [
  *    · Q28(학생 마크=①, 좁은 선택지 크롭) → "②"  · Q40(동그라미=③, 전체이미지) → "①"
  *    둘 다 temperature=0.0에서도 3회 일관 오답 → 지각 작업에서 신뢰 불가, 시퀀스에서 제외.
  *    '자신있는 오답'은 채점 보조 도구에서 null보다 해롭다.
- *  - gemini-3.5-flash(신중·near-Pro 지각, 애매하면 정직하게 null) 1순위, GA 폴백
- *    3.1-flash-lite. 동일 입력에서 둘 다 2.5-flash보다 정확. user_answer도 문제당 1회
+ *  - gemini-3.6-flash(신중·near-Pro 지각, 애매하면 정직하게 null) 1순위, GA 폴백
+ *    3.5-flash-lite. 동일 입력에서 둘 다 2.5-flash보다 정확. user_answer도 문제당 1회
  *    저빈도 호출이라 최상위 모델 1순위 부하 영향 작음.
  *  - preview 모델 제외: burst 시 429 위험(실측 이력) → GA 모델만.
  */
 export const USER_ANSWER_MODEL_SEQUENCE = [
-  'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
 ];
 
 // API 호출 타임아웃 (밀리초)

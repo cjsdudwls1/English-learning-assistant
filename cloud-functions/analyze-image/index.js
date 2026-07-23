@@ -293,8 +293,8 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
   let finalUsedModel = '';
 
   if (SIMPLE_PIPELINE) {
-    // 단순 파이프라인(기본 ON): 입력된 모든 이미지를 한 번에 Gemini 3.5로 자유추출 →
-    // Gemini 3 Flash로 문항별 JSON 구조화. 페이지 분리/크롭 없이 모델이 전체를 보고 처리
+    // 단순 파이프라인(기본 ON): 입력된 모든 이미지를 한 번에 Gemini 3.6 Flash로 자유추출 →
+    // Gemini 3.6 Flash로 문항별 JSON 구조화. 페이지 분리/크롭 없이 모델이 전체를 보고 처리
     // (여러 페이지에 걸친 지문도 자연히 병합). env SIMPLE_PIPELINE=0 이면 아래 4-Pass 경로.
     // 서버 측 전처리(긴 변 1200px + JPEG 80%)를 모든 이미지에 적용.
     for (const imageData of images) {
