@@ -4,6 +4,7 @@ import { getCurrentUserId } from './auth';
 import { isCorrectFromMark, normalizeMark } from '../marks';
 import { transformToProblemItem, transformFromLabelJoin } from '../../utils/problemTransform';
 import { eqSet } from '../../utils/gradingSafety';
+import { toCardinality } from '../../utils/answerShape';
 import { resolveImageUrls } from '../../utils/imageUrl';
 
 const ID_CHUNK = 500;
@@ -281,7 +282,7 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
     // 다중정답 객관식(multi_answer_contract v1) — 번호 집합이 확신 추출됐으면 eqSet 완전일치로 채점
     // 게이트는 백엔드 computeIsCorrect와 1:1 정합: 정답 2개 이상 + 사용자 선택이 정답 수 이상일 때만 신뢰
     const isMulti = item.answerFormat === 'multi';
-    const isMultiBlank = item.answerFormat === 'multi_blank';
+    const isMultiBlank = toCardinality(item.answerFormat) === 'list';
     const hasConfidentSets = isMulti
       && Array.isArray(item.correctAnswers) && item.correctAnswers.length >= 2
       && Array.isArray(item.userAnswers) && item.userAnswers.length >= item.correctAnswers.length;

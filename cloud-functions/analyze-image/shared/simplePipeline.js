@@ -15,6 +15,7 @@ import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from '.
 import { EXTRACTION_TEMPERATURE, THINKING_BUDGET } from './config.js';
 import { executePassC } from './passes.js';
 import { sanitizeMcAnswerSet, isMultiSelectFmt } from './answerSanitizers.js';
+import { toCardinality } from './answerShape.js';
 
 // Step 1(추출): 사용자 지정 3.5 Flash 1순위, GA 폴백.
 const EXTRACT_MODEL_SEQUENCE = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
@@ -158,6 +159,20 @@ export function normalizeItem(raw) {
     correct_answer: normalizeAnswer(raw.correct_answer),
     user_marked_correctness: normalizeMarkedCorrectness(raw.user_marked_correctness),
   };
+
+  // 모델 원출력을 통째로 달아 보낸다. 위 정규화는 아는 필드만 남기고 나머지를 버리는데, 버린 필드가
+  // 나중에 필요해지면 이미지를 다시 분석하는 수밖에 없다(비용 + 결과가 매번 달라짐).
+  // buildContentJson이 이걸 content.raw로 저장해 재파싱·재채점을 DB만으로 할 수 있게 한다.
+  // non-enumerable: 기존 코드가 item을 순회·직렬화·비교할 때 갑자기 끼어들지 않게 한다.
+  Object.defineProperty(item, '_raw', { value: raw, enumerable: false });
+
+  // 우리가 모르는 형식은 이름을 그대로 남긴다. 예전엔 여기서 조용히 사라져 단일답으로 취급됐는데,
+  // 순서·매칭처럼 단일 비교가 성립하지 않는 유형이 그렇게 되면 confident-wrong으로 채점된다.
+  // 이름이 남아 있으면 하류(computeIsCorrect·프론트)가 toCardinality로 판정 불가를 보고 기권한다.
+  // 아는 형식은 아래 분기가 계약값으로 다시 세팅하므로 여기서 손대지 않는다.
+  if (raw.answer_format != null && toCardinality(raw.answer_format) === null) {
+    item.answer_format = String(raw.answer_format).trim();
+  }
 
   // 복수정답 객관식: 선택지 번호 '집합'이라 순서·중복이 무의미 → 정렬·중복제거·범위검증(sanitizeMcAnswerSet).
   // 모델·GT 라벨의 어휘는 'multi_select'이지만 DB/프론트 계약값은 'multi'(multi_answer_contract §2)라,

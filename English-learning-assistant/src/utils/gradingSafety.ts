@@ -10,6 +10,8 @@
  * false-positive는 '수동 확인'(기권)으로 이어질 뿐이라 confident-wrong보다 안전(precision-first).
  */
 
+import { toCardinality, type AnswerFormat } from './answerShape';
+
 /** "정답 N개 / 모두 고르면 / 단, N개" 지시문 또는 정답이 (1)…(2)… 번호매김인지 감지. */
 export function detectMultiAnswer(instruction?: string | null, correctAns?: string | null): boolean {
   const inst = String(instruction || '');
@@ -76,19 +78,24 @@ export function getManualReviewReason(args: {
   correctAnswer?: string | null;
   userAnswer?: string | null;
   hasChoices?: boolean;
-  answerFormat?: 'single' | 'multi' | 'multi_blank' | 'unknown' | null;
+  answerFormat?: AnswerFormat | null;
   correctAnswers?: number[] | null;
   userAnswers?: number[] | null;
 }): ManualReviewReason | null {
   const { instruction, correctAnswer, userAnswer, hasChoices, answerFormat, correctAnswers, userAnswers } = args;
 
-  if (answerFormat === 'unknown') return '형식확인';
+  // 형식 이름이 아니라 값의 모양으로 분기한다 — 새 유형 이름이 늘어도 이 함수는 안 늘어난다.
+  const card = toCardinality(answerFormat);
 
-  // 다중빈칸 서술형(multi_blank): 빈칸별 자유서술 → 단일 비교/집합 채점 불가. 항상 수동 확인(자동 O/X 금지).
+  // 판정 불가('unknown' 및 아직 모르는 유형): 어떤 비교가 맞는지 모른다 → 수동 확인.
+  // 백엔드 computeIsCorrect도 같은 조건에서 기권하므로 두 쪽 판단이 어긋나지 않는다.
+  if (card === null) return '형식확인';
+
+  // list(다중빈칸 서술형): 빈칸별 자유서술 → 단일 비교/집합 채점 불가. 항상 수동 확인(자동 O/X 금지).
   // (flat correct_answer가 "(1)…(2)…" 형태라 아래 detectMultiAnswer에 걸려도 오작동하지 않도록 여기서 선차단.)
-  if (answerFormat === 'multi_blank') return '형식확인';
+  if (card === 'list') return '형식확인';
 
-  if (answerFormat === 'multi' || detectMultiAnswer(instruction, correctAnswer)) {
+  if (card === 'set' || detectMultiAnswer(instruction, correctAnswer)) {
     // 백엔드가 번호 집합을 확신 추출한 경우 → computeIsCorrect와 동일 게이트로 자동 채점 신뢰
     // (정답 2개 이상 + 사용자 선택이 정답 수 이상일 때만; 정답 1개 추출이거나 사용자가 덜 골랐으면 기권)
     if (Array.isArray(correctAnswers) && Array.isArray(userAnswers)

@@ -7,6 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
 import { getManualReviewReason, eqSet } from '../utils/gradingSafety';
+import { toCardinality } from '../utils/answerShape';
 
 /** 사용자 답안과 정답을 비교하여 자동 판정 */
 /**
@@ -69,7 +70,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
         initMultiUser[`${idx}`] = p.userAnswers ?? [];
         initMultiCorrect[`${idx}`] = p.correctAnswers ?? [];
       }
-      if (p.answerFormat === 'multi_blank') {
+      if (toCardinality(p.answerFormat) === 'list') {
         const bu = p.blankUserAnswers ?? [];
         const bc = p.blankCorrectAnswers ?? [];
         const n = Math.max(bu.length, bc.length);
@@ -151,7 +152,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
       // 편집된 답안/정답을 items에 반영
       const updatedItems = items.map((item, idx) => {
         const isMulti = item.answerFormat === 'multi';
-        const isMultiBlank = item.answerFormat === 'multi_blank';
+        const isMultiBlank = toCardinality(item.answerFormat) === 'list';
         if (isMultiBlank) {
           // 빈칸별 편집값 → (string|null)[] 정규화(빈 문자열=null) + flat 표시문자열 재조립. 채점은 수동만.
           const bu = editableBlankUser[`${idx}`] ?? (item.blankUserAnswers ?? []).map(x => x == null ? '' : String(x));
@@ -278,7 +279,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
         // multi는 correctAnswers/userAnswers가 확신 추출된 경우 null(자동채점 신뢰)
         const isMulti = it.answerFormat === 'multi';
         // 다중빈칸 서술형(multi_blank): 빈칸별 자유텍스트 N행 분리(각 칸 편집 가능). 채점은 항상 기권(수동 정/오답만).
-        const isMultiBlank = it.answerFormat === 'multi_blank';
+        const isMultiBlank = toCardinality(it.answerFormat) === 'list';
         const blankUser = editableBlankUser[`${i}`] ?? (it.blankUserAnswers ?? []).map(x => x == null ? '' : String(x));
         const blankCorrect = editableBlankCorrect[`${i}`] ?? (it.blankCorrectAnswers ?? []).map(x => x == null ? '' : String(x));
         const blankCount = Math.max(blankUser.length, blankCorrect.length);

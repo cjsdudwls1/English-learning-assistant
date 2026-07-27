@@ -12,7 +12,8 @@
 
 import { StageError } from './errors.js';
 import { cleanOrNull, makeDepthKey, fuzzyMatchTaxonomy, canonicalDepth1 } from './taxonomy.js';
-import { sanitizeMcAnswerSet, isMultiSelectFmt } from './answerSanitizers.js';
+import { sanitizeMcAnswerSet } from './answerSanitizers.js';
+import { toCardinality } from './answerShape.js';
 
 // ─── O/X 마크 정규화 ────────────────────────────────────────
 // 원본: validation.ts#normalizeMark
@@ -175,20 +176,27 @@ function eqSet(a, b) {
  * - 객관식(choices≥2)이고 detectMultiAnswer가 복수정답 신호를 감지하면 'multi'.
  * - 그 외(주관식 포함)는 'single' — 기존 스칼라 채점·저장 경로 완전 불변. computeIsCorrect의
  *   single/서술형 분기는 이 함수의 산출물을 참조하지 않는다(문항 검사만 여기서 선행).
+ * - 우리가 모르는 형식(toCardinality가 null)이면 그 이름을 그대로 통과시킨다 — 'single'로 덮으면
+ *   단일 비교로 채점돼 confident-wrong이 나므로, 하류가 다시 판정 불가를 보고 기권하게 둔다.
  * - multi일 때 correct_answers/user_answers는 sanitizeMcAnswerSet으로 추출(불확실하면 빈 배열 —
  *   빈 배열은 상위 computeIsCorrect·저장 로직에서 기권/빈 문자열로 이어진다. 정밀도 우선).
  * - buildContentJson(문제 저장)과 saveLabels(라벨/채점) 양쪽이 동일 입력에 이 함수를 각자 호출해
  *   같은 결과를 얻는다(순수함수라 결과 발산 없음, 두 함수 간 새 결합 없이 DRY).
  * @param {{instruction?, correct_answer?, user_answer?}} item
  * @param {Array} choiceArr - 정규화 여부 무관, length만 사용(범위 max)
- * @returns {{answerFormat: 'single'|'multi', correctAnswers: number[]|null, userAnswers: number[]|null, flatCorrect: string|null, flatUser: string|null}}
+ * @returns {{answerFormat: string, correctAnswers: number[]|null, userAnswers: number[]|null, flatCorrect: string|null, flatUser: string|null}}
+ *   answerFormat은 'single'|'multi'|'multi_blank', 또는 모르는 형식이면 입력 이름 그대로.
  */
 function resolveAnswerFormat(item, choiceArr) {
-  // 다중빈칸 서술형(multi_blank): processPage가 빈칸별 자유텍스트 배열(user_answers/correct_answers)을
-  // 미리 채워 넘긴다. MC 번호집합이 아니므로 sanitizeMcAnswerSet(번호추출)을 태우지 않고 그대로 통과.
+  // 형식 이름이 아니라 값의 모양(cardinality)으로 분기한다 — 새 유형 이름이 늘어도 여기는 안 늘어난다.
+  const card = toCardinality(item?.answer_format);
+
+  // list(현재는 multi_blank) — 다중빈칸 서술형: processPage가 빈칸별 자유텍스트 배열
+  // (user_answers/correct_answers)을 미리 채워 넘긴다. MC 번호집합이 아니므로
+  // sanitizeMcAnswerSet(번호추출)을 태우지 않고 그대로 통과.
   // flat 값은 processPage가 만든 번호형 문자열("(1) X (2) Y")을 유지 → 기존 detectMultiAnswer 기권·UI 폴백.
-  // 채점은 항상 기권(computeIsCorrect가 multi_blank→null, 정밀도 우선).
-  if (item?.answer_format === 'multi_blank') {
+  // 채점은 항상 기권(computeIsCorrect가 list→null, 정밀도 우선).
+  if (card === 'list') {
     return {
       answerFormat: 'multi_blank',
       correctAnswers: Array.isArray(item.correct_answers) ? item.correct_answers : [],
@@ -203,10 +211,13 @@ function resolveAnswerFormat(item, choiceArr) {
   // 그 경우 정답 집합이 통째로 스칼라 1개로 접혀 채점이 조용히 어긋난다. 오탐이 나도 결과는
   // 집합 게이트(cd.size>=2 && ud.size>=cd.size) 미충족 → 기권이라 confident-wrong 위험은 없다.
   const isMulti = list.length >= 2
-    && (isMultiSelectFmt(item?.answer_format) || detectMultiAnswer(item?.instruction, item?.correct_answer));
+    && (card === 'set' || detectMultiAnswer(item?.instruction, item?.correct_answer));
   if (!isMulti) {
     return {
-      answerFormat: 'single',
+      // card===null은 우리가 모르는 형식이다. 'single'로 덮어쓰면 단일 비교로 채점돼 confident-wrong이
+      // 날 수 있으므로 원래 이름을 그대로 흘려보낸다 — 그러면 computeIsCorrect와 프론트가 다시
+      // toCardinality로 null을 얻어 기권한다. answer_format이 표시 전용으로 남는다는 뜻이기도 하다.
+      answerFormat: card === null ? String(item.answer_format).trim() : 'single',
       correctAnswers: null,
       userAnswers: null,
       flatCorrect: item?.correct_answer || null,
@@ -246,7 +257,9 @@ function isDigitWordMismatch(userAns, correctAns) {
  *   - 서술형(choices 없음) 또는 번호 파싱 불가: normalizeAnswerText 후 정확 일치.
  * 부분점수 없음(정확 일치만 정답).
  * 복수답안(Bug B)·어형선택 단위불일치(Bug D)는 오답 단정 대신 기권(null) — instruction으로 감지.
- * 다중정답(multi MC, multi_answer_contract §5): answer_format==='multi'(또는 detectMultiAnswer 참)면
+ * 분기는 answer_format 이름이 아니라 toCardinality(answer_format) 결과로 한다. 모르는 형식이면
+ * 판정 불가(null)라 즉시 기권하므로, 새 문제 유형이 생겨도 이 함수는 고칠 필요가 없다.
+ * 다중정답(multi MC, multi_answer_contract §5): cardinality==='set'(또는 detectMultiAnswer 참)면
  * correct_answers/user_answers(호출측이 resolveAnswerFormat으로 미리 뽑아 넘긴 number[])가 있으면
  * 그 집합으로 완전일치 채점, 없으면 기존 Bug B 안전망(스칼라 문자열에서 재추출)으로 폴백 — 이 인자를
  * 넘기지 않는 기존 호출부(eval 하네스 등)는 동작이 완전히 그대로다.
@@ -267,9 +280,16 @@ export function computeIsCorrect({ user_marked_correctness, user_answer, correct
 
   // 2차: user_answer vs correct_answer 자동 비교
   if (isCorrect === null) {
-    // 다중빈칸 서술형(multi_blank): 빈칸별 자유서술이라 단일 자동비교로 채점 불가 → 항상 기권.
+    // 값의 모양으로 분기한다. 형식 이름이 아니라 모양을 보므로 새 유형이 와도 이 분기는 그대로다.
+    const card = toCardinality(answer_format);
+
+    // 판정 불가(처음 보는 형식): 어떤 비교가 맞는지 모른다 → 기권. 새 문제 유형은 채점 코드를
+    // 고치지 않아도 여기서 안전하게 흡수된다(자신있는 오답보다 기권이 낫다).
+    if (card === null) return null;
+
+    // list(다중빈칸 서술형): 빈칸별 자유서술이라 단일 자동비교로 채점 불가 → 항상 기권.
     // (시험지 O/X 채점 마크가 있으면 위 1차에서 이미 반영됨. 여기선 자동비교만 차단.)
-    if (answer_format === 'multi_blank') return null;
+    if (card === 'list') return null;
     const userAns = String(user_answer || '').trim();
     const correctAns = String(correct_answer || '').trim();
     const choiceArr = Array.isArray(choices) ? choices : [];
@@ -279,7 +299,7 @@ export function computeIsCorrect({ user_marked_correctness, user_answer, correct
       // Bug B(복수답안): "모두 고르면 / 정답 N개" 또는 정답이 (1)…(2)… 번호매김이면 단일 비교로 채점 불가.
       // 객관식 정답 집합이 온전히 추출된 경우만 완전일치로 채점, 아니면 기권(null) — 단일값만 저장된
       // 현 상태에서 오답 단정(confident-wrong) 방지. (집합/빈칸별 완전 추출은 Stage 2 프롬프트 개선 몫)
-      if (detectMultiAnswer(instruction, correctAns) || isMultiSelectFmt(answer_format)) {
+      if (card === 'set' || detectMultiAnswer(instruction, correctAns)) {
         // 우선순위: 호출측(resolveAnswerFormat)이 sanitizeMcAnswerSet으로 정제한 correct_answers/
         // user_answers 배열을 넘겨줬으면 그것을 신뢰(원문 재파싱보다 정밀). 없으면 기존 Stage 1
         // 안전망(스칼라 문자열에서 번호집합 재추출)으로 폴백 — 게이트(cd.size>=2 && ud.size>=cd.size)는
@@ -381,11 +401,13 @@ function buildStemFromItem(item) {
 // ─── content JSONB 구조 생성 ────────────────────────────────
 // 원본: problemSaver.ts#buildContentJson
 
-function buildContentJson(item, normalizedChoicesArr) {
+/** export: 순수함수라 test/answerShape.test.mjs가 DB 없이 저장 형태를 직접 검증한다. */
+export function buildContentJson(item, normalizedChoicesArr) {
   // 다중정답(multi MC, multi_answer_contract §3): answer_format 태깅 + (multi일 때만) 번호집합.
   // 기존 user_answer/correct_answer 스칼라는 하위호환을 위해 계속 채우되, multi면 평탄화 문자열
   // ("3, 4")로 대체된다(단일 문항은 fmt.flatUser/flatCorrect가 item 원값 그대로라 완전 무변화).
   const fmt = resolveAnswerFormat(item, normalizedChoicesArr);
+  const card = toCardinality(fmt.answerFormat);
   const content = {
     stem: buildStemFromItem(item),
     problem_number: item.problem_number || null,
@@ -399,12 +421,20 @@ function buildContentJson(item, normalizedChoicesArr) {
     user_marked_correctness: item.user_marked_correctness || null,
     correct_answer: fmt.flatCorrect,
     answer_format: fmt.answerFormat,
+    // 채점이 실제로 보는 값(one|set|list, 판정 불가면 null). answer_format에서 도출되므로
+    // 코드는 절대 이 저장값을 읽지 않고 매번 toCardinality로 다시 구한다 — 저장 후 매핑이 바뀌어
+    // 옛 행이 낡아도 채점이 어긋나지 않는다. 여기 두는 건 SQL로 모양별 집계·필터를 하기 위함이다.
+    cardinality: card,
   };
-  if (fmt.answerFormat === 'multi' || fmt.answerFormat === 'multi_blank') {
-    // multi=MC 번호집합(number[]), multi_blank=빈칸별 자유텍스트 배열(string|null[]). 둘 다 배열 그대로 저장.
+  if (card === 'set' || card === 'list') {
+    // set=MC 번호집합(number[]), list=빈칸별 자유텍스트 배열(string|null[]). 둘 다 배열 그대로 저장.
     content.correct_answers = fmt.correctAnswers;
     content.user_answers = fmt.userAnswers;
   }
+  // 모델 원출력 무손실 보관. normalizeItem은 아는 필드만 남기고 나머지를 버리는데, 버려진 필드가
+  // 나중에 필요해지면 이미지를 다시 분석하는 수밖에 없다(모델 호출 비용 + 결과가 매번 다름).
+  // 원본을 통째로 들고 있으면 재파싱·재채점이 DB만으로 끝난다.
+  if (item?._raw && typeof item._raw === 'object') content.raw = item._raw;
   return content;
 }
 

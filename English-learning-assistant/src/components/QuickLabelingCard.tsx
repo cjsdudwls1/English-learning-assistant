@@ -6,6 +6,7 @@ import type { ProblemItem, QuestionType } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { getManualReviewReason, eqSet } from '../utils/gradingSafety';
+import { toCardinality } from '../utils/answerShape';
 
 interface QuickLabelingCardProps {
   sessionId: string;
@@ -124,7 +125,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           initialMultiUser[`${p.index}`] = p.userAnswers ?? [];
           initialMultiCorrect[`${p.index}`] = p.correctAnswers ?? [];
         }
-        if (p.answerFormat === 'multi_blank') {
+        if (toCardinality(p.answerFormat) === 'list') {
           const bu = p.blankUserAnswers ?? [];
           const bc = p.blankCorrectAnswers ?? [];
           const n = Math.max(bu.length, bc.length);
@@ -244,7 +245,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
 
     const itemsToSave: ProblemItem[] = problems.map(p => {
       const isMulti = p.answerFormat === 'multi';
-      const isMultiBlank = p.answerFormat === 'multi_blank';
+      const isMultiBlank = toCardinality(p.answerFormat) === 'list';
       const userArr = multiUserAnswers[`${p.index}`] ?? p.userAnswers ?? [];
       const correctArr = multiCorrectAnswers[`${p.index}`] ?? p.correctAnswers ?? [];
 
@@ -405,7 +406,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           // multi는 correctAnswers/userAnswers가 확신 추출된 경우 null(자동채점 신뢰)
           const isMulti = problem.answerFormat === 'multi';
           // 다중빈칸 서술형(multi_blank): 빈칸별 사용자답/정답을 N행으로 분리, 각 칸 편집 가능. 채점은 수동 O/X만.
-          const isMultiBlank = problem.answerFormat === 'multi_blank';
+          const isMultiBlank = toCardinality(problem.answerFormat) === 'list';
           const blankUser = editableBlankUser[`${problem.index}`] ?? (problem.blankUserAnswers ?? []).map(x => x == null ? '' : String(x));
           const blankCorrect = editableBlankCorrect[`${problem.index}`] ?? (problem.blankCorrectAnswers ?? []).map(x => x == null ? '' : String(x));
           const blankCount = Math.max(blankUser.length, blankCorrect.length);
