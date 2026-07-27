@@ -3,14 +3,17 @@
     "status": "DRAFT — 검수 전. 사용자 검수·정정 후 ground-truth.json에 병합할 것",
     "labeled_by": "Claude (1차 판독)",
     "labeled_at": "2026-07-27",
-    "sampling": "test_image 60장 중 8장. 기존 gold(9장)가 커버하지 않는 폴더·유형을 우선 선정",
+    "sampling": "test_image 60장 중 8장 표본 → 규약 5(번호 없는 교재 연습 제외) 적용 후 7장 35문항. 기존 gold(9장)가 커버하지 않는 폴더·유형을 우선 선정",
+    "revision": "2026-07-27 rev2 — 사용자 검수 반영: 규약 1~5 확정, 112441634(Let's Use It) 전체 제외, RAMI 번호없는 3문항 제외, 101043325_05 컬럼 넘김 오독 정정(Q33 복원)",
     "harness_compatibility": "score.mjs는 answer_format을 읽지 않고 q.user_answer / q.correct_answer 스칼라만 참조한다. 배열만 있는 문항은 classifyText(undefined,…)에서 TypeError로 터진다. 이를 피하려고 모든 문항에 스칼라를 병기했으나, _placeholder:true 가 붙은 스칼라는 '표현이 불가능해 느슨하게 우회한 값'이지 참값이 아니다. 참값은 항상 *_answers 배열 쪽이다. score.mjs에 다중답 지원이 들어가기 전까지 해당 문항의 채점 결과는 무효로 취급할 것",
-    "conventions_pending": [
-      "복수정답 객관식(정답 2개/모두 고르시오)의 표기 규약 — 초안은 answer_format='multi_select' + *_answers 배열 사용(현행 코드 미지원)",
-      "(A)/(B) 짝 선택지에서 correct_answer를 '선택지 번호'로 둘지 '(A)who (B)which' 텍스트로 둘지",
-      "교재 연습문제(번호 없음)의 problem_number 부여 규칙 — 현행 코드는 '연습 N' 폴백",
-      "이미지 경계에서 잘린 답의 처리 — 초안은 _truncated=true로 표시하고 모호 취급"
-    ],
+    "conventions_decided": {
+      "1_복수정답": "answer_format='multi_select' + user_answers/correct_answers 배열(정렬된 문자열). 확정(2026-07-27) — score.mjs·simplePipeline 지원 추가 필요",
+      "2_A_B_짝선택지": "correct_answer는 선택지 번호만 기록('2'). 텍스트 병기 금지 — 구분자·공백 차이로 오탐 발생. 확정(2026-07-27)",
+      "3_인쇄된_정답박스": "교재에 인쇄된 |정답| 박스를 correct_answer의 1순위 근거로 사용. user_answer로는 절대 쓰지 않음. 확정(2026-07-27)",
+      "4_페이지_경계": "2단 조판에서 좌측 컬럼 하단 문항의 선택지는 우측 컬럼 상단으로 이어진다(같은 페이지). '앞 페이지 문항'으로 오독 금지. 선택지가 이 이미지에 실제로 없는 문항만 null 라벨. 확정(2026-07-27)",
+      "5_번호없는_교재연습": "라벨 대상에서 제외. 'Let's Use It' 등 문항번호 없는 교재 연습과 번호 없는 단어나열형은 GT에 넣지 않는다. 확정(2026-07-27)"
+    },
+    "_truncated_note": "이미지 경계에서 잘린 답은 _truncated=true로 표시하고 모호 취급",
     "confidence_legend": {
       "high": "재판독해도 바뀌지 않을 수준",
       "mid": "판독은 됐으나 마킹이 흐리거나 겹침 — 검수 권장",
@@ -70,19 +73,6 @@
         { "problem_number": "70", "type": "mc", "user_answer": { "ambiguous": true, "accept": ["4", "5"], "null_ok": true, "_confidence": "low", "_note": "V자 마크가 ④ 두 번째 줄과 ⑤ 사이에 걸쳐 있어 지시 대상 불명 — 진성 모호" }, "correct_answer": { "value": "5", "_confidence": "high" } },
         { "problem_number": "71", "type": "mc", "user_answer": { "value": "3", "_confidence": "mid" }, "correct_answer": { "value": "3", "_confidence": "high" } }
       ]
-    },
-    {
-      "image": "다중답안/KakaoTalk_20260702_112441634.png",
-      "page_label": "중2 NE능률 Lesson1 Grammar Build Up p34 — 문법설명·만화 예문 + Let's Use It 4문항",
-      "_case_type": ["비문항 텍스트 대량(설명·만화 대사·우리말 해석)", "교재에 정답 박스 인쇄됨", "문항번호 없는 교재 연습"],
-      "questions": [
-        { "problem_number": "1", "type": "mc", "user_answer": { "value": "that", "_confidence": "high", "_note": "괄호 (who / that) 중 that에 동그라미" }, "correct_answer": { "value": "that", "_confidence": "high", "_note": "페이지 우하단 |정답| 박스에 인쇄됨" } },
-        { "problem_number": "2", "type": "mc", "user_answer": { "value": "who", "_confidence": "high" }, "correct_answer": { "value": "who", "_confidence": "high" } },
-        { "problem_number": "3", "type": "mc", "user_answer": { "value": "who", "_confidence": "mid" }, "correct_answer": { "value": "who", "_confidence": "high" } },
-        { "problem_number": "4", "type": "mc", "user_answer": { "value": "which", "_confidence": "low", "_note": "큰 동그라미 낙서가 1~4번을 관통해 개별 마킹과 구분이 어려움" }, "correct_answer": { "value": "which", "_confidence": "high" } }
-      ],
-      "_problem_number_note": "지면에 1~4로 인쇄된 'Let's Use It' 연습문제. 현행 코드 폴백('연습 N')과 충돌할 수 있어 규약 확정 필요",
-      "_critical_check": "교과서 예문(I want to be a friend who...)·만화 말풍선·우리말 해석·'Let's Use It' 해석 박스는 문항이 아님. 이것들을 문항으로 추출하면 과추출(over-extraction)"
     },
     {
       "image": "다중답안/KakaoTalk_20260702_112716414.png",
@@ -161,49 +151,27 @@
     },
     {
       "image": "이어지는 지문/KakaoTalk_20251202_101043325_05.jpg",
-      "page_label": "자이스토리 고1 영어 p102 (Q32~35) — 페이지 경계에서 잘린 문항 포함",
-      "_case_type": ["앞 페이지 문항의 선택지만 상단에 존재", "선택지가 뒷 페이지로 넘어간 문항 2개", "2단 조판"],
+      "page_label": "자이스토리 고1 영어 p102 (Q32~35) — 2단 조판, 컬럼 넘김 + 하단 잘림",
+      "_case_type": ["2단 조판 컬럼 넘김(좌하단 발문 → 우상단 선택지)", "하단 경계에서 잘린 문항 1개"],
+      "_layout_note": "좌컬럼 Q32(지문+선택지 완결) → 좌컬럼 Q33 발문·지문 → 우컬럼 상단 Q33 선택지 → 우컬럼 Q34 → 우컬럼 하단 Q35(잘림). 우상단 선택지 뭉치를 '앞 페이지 문항'이나 Q32의 것으로 붙이면 치명적 오독",
       "questions": [
-        {
-          "problem_number": "31",
-          "type": "mc",
-          "user_answer": { "value": "4", "_confidence": "mid" },
-          "correct_answer": { "value": null, "null_ok": true, "_confidence": "low" },
-          "_note": "p102 우측 상단의 ①~⑤(musical preferences 계열)는 이 페이지에 발문·지문이 없는 앞 페이지 문항의 선택지. problem_number '31'은 32번 직전이라는 추정일 뿐 확정 아님 — 검수 시 실제 번호를 알려주면 확정. 파이프라인이 이 선택지 뭉치를 Q32에 잘못 붙이면 치명적"
-        },
         { "problem_number": "32", "type": "mc", "user_answer": { "value": "5", "_confidence": "high" }, "correct_answer": { "value": "5", "_confidence": "mid", "_note": "a double-edged sword — 승리가 양날의 검이라는 문맥" } },
-        { "problem_number": "33", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "correct_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "_note": "지문만 있고 선택지가 이 이미지에 없음(다음 페이지로 이어짐). 선택지 없이 답을 만들어내면 안 됨" },
-        { "problem_number": "34", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "low", "_note": "①② 좌측에 흐린 흔적이 있으나 선택 표시로 단정 불가" }, "correct_answer": { "value": "4", "_confidence": "mid" } },
-        { "problem_number": "35", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "correct_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "_note": "지문 앞부분만 보이고 나머지가 잘림" }
+        {
+          "problem_number": "33", "type": "mc",
+          "user_answer": { "value": "4", "_confidence": "high", "_note": "우컬럼 상단 ④(interpret lyrics…)에 동그라미" },
+          "correct_answer": { "value": "1", "_confidence": "mid", "_note": "choose and determine his or her musical preferences — 곡 선택에 능동적 노력이 든다는 문맥. 학생 오답 케이스" },
+          "_note": "발문·지문은 좌컬럼 하단, 선택지는 우컬럼 상단. 컬럼 넘김을 못 따라가면 이 문항이 '선택지 없음'으로 보이고 우상단 선택지는 주인 없는 뭉치로 오인됨"
+        },
+        { "problem_number": "34", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "low", "_note": "①② 좌측에 흐린 흔적이 있으나 선택 표시로 단정 불가" }, "correct_answer": { "value": "4", "_confidence": "mid", "_note": "internalizing the perspective of others on one's work" } },
+        { "problem_number": "35", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "correct_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "_note": "'전체 흐름과 관계 없는 문장' 발문과 지문 앞부분만 보이고 하단이 잘림 — 답을 만들어내면 안 됨" }
       ]
     },
     {
       "image": "정갈함/KakaoTalk_20251201_144852014_12.jpg",
       "page_label": "RAMI ENGLISH 5형식 심화 PAGE 1/3 (Q1~11)",
-      "_case_type": ["빨간 채점 대형 마크가 지면 전체를 관통", "번호 없는 단어나열형 복수선택 3문항", "복수정답 객관식 2문항"],
+      "_case_type": ["빨간 채점 대형 마크가 지면 전체를 관통", "복수정답 객관식 2문항"],
+      "_excluded": "지면 상단의 번호 없는 단어나열형 3문항(지각동사/사역동사/to부정사 목적격보어 고르기)은 규약 5에 따라 GT에서 제외. 모델이 이를 문항으로 추출하더라도 채점 대상 아님",
       "questions": [
-        {
-          "problem_number": "1", "type": "text", "answer_format": "multi_select",
-          "user_answer": { "ambiguous": true, "accept": ["watch feel see hear"], "null_ok": false, "_placeholder": true },
-          "correct_answer": { "ambiguous": true, "accept": ["smell watch feel see hear"], "null_ok": false, "_placeholder": true },
-          "user_answers": { "values": ["watch", "feel", "see", "hear"], "_confidence": "mid", "_note": "검은 펜 동그라미. smell 미선택" },
-          "correct_answers": { "values": ["smell", "watch", "feel", "see", "hear"], "_confidence": "mid", "_note": "지각동사 = 현재분사 목적격보어 가능" },
-          "_note": "선택지 번호가 없고 단어가 나열된 형식 — choices label 스키마와 불일치"
-        },
-        {
-          "problem_number": "2", "type": "text", "answer_format": "multi_select",
-          "user_answer": { "ambiguous": true, "accept": ["make have help"], "null_ok": false, "_placeholder": true },
-          "correct_answer": { "ambiguous": true, "accept": ["hear make have help watch"], "null_ok": false, "_placeholder": true },
-          "user_answers": { "values": ["make", "have", "help"], "_confidence": "mid" },
-          "correct_answers": { "values": ["hear", "make", "have", "help", "watch"], "_confidence": "mid", "_note": "사역(make/have) + 지각(hear/watch) + help" }
-        },
-        {
-          "problem_number": "3", "type": "text", "answer_format": "multi_select",
-          "user_answer": { "ambiguous": true, "accept": ["allow ask want help"], "null_ok": false, "_placeholder": true },
-          "correct_answer": { "ambiguous": true, "accept": ["allow ask want help"], "null_ok": false, "_placeholder": true },
-          "user_answers": { "values": ["allow", "ask", "want", "help"], "_confidence": "mid" },
-          "correct_answers": { "values": ["allow", "ask", "want", "help"], "_confidence": "mid" }
-        },
         { "problem_number": "4", "type": "mc", "user_answer": { "value": "4", "_confidence": "high" }, "correct_answer": { "value": "4", "_confidence": "high", "_note": "wants me to speak / had me take" } },
         { "problem_number": "5", "type": "mc", "user_answer": { "value": "1", "_confidence": "high" }, "correct_answer": { "value": "1", "_confidence": "high", "_note": "saw her study / let her get" } },
         { "problem_number": "6", "type": "mc", "user_answer": { "value": "2", "_confidence": "high" }, "correct_answer": { "value": "2", "_confidence": "high", "_note": "smell something burning / made his brother turn off" } },
