@@ -1,0 +1,285 @@
+{
+  "meta": {
+    "status": "DRAFT — 검수 전. 사용자 검수·정정 후 ground-truth.json에 병합할 것",
+    "labeled_by": "Claude (1차 판독)",
+    "labeled_at": "2026-07-28",
+    "source": "test_image/정답지/ — 문제지 4장 + 해설지 2장의 완결 세트. 교재: 천일문 GRAMMAR LEVEL 1, Chapter 11 전치사",
+    "scale": "4쪽 44문항",
+    "why_this_set": "correct_answer를 어법 추론이 아니라 인쇄된 해설지로 100% 확정할 수 있는 첫 표본. 직전 draft(2026-07-27, 7쪽 35문항)는 correct_answer 근거가 내 추론이어서 정확도 판단의 기준으로 쓸 수 없었고, 사용자 지시로 폐기했다",
+    "answer_key_images": {
+      "정답지/KakaoTalk_20260727_204054587_01.jpg": "해설지 p.29 — 143쪽 A·B·C, 145쪽 A의 정답 원천",
+      "정답지/KakaoTalk_20260727_204054587.jpg": "해설지 p.30 — 145쪽 B·C, 146·147쪽 Chapter Test의 정답 원천"
+    },
+    "labeling_rule": {
+      "correct_answer": "해설지 인쇄값 그대로. 전 항목 _confidence: high (사람 추론이 개입하지 않음)",
+      "user_answer": "학생의 연필 마킹만. 교사의 빨간 펜(V/O/밑줄/정정 필기)은 user_answer로 쓰지 않는다",
+      "red_pen": "이 세트는 전 페이지에 교사 채점 흔적이 있다. 빨간 정정 필기를 학생 답으로 흡수하면 confident-wrong — 이 표본의 핵심 검출 목표다"
+    },
+    "conventions_decided": {
+      "1_복수정답": "answer_format='multi_select' + user_answers/correct_answers 배열(정렬된 문자열). 확정(2026-07-27). 코드 지원 완료 — score.mjs 집합채점·multi_* 버킷, simplePipeline Step1·2 프롬프트 및 normalizeItem(→DB 계약값 'multi'), computeIsCorrect 별칭 수용. 회귀 테스트: test/multiSelect.test.mjs",
+      "2_A_B_짝선택지": "correct_answer는 선택지 번호만 기록('2'). 텍스트 병기 금지 — 구분자·공백 차이로 오탐 발생. 확정(2026-07-27)",
+      "3_인쇄된_정답박스": "교재/해설지에 인쇄된 정답을 correct_answer의 1순위 근거로 사용. user_answer로는 절대 쓰지 않음. 확정(2026-07-27). 이 세트가 이 규약을 검증하는 첫 표본이다",
+      "4_페이지_경계": "2단 조판에서 좌측 컬럼 하단 문항의 선택지는 우측 컬럼 상단으로 이어진다(같은 페이지). '앞 페이지 문항'으로 오독 금지. 확정(2026-07-27). 이 세트는 1단 조판이라 해당 없음",
+      "5_번호없는_교재연습": "라벨 대상에서 제외. 확정(2026-07-27). 이 세트는 전 문항이 번호를 갖는다"
+    },
+    "harness_compatibility": {
+      "multi_select": "1문항(147쪽 Q10). score.mjs가 answer_format을 읽고 집합 완전일치 채점(multi_user·multi_correct 버킷). 우회용 _placeholder 스칼라 없음 — 참값은 *_answers 배열뿐",
+      "multi_blank": "9문항(143 B-1~3, 145 B-1~4, 146 Q5, 147 Q14). 인덱스별 텍스트 채점이 미구현이라 text 경로를 타며 q.user_answer / q.correct_answer 스칼라를 참조한다. 이 스칼라는 배열을 ', '로 이어붙인 우회값이므로 해당 문항 수치는 참고치로만 볼 것",
+      "problem_number_collision": "143·145쪽 Unit Exercise는 섹션 A/B/C가 각각 1부터 다시 번호를 매긴다. score.mjs의 normalizeProblemNum이 첫 숫자열만 뽑으므로 'A-1'·'B-1'·'C-1'이 전부 '1'로 충돌해 byNum Map에서 마지막 항목만 살아남는다. 이 2쪽은 현행 하네스로 정상 채점되지 않는다 — 146·147쪽(Q1~15 유일 번호)만 지금 바로 채점 가능하다. REVIEW 문서의 '코드 결손' 절 참고"
+    },
+    "confidence_legend": {
+      "high": "재판독해도 바뀌지 않을 수준",
+      "mid": "판독은 됐으나 마킹이 흐리거나 지운 자국이 겹침 — 한 번 봐 주면 좋음",
+      "low": "추정 — 반드시 검수 필요"
+    }
+  },
+  "pages": [
+    {
+      "image": "정답지/KakaoTalk_20260727_204054587_05.jpg",
+      "page_label": "천일문 GRAMMAR L1 Ch.11 전치사 p.143 Unit Exercise (A 8 + B 3 + C 5)",
+      "answer_key": "정답지/KakaoTalk_20260727_204054587_01.jpg (해설지 p.29)",
+      "_case_type": ["빈칸 서술형", "교사 빨간펜 채점", "지운 자국", "섹션별 번호 재시작"],
+      "_harness_note": "problem_number가 A-1~C-5로 섹션 접두를 갖는다. 현행 normalizeProblemNum은 이를 1~8로 뭉갠다 — meta.harness_compatibility.problem_number_collision 참고",
+      "questions": [
+        { "problem_number": "A-1", "type": "text", "user_answer": { "value": "on", "_confidence": "high" }, "correct_answer": { "value": "on", "_confidence": "high" } },
+        { "problem_number": "A-2", "type": "text", "user_answer": { "value": "in", "_confidence": "high" }, "correct_answer": { "value": "in", "_confidence": "high" } },
+        { "problem_number": "A-3", "type": "text", "user_answer": { "value": "at", "_confidence": "high", "_note": "번호 옆 빨간 V는 교사 채점 표시 — user_answer 아님" }, "correct_answer": { "value": "at", "_confidence": "high" } },
+        { "problem_number": "A-4", "type": "text", "user_answer": { "value": "in", "_confidence": "high" }, "correct_answer": { "value": "in", "_confidence": "high" } },
+        { "problem_number": "A-5", "type": "text", "user_answer": { "value": "in", "_confidence": "mid", "_note": "앞에 지운 글자가 겹쳐 있어 최종 필기만 'in'으로 읽었다" }, "correct_answer": { "value": "in", "_confidence": "high" } },
+        { "problem_number": "A-6", "type": "text", "user_answer": { "value": "on", "_confidence": "high" }, "correct_answer": { "value": "on", "_confidence": "high" } },
+        { "problem_number": "A-7", "type": "text", "user_answer": { "value": "at", "_confidence": "high" }, "correct_answer": { "value": "at", "_confidence": "high" } },
+        { "problem_number": "A-8", "type": "text", "user_answer": { "value": "on", "_confidence": "high", "_note": "번호 옆 빨간 V는 교사 채점 표시 — user_answer 아님" }, "correct_answer": { "value": "on", "_confidence": "high" } },
+
+        {
+          "problem_number": "B-1", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "after, before", "_placeholder": true },
+          "correct_answer": { "value": "after, before", "_placeholder": true },
+          "user_answers": [
+            { "value": "after", "_confidence": "high" },
+            { "value": "before", "_confidence": "high" }
+          ],
+          "correct_answers": [
+            { "value": "after", "_confidence": "high" },
+            { "value": "before", "_confidence": "high" }
+          ]
+        },
+        {
+          "problem_number": "B-2", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "for, during", "_placeholder": true },
+          "correct_answer": { "value": "for, during", "_placeholder": true },
+          "user_answers": [
+            { "value": "for", "_confidence": "high" },
+            { "value": "during", "_confidence": "high" }
+          ],
+          "correct_answers": [
+            { "value": "for", "_confidence": "high" },
+            { "value": "during", "_confidence": "high" }
+          ]
+        },
+        {
+          "problem_number": "B-3", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "until, by", "_placeholder": true },
+          "correct_answer": { "value": "by, until", "_placeholder": true },
+          "user_answers": [
+            { "value": "until", "_confidence": "high" },
+            { "value": "by", "_confidence": "high" }
+          ],
+          "correct_answers": [
+            { "value": "by", "_confidence": "high" },
+            { "value": "until", "_confidence": "high" }
+          ],
+          "_case": "학생 오답 — 두 빈칸을 서로 바꿔 썼다. 순서가 다르면 오답이어야 하는 케이스"
+        },
+
+        { "problem_number": "C-1", "type": "text", "user_answer": { "value": "at night", "_confidence": "high" }, "correct_answer": { "value": "at night", "_confidence": "high" } },
+        { "problem_number": "C-2", "type": "text", "user_answer": { "value": "in May", "_confidence": "high" }, "correct_answer": { "value": "in May", "_confidence": "high" } },
+        {
+          "problem_number": "C-3", "type": "text",
+          "user_answer": { "value": "by midnight", "_confidence": "mid", "_note": "앞에 지운 글자 뭉치가 있고 그 뒤 'by midnight'. 지운 것이 무엇인지는 판독 불가" },
+          "correct_answer": { "ambiguous": true, "accept": ["until midnight", "till midnight"], "_confidence": "high", "_note": "해설지 표기 'until[till] midnight' — 대괄호는 대체 가능 표기" },
+          "_case": "학생 오답"
+        },
+        { "problem_number": "C-4", "type": "text", "user_answer": { "value": "during the test", "_confidence": "high" }, "correct_answer": { "value": "during the test", "_confidence": "high" } },
+        { "problem_number": "C-5", "type": "text", "user_answer": { "value": "for a month", "_confidence": "mid", "_note": "'for' 앞에 지운 글자가 겹침. 최종 필기는 'for a month'" }, "correct_answer": { "value": "for a month", "_confidence": "high" } }
+      ]
+    },
+    {
+      "image": "정답지/KakaoTalk_20260727_204054587_04.jpg",
+      "page_label": "천일문 GRAMMAR L1 Ch.11 전치사 p.145 Unit Exercise (A 5 + B 4 + C 4)",
+      "answer_key": "A는 정답지/KakaoTalk_20260727_204054587_01.jpg (해설지 p.29), B·C는 정답지/KakaoTalk_20260727_204054587.jpg (해설지 p.30)",
+      "_case_type": ["빈칸 서술형", "교사 빨간펜 대형 원이 지면 관통", "섹션별 번호 재시작", "오답 3문항"],
+      "_harness_note": "problem_number 충돌 — 143쪽과 동일",
+      "questions": [
+        { "problem_number": "A-1", "type": "text", "user_answer": { "value": "like", "_confidence": "high" }, "correct_answer": { "value": "like", "_confidence": "high" } },
+        { "problem_number": "A-2", "type": "text", "user_answer": { "value": "by", "_confidence": "high" }, "correct_answer": { "value": "by", "_confidence": "high" } },
+        { "problem_number": "A-3", "type": "text", "user_answer": { "value": "to", "_confidence": "high" }, "correct_answer": { "value": "to", "_confidence": "high" } },
+        { "problem_number": "A-4", "type": "text", "user_answer": { "value": "about", "_confidence": "high" }, "correct_answer": { "value": "about", "_confidence": "high" } },
+        { "problem_number": "A-5", "type": "text", "user_answer": { "value": "with", "_confidence": "high" }, "correct_answer": { "value": "with", "_confidence": "high" } },
+
+        {
+          "problem_number": "B-1", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "through, through", "_placeholder": true },
+          "correct_answer": { "value": "to, to", "_placeholder": true },
+          "user_answers": [
+            { "value": "through", "_confidence": "high" },
+            { "value": "through", "_confidence": "mid", "_note": "빨간 밑줄이 겹쳐 흐리지만 첫 빈칸과 같은 단어" }
+          ],
+          "correct_answers": [
+            { "value": "to", "_confidence": "high" },
+            { "value": "to", "_confidence": "high" }
+          ],
+          "_case": "학생 오답. 발문이 '빈칸에 공통으로 들어갈 전치사'라 두 빈칸이 같은 단어"
+        },
+        {
+          "problem_number": "B-2", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "against, against", "_placeholder": true },
+          "correct_answer": { "value": "against, against", "_placeholder": true },
+          "user_answers": [
+            { "value": "against", "_confidence": "mid", "_note": "빨간 대형 원이 관통해 흐림" },
+            { "value": "against", "_confidence": "mid", "_note": "앞에 지운 자국이 겹침" }
+          ],
+          "correct_answers": [
+            { "value": "against", "_confidence": "high" },
+            { "value": "against", "_confidence": "high" }
+          ]
+        },
+        {
+          "problem_number": "B-3", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "to, to", "_placeholder": true },
+          "correct_answer": { "value": "through, through", "_placeholder": true },
+          "user_answers": [
+            { "value": "to", "_confidence": "high" },
+            { "value": "to", "_confidence": "low", "_note": "'She learned French ___ online courses' 빈칸의 필기가 매우 흐려 'to'로만 추정. 검수 필요" }
+          ],
+          "correct_answers": [
+            { "value": "through", "_confidence": "high" },
+            { "value": "through", "_confidence": "high" }
+          ],
+          "_case": "학생 오답. B-1과 답을 맞바꿔 썼다"
+        },
+        {
+          "problem_number": "B-4", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "with, with", "_placeholder": true },
+          "correct_answer": { "value": "with, with", "_placeholder": true },
+          "user_answers": [
+            { "value": "with", "_confidence": "high" },
+            { "value": "with", "_confidence": "high" }
+          ],
+          "correct_answers": [
+            { "value": "with", "_confidence": "high" },
+            { "value": "with", "_confidence": "high" }
+          ]
+        },
+
+        { "problem_number": "C-1", "type": "text", "user_answer": { "value": "is good at science", "_confidence": "mid", "_note": "빨간 취소선이 관통" }, "correct_answer": { "value": "is good at science", "_confidence": "high" } },
+        { "problem_number": "C-2", "type": "text", "user_answer": { "value": "is interested in cars", "_confidence": "high" }, "correct_answer": { "value": "is interested in cars", "_confidence": "high" } },
+        { "problem_number": "C-3", "type": "text", "user_answer": { "value": "is full of fish", "_confidence": "high" }, "correct_answer": { "value": "is full of fish", "_confidence": "high" } },
+        {
+          "problem_number": "C-4", "type": "text",
+          "user_answer": { "value": "by the bus terminal", "_confidence": "high", "_note": "'I walked ___by the bus terminal___ my home.'" },
+          "correct_answer": { "value": "from the bus terminal to", "_confidence": "high" },
+          "_case": "학생 오답"
+        }
+      ]
+    },
+    {
+      "image": "정답지/KakaoTalk_20260727_204054587_03.jpg",
+      "page_label": "천일문 GRAMMAR L1 Ch.11 전치사 p.146 Chapter Test Q1~8",
+      "answer_key": "정답지/KakaoTalk_20260727_204054587.jpg (해설지 p.30)",
+      "_case_type": ["객관식 + 서술형 혼합", "교사 빨간펜 대형 V/취소선", "미완성 답안", "오답 2문항"],
+      "questions": [
+        {
+          "problem_number": "1", "type": "mc",
+          "user_answer": { "value": "5", "_confidence": "mid", "_note": "연필 체크(✓)의 꼭짓점이 ⑤ 좌측에 놓이고 긴 획이 ③ 쪽으로 올라간다. 지시 대상은 ⑤로 읽었다" },
+          "correct_answer": { "value": "5", "_confidence": "high" },
+          "_critical_check": "체크 획이 ③을 지나므로 모델이 ③으로 오독하기 쉽다"
+        },
+        { "problem_number": "2", "type": "mc", "user_answer": { "value": "4", "_confidence": "high" }, "correct_answer": { "value": "4", "_confidence": "high" } },
+        { "problem_number": "3", "type": "mc", "user_answer": { "value": "3", "_confidence": "high" }, "correct_answer": { "value": "3", "_confidence": "high" } },
+        { "problem_number": "4", "type": "mc", "user_answer": { "value": "3", "_confidence": "high" }, "correct_answer": { "value": "3", "_confidence": "high" } },
+        {
+          "problem_number": "5", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "at, in", "_placeholder": true },
+          "correct_answer": { "value": "at, in", "_placeholder": true },
+          "user_answers": [
+            { "value": "at", "_confidence": "high", "_note": "(A)" },
+            { "value": "in", "_confidence": "high", "_note": "(B)" }
+          ],
+          "correct_answers": [
+            { "value": "at", "_confidence": "high" },
+            { "value": "in", "_confidence": "high" }
+          ]
+        },
+        {
+          "problem_number": "6", "type": "text",
+          "user_answer": { "value": "I'm to", "_confidence": "high", "_note": "쓰다 만 미완성 답안. 빨간 취소선이 그어져 있다" },
+          "correct_answer": { "value": "I take piano lessons on Tuesday.", "_confidence": "high" },
+          "_case": "학생 오답(미완성)",
+          "_critical_check": "미완성 답안을 모델이 완성형으로 보정해 채워넣으면 confident-wrong"
+        },
+        {
+          "problem_number": "7", "type": "mc",
+          "user_answer": { "value": "2", "_confidence": "mid", "_note": "연필 사선이 ① 좌상단에서 내려와 ②에서 끝난다. 지시 대상은 ②" },
+          "correct_answer": { "value": "2", "_confidence": "high" },
+          "_critical_check": "사선 시작점이 ①에 걸쳐 있어 ①로 오독하기 쉽다. ②에는 교사의 빨간 밑줄도 있어 빨간펜을 학생 답으로 흡수하는 오류도 같은 정답을 내므로, 이 문항만으로는 두 오류를 구분할 수 없다"
+        },
+        {
+          "problem_number": "8", "type": "mc",
+          "user_answer": { "value": "2", "_confidence": "high" },
+          "correct_answer": { "value": "3", "_confidence": "high" },
+          "_case": "학생 오답",
+          "_critical_check": "보기 ⓐ~ⓔ 위에 교사의 빨간 정정 필기(by/in/on)와 체크가 있다. 이를 학생 답으로 흡수하면 안 된다"
+        }
+      ]
+    },
+    {
+      "image": "정답지/KakaoTalk_20260727_204054587_02.jpg",
+      "page_label": "천일문 GRAMMAR L1 Ch.11 전치사 p.147 Chapter Test Q9~15",
+      "answer_key": "정답지/KakaoTalk_20260727_204054587.jpg (해설지 p.30)",
+      "_case_type": ["복수정답 1문항", "교사 빨간펜 대형 원이 지면 관통", "철자 오류 답안", "학생 이름 손글씨"],
+      "questions": [
+        { "problem_number": "9", "type": "mc", "user_answer": { "value": "4", "_confidence": "high" }, "correct_answer": { "value": "4", "_confidence": "high" } },
+        {
+          "problem_number": "10", "type": "mc", "answer_format": "multi_select",
+          "user_answers": { "values": ["1", "2"], "_confidence": "high", "_note": "①·② 각각에 연필 사선" },
+          "correct_answers": { "values": ["1", "2"], "_confidence": "high", "_note": "발문 '어법상 알맞은 문장 두 개를 고르세요'. 해설지 '①,②'" },
+          "_case": "복수정답 실증 케이스 — multi_select 경로를 인쇄 정답으로 검증할 수 있는 유일한 표본"
+        },
+        {
+          "problem_number": "11", "type": "text",
+          "user_answer": { "value": "were full of", "_confidence": "high", "_note": "'full of'를 먼저 쓰고 'were'를 윗줄에 삽입했다" },
+          "correct_answer": { "value": "were full of", "_confidence": "high" }
+        },
+        {
+          "problem_number": "12", "type": "mc",
+          "user_answer": { "value": "4", "_confidence": "high" },
+          "correct_answer": { "value": "4", "_confidence": "high" },
+          "_note": "지문 빈칸 ⓐ~ⓓ에 학생이 with/like/from/from을 채웠고 ⓓ는 교사가 빨간펜으로 for로 정정했다. 이 문항의 답은 선택지 번호이며 빈칸은 GT 항목이 아니다"
+        },
+        { "problem_number": "13", "type": "mc", "user_answer": { "value": "5", "_confidence": "high" }, "correct_answer": { "value": "5", "_confidence": "high" } },
+        {
+          "problem_number": "14", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "value": "beetween, in, along", "_placeholder": true },
+          "correct_answer": { "value": "between, in, along", "_placeholder": true },
+          "user_answers": [
+            { "value": "beetween", "_confidence": "high", "_note": "철자 오류(between → beetween). 원문 그대로 기록한다" },
+            { "value": "in", "_confidence": "high" },
+            { "value": "along", "_confidence": "high" }
+          ],
+          "correct_answers": [
+            { "value": "between", "_confidence": "high" },
+            { "value": "in", "_confidence": "high" },
+            { "value": "along", "_confidence": "high" }
+          ],
+          "_critical_check": "모델이 오타를 정상 철자로 교정해 읽으면 학생 답이 왜곡된다. user_answers[0]은 반드시 'beetween'이어야 한다"
+        },
+        {
+          "problem_number": "15", "type": "mc",
+          "user_answer": { "value": "3", "_confidence": "mid", "_note": "③ 위에 연필 체크. 지문 빈칸 ⓐ~ⓓ는 학생이 비워뒀고 그 위의 필기는 전부 교사 빨간펜이다" },
+          "correct_answer": { "value": "3", "_confidence": "high" },
+          "_critical_check": "빈칸 ⓐ~ⓓ가 미작성 상태 — 모델이 보기 상자에서 유추해 채우면 confident-wrong"
+        }
+      ]
+    }
+  ]
+}
