@@ -41,7 +41,7 @@
 | `eval/harness/pipeline-runner.mjs`<br>`simulate-grading.mjs` | marks가 스칼라만 실어 집합이 깨짐 | `answer_format`·`user_answers`·`correct_answers` 전달 |
 
 초안의 `_placeholder: true` 스칼라(하네스 크래시 회피용 우회값)는 **제거했다** — 참값은 `*_answers` 배열뿐이다.
-회귀 테스트: `npm test`(`test/multiSelect.test.mjs`, 37케이스).
+회귀 테스트: `npm test`(`test/multiSelect.test.mjs`, 38케이스).
 
 **남은 것:** `multi_blank`(다중빈칸 서술형 5문항)는 인덱스별 텍스트 채점이 별개 로직이라
 아직 `text_*` 경로를 탄다. 해당 문항의 `_placeholder` 스칼라는 하네스가 여전히 참조하므로 남겨뒀고,
