@@ -41,7 +41,7 @@ export const ChildAssignmentsCard: React.FC<Props> = ({ childId }) => {
             const overdueIncomplete = !isComplete && isOverdue(a.due_date);
             const hasResponses = (a.completed_count ?? 0) > 0;
             return (
-              <div key={a.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50">
+              <div key={a.id} data-testid="child-assignment-row" className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50">
                 <div>
                   <p className="font-medium text-slate-800 dark:text-slate-200">{a.title}</p>
                   <p className="text-xs text-slate-500">

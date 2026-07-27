@@ -93,11 +93,11 @@ export const AssignmentResponseTable: React.FC<Props> = ({ problems, responses, 
                 {relatedResponses.map(r => {
                   const ai = aiStates[r.id] || {};
                   return (
-                    <div key={r.id || r.student_id} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-700/50">
+                    <div key={r.id || r.student_id} data-testid="assignment-response-row" className="p-2 rounded-lg bg-slate-50 dark:bg-slate-700/50">
                       <div className="flex items-center justify-between gap-2 text-sm">
                         <span className="text-slate-600 dark:text-slate-300 shrink-0">{studentLabel(r)}</span>
                         <span className="text-slate-700 dark:text-slate-200 flex-1 truncate" title={r.answer ?? ''}>{r.answer}</span>
-                        <span className={r.is_correct ? 'text-green-600' : r.is_correct === false ? 'text-red-500' : 'text-slate-400'}>
+                        <span data-testid="response-verdict" className={r.is_correct ? 'text-green-600' : r.is_correct === false ? 'text-red-500' : 'text-slate-400'}>
                           {r.is_correct ? t.stats.correct : r.is_correct === false ? t.stats.incorrect : t.assignments.notGraded}
                         </span>
                         <span className="text-slate-400 shrink-0">{t.assignments.secondsSuffix.replace('{seconds}', String(r.time_spent_seconds ?? 0))}</span>

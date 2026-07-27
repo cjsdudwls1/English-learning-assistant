@@ -23,6 +23,33 @@ export const auditPages: Record<Role, readonly string[]> = {
   director: ['/director/dashboard', '/academies'],
 };
 
+// 화면 문자열 매처.
+// playwright.config.ts가 locale: 'ko-KR'이라 실제로는 ko로 뜨지만,
+// LanguageContext가 localStorage·profiles.language로도 언어를 정하므로
+// 계정 설정 하나로 스펙이 통째로 깨지지 않게 en도 함께 받는다.
+// 텍스트 문구는 src/utils/translations.ts의 ko/en 값과 짝을 맞춰 유지할 것.
+export const T = {
+  add: /^(추가|Add)$/,
+  addByEmail: /이메일로 추가|Add by email/,
+  assignmentTitle: /과제 제목|Assignment title/,
+  createSubmit: /^(과제 생성|Create Assignment)/,
+  submitAnswer: /^(답안 제출|Submit Answer)$/,
+  shortAnswerInput: /답을 입력하세요|Enter your answer/,
+  essayInput: /답안을 작성하세요|Write your answer/,
+  allSolved: /모든 문제를 풀었습니다|solved all problems/i,
+  // 완료 화면 '정답: {correct} / {total}'
+  correctSummary: /(?:정답|Correct):\s*(\d+)\s*\/\s*(\d+)/,
+  reviewHeading: /문제 다시 보기|Review Problems/,
+  markCorrect: /^(맞음|Correct)$/,
+  markWrong: /^(틀림|Incorrect)$/,
+  notGraded: /^(미채점|Not graded)$/i,
+  completed: /완료|Completed/,
+  deleteAssignment: /^(삭제|Delete)$/,
+  // 학생 /stats 연간 카드
+  statTotalProblems: /^(총 문제|Total Problems)$/,
+  statCorrectIncorrect: /^(정답\/오답|Correct \/ Incorrect)$/,
+} as const;
+
 export async function login(page: Page, email: string) {
   await page.goto('/');
   await page.fill('input[type="email"]', email);
@@ -69,4 +96,23 @@ export async function waitForRenderSettled(
       }),
     { quietMs, maxMs },
   );
+}
+
+// 학생 /stats 상단 SolvingStatsCard의 '{year}년 전체' 카드 수치.
+// 월/일 카드는 사용자가 월을 고르기 전까지 렌더되지 않으므로 첫 StatCard 묶음이 연간이다.
+// 데이터가 0건이면 AssignmentStatsDisplay가 StatCard 대신 '데이터가 없습니다.'만 렌더한다 → 0으로 읽는다.
+export async function readYearSolvingTotals(page: Page) {
+  const totalLabel = page.locator('p').filter({ hasText: T.statTotalProblems }).first();
+  if ((await totalLabel.count()) === 0) return { total: 0, correct: 0, incorrect: 0 };
+
+  const totalText = await totalLabel.locator('xpath=following-sibling::p[1]').innerText();
+  const ratioText = await page
+    .locator('p')
+    .filter({ hasText: T.statCorrectIncorrect })
+    .first()
+    .locator('xpath=following-sibling::p[1]')
+    .innerText();
+
+  const [correct, incorrect] = ratioText.split('/').map((s) => Number(s.trim()));
+  return { total: Number(totalText.match(/\d+/)?.[0]), correct, incorrect };
 }
