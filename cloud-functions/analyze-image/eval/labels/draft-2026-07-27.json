@@ -1,0 +1,231 @@
+{
+  "meta": {
+    "status": "DRAFT — 검수 전. 사용자 검수·정정 후 ground-truth.json에 병합할 것",
+    "labeled_by": "Claude (1차 판독)",
+    "labeled_at": "2026-07-27",
+    "sampling": "test_image 60장 중 8장. 기존 gold(9장)가 커버하지 않는 폴더·유형을 우선 선정",
+    "harness_compatibility": "score.mjs는 answer_format을 읽지 않고 q.user_answer / q.correct_answer 스칼라만 참조한다. 배열만 있는 문항은 classifyText(undefined,…)에서 TypeError로 터진다. 이를 피하려고 모든 문항에 스칼라를 병기했으나, _placeholder:true 가 붙은 스칼라는 '표현이 불가능해 느슨하게 우회한 값'이지 참값이 아니다. 참값은 항상 *_answers 배열 쪽이다. score.mjs에 다중답 지원이 들어가기 전까지 해당 문항의 채점 결과는 무효로 취급할 것",
+    "conventions_pending": [
+      "복수정답 객관식(정답 2개/모두 고르시오)의 표기 규약 — 초안은 answer_format='multi_select' + *_answers 배열 사용(현행 코드 미지원)",
+      "(A)/(B) 짝 선택지에서 correct_answer를 '선택지 번호'로 둘지 '(A)who (B)which' 텍스트로 둘지",
+      "교재 연습문제(번호 없음)의 problem_number 부여 규칙 — 현행 코드는 '연습 N' 폴백",
+      "이미지 경계에서 잘린 답의 처리 — 초안은 _truncated=true로 표시하고 모호 취급"
+    ],
+    "confidence_legend": {
+      "high": "재판독해도 바뀌지 않을 수준",
+      "mid": "판독은 됐으나 마킹이 흐리거나 겹침 — 검수 권장",
+      "low": "추정 — 반드시 검수 필요"
+    }
+  },
+  "pages": [
+    {
+      "image": "다중답안/KakaoTalk_20260702_104945263.png",
+      "page_label": "표 참조 서술형 Q28 — 빈칸 3개 중 1개만 응답, 우측 잘림",
+      "_case_type": ["multi_blank", "미응답 빈칸", "이미지 경계 잘림", "표(visual_context) 참조"],
+      "questions": [
+        {
+          "problem_number": "28",
+          "type": "text",
+          "answer_format": "multi_blank",
+          "user_answer": { "ambiguous": true, "accept": ["the writer who won the 2024 Nobel Prize in Literature"], "null_ok": false, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["the writer who won the 2024 Nobel Prize in Literature", "the artist who painted the Mona Lisa", "the inventor who invented the light bulb"], "null_ok": false, "_placeholder": true },
+          "user_answers": [
+            { "value": "the writer who won the 2024 Nobel Prize in Literature", "_truncated": true, "_confidence": "mid", "_note": "손글씨가 우측 이미지 경계 밖으로 넘어가 뒷부분 판독 불가. 표 내용으로 추정한 값" },
+            { "value": null, "_confidence": "high", "_note": "완전 공란 — 미작성" },
+            { "value": null, "_confidence": "high", "_note": "완전 공란 — 미작성" }
+          ],
+          "correct_answers": [
+            { "value": "the writer who won the 2024 Nobel Prize in Literature", "_confidence": "high" },
+            { "value": "the artist who painted the Mona Lisa", "_confidence": "high" },
+            { "value": "the inventor who invented the light bulb", "_confidence": "high" }
+          ],
+          "_critical_check": "표에 정답 근거가 인쇄돼 있으므로, 모델이 (2)(3) 미작성 칸을 표에서 유추해 user_answers에 채워넣으면 confident-wrong. 반드시 null이어야 함"
+        }
+      ]
+    },
+    {
+      "image": "다중답안/ㅇ.png",
+      "page_label": "중2 NE능률(김기택) Lesson1 PATTERN2 주격 관계대명사 p42 (Q63~71)",
+      "_case_type": ["복수정답 2문항", "지운 자국·스크리블", "여백 한글 메모"],
+      "questions": [
+        {
+          "problem_number": "63", "type": "mc", "answer_format": "multi_select",
+          "user_answer": { "ambiguous": true, "accept": ["3", "4"], "null_ok": true, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["3", "4"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["3", "4"], "_confidence": "low", "_note": "하단에 ③④ 동그라미가 있으나 옆에 해칭(빗금) 지움표시 2개가 겹쳐 있음. 지운 것이 무엇인지 검수 필요" },
+          "correct_answers": { "values": ["3", "4"], "_confidence": "high", "_note": "발문 '(단, 2개)'. ③ house+which, ④ person+who가 어법상 옳음" }
+        },
+        { "problem_number": "64", "type": "mc", "user_answer": { "value": "5", "_confidence": "mid" }, "correct_answer": { "value": "5", "_confidence": "high" } },
+        { "problem_number": "65", "type": "mc", "user_answer": { "value": "4", "_confidence": "mid" }, "correct_answer": { "value": "4", "_confidence": "high" } },
+        { "problem_number": "66", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "low", "_note": "①~⑤ 전반에 사선이 있어 어느 것이 선택인지 불명. 발문은 '어색한 것'(부정발문)" }, "correct_answer": { "value": "3", "_confidence": "high" } },
+        { "problem_number": "67", "type": "mc", "user_answer": { "value": "1", "_confidence": "mid" }, "correct_answer": { "value": "1", "_confidence": "high" } },
+        { "problem_number": "68", "type": "mc", "user_answer": { "value": "2", "_confidence": "high" }, "correct_answer": { "value": "2", "_confidence": "high" } },
+        {
+          "problem_number": "69", "type": "mc", "answer_format": "multi_select",
+          "user_answer": { "ambiguous": true, "accept": ["2"], "null_ok": true, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["2", "3"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["2"], "_confidence": "low", "_note": "'정답2개' 문항인데 ②에만 표시가 보임. 미완답인지 ③ 표시를 내가 놓쳤는지 검수 필요" },
+          "correct_answers": { "values": ["2", "3"], "_confidence": "high" }
+        },
+        { "problem_number": "70", "type": "mc", "user_answer": { "ambiguous": true, "accept": ["4", "5"], "null_ok": true, "_confidence": "low", "_note": "V자 마크가 ④ 두 번째 줄과 ⑤ 사이에 걸쳐 있어 지시 대상 불명 — 진성 모호" }, "correct_answer": { "value": "5", "_confidence": "high" } },
+        { "problem_number": "71", "type": "mc", "user_answer": { "value": "3", "_confidence": "mid" }, "correct_answer": { "value": "3", "_confidence": "high" } }
+      ]
+    },
+    {
+      "image": "다중답안/KakaoTalk_20260702_112441634.png",
+      "page_label": "중2 NE능률 Lesson1 Grammar Build Up p34 — 문법설명·만화 예문 + Let's Use It 4문항",
+      "_case_type": ["비문항 텍스트 대량(설명·만화 대사·우리말 해석)", "교재에 정답 박스 인쇄됨", "문항번호 없는 교재 연습"],
+      "questions": [
+        { "problem_number": "1", "type": "mc", "user_answer": { "value": "that", "_confidence": "high", "_note": "괄호 (who / that) 중 that에 동그라미" }, "correct_answer": { "value": "that", "_confidence": "high", "_note": "페이지 우하단 |정답| 박스에 인쇄됨" } },
+        { "problem_number": "2", "type": "mc", "user_answer": { "value": "who", "_confidence": "high" }, "correct_answer": { "value": "who", "_confidence": "high" } },
+        { "problem_number": "3", "type": "mc", "user_answer": { "value": "who", "_confidence": "mid" }, "correct_answer": { "value": "who", "_confidence": "high" } },
+        { "problem_number": "4", "type": "mc", "user_answer": { "value": "which", "_confidence": "low", "_note": "큰 동그라미 낙서가 1~4번을 관통해 개별 마킹과 구분이 어려움" }, "correct_answer": { "value": "which", "_confidence": "high" } }
+      ],
+      "_problem_number_note": "지면에 1~4로 인쇄된 'Let's Use It' 연습문제. 현행 코드 폴백('연습 N')과 충돌할 수 있어 규약 확정 필요",
+      "_critical_check": "교과서 예문(I want to be a friend who...)·만화 말풍선·우리말 해석·'Let's Use It' 해석 박스는 문항이 아님. 이것들을 문항으로 추출하면 과추출(over-extraction)"
+    },
+    {
+      "image": "다중답안/KakaoTalk_20260702_112716414.png",
+      "page_label": "중2 NE능률 Lesson1 PATTERN2 p36 (Q11~18)",
+      "_case_type": ["복수정답 1문항", "(A)/(B) 짝 선택지 4문항", "큰 원형 낙서가 좌우 컬럼 관통"],
+      "questions": [
+        { "problem_number": "11", "type": "mc", "user_answer": { "value": "1", "_confidence": "high" }, "correct_answer": { "value": "1", "_confidence": "high", "_note": "사람+사물 공통 → that" } },
+        { "problem_number": "12", "type": "mc", "user_answer": { "value": "2", "_confidence": "high" }, "correct_answer": { "value": "2", "_confidence": "high" } },
+        { "problem_number": "13", "type": "mc", "user_answer": { "value": "2", "_confidence": "high" }, "correct_answer": { "value": "2", "_confidence": "high" } },
+        { "problem_number": "14", "type": "mc", "user_answer": { "value": "2", "_confidence": "mid" }, "correct_answer": { "value": "2", "_confidence": "high", "_note": "(A) who (B) which" } },
+        {
+          "problem_number": "15", "type": "mc", "answer_format": "multi_select",
+          "user_answer": { "ambiguous": true, "accept": ["3", "5"], "null_ok": true, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["3", "4"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["3", "5"], "_confidence": "low", "_note": "③에 체크, ⑤ 숫자에 손그림 동그라미로 보임. ⑤ 표시가 실제 선택인지 검수 필요" },
+          "correct_answers": { "values": ["3", "4"], "_confidence": "high", "_note": "'정답2개' — which, that" }
+        },
+        { "problem_number": "16", "type": "mc", "user_answer": { "value": "2", "_confidence": "mid" }, "correct_answer": { "value": "2", "_confidence": "high" } },
+        { "problem_number": "17", "type": "mc", "user_answer": { "value": "3", "_confidence": "low", "_note": "③과 ⑤ 양쪽에 표시 흔적" }, "correct_answer": { "value": "5", "_confidence": "high", "_note": "(A) butterfly=사물 which / (B) lady=사람 that → ⑤ which-that" } },
+        { "problem_number": "18", "type": "mc", "user_answer": { "value": "1", "_confidence": "low", "_note": "①과 ④ 양쪽에 표시 흔적" }, "correct_answer": { "value": "1", "_confidence": "high", "_note": "(A) 사람+동물 혼합 → that / (B) bag → which" } }
+      ]
+    },
+    {
+      "image": "맨 처음 받은거/20250420_134446.jpg",
+      "page_label": "어법 학습지 Q9 극단 클로즈업(부분 촬영)",
+      "_case_type": ["극단 확대·부분 페이지", "캐럿(^) 삽입 표기", "여백 낙서와 답의 분리", "기존 gold와 동일 문항"],
+      "_duplicate_of": "맨 처음 받은거/20250420_134039.jpg 의 Q9 — ground-truth.json에 이미 존재. 병합 시 중복 주의",
+      "questions": [
+        {
+          "problem_number": "9",
+          "type": "text",
+          "user_answer": { "value": "We are planning a lot of events for children", "_confidence": "high", "_note": "'are'가 We와 planning 사이에 캐럿 삽입으로 작게 추가됨 — 이걸 빠뜨리면 오답 판정됨" },
+          "correct_answer": { "value": "We are planning a lot of events for children", "_confidence": "high" },
+          "_critical_check": "여백의 'be + ing', 'planning beginning'은 학생 메모이지 답이 아님. user_answer로 잡히면 confident-wrong"
+        }
+      ]
+    },
+    {
+      "image": "맨 처음 받은거/KakaoTalk_20251016_104852657_01.jpg",
+      "page_label": "교과서 본문 다시쓰기 — 다중빈칸 서술형 01~04",
+      "_case_type": ["문항당 빈칸 5~8개", "빨간 펜 교사 채점(동그라미·사선)", "하단 잘림", "이름 손글씨(PII)"],
+      "questions": [
+        {
+          "problem_number": "01", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "ambiguous": true, "accept": ["During the little girl her mother hungry sick"], "null_ok": false, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["During the little girl her mother hungry sick", "During a little girl her mother hungry sick"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["During", "the", "little", "girl", "her", "mother", "hungry", "sick"], "_confidence": "mid" },
+          "correct_answers": { "values": ["During", "the", "little", "girl", "her", "mother", "hungry", "sick"], "_confidence": "mid", "_note": "교사가 'the' 위에 빨간 사선을 그어 오답 처리 — 원문이 'a little girl'일 가능성. 교재 원문 확인 필요" },
+          "user_marked_correctness": { "value": "X", "_confidence": "mid", "_note": "빨간 사선" }
+        },
+        {
+          "problem_number": "02", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "ambiguous": true, "accept": ["The only that they could find grass"], "null_ok": false, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["The only that they could find grass"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["The", "only", "that", "they", "could", "find", "grass"], "_confidence": "high" },
+          "correct_answers": { "values": ["The", "only", "that", "they", "could", "find", "grass"], "_confidence": "high" },
+          "user_marked_correctness": { "value": null, "_confidence": "low", "_note": "문항번호 좌측 빨간 동그라미가 채점 O인지 번호 강조인지 불명" }
+        },
+        {
+          "problem_number": "03", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "ambiguous": true, "accept": ["was scared all the time"], "null_ok": false, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["was scared all the time"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["was", "scared", "all", "the", "time"], "_confidence": "high" },
+          "correct_answers": { "values": ["was", "scared", "all", "the", "time"], "_confidence": "high" },
+          "user_marked_correctness": { "value": null, "_confidence": "low" }
+        },
+        {
+          "problem_number": "04", "type": "text", "answer_format": "multi_blank",
+          "user_answer": { "ambiguous": true, "accept": ["Luckily survived thanks to help others"], "null_ok": false, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["Luckily survived thanks to help others"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["Luckily", "survived", "thanks", "to", "help", "others"], "_truncated": true, "_confidence": "mid", "_note": "마지막 빈칸('others')이 이미지 하단 경계에서 잘림" },
+          "correct_answers": { "values": ["Luckily", "survived", "thanks", "to", "help", "others"], "_confidence": "mid" },
+          "user_marked_correctness": { "value": null, "_confidence": "low" }
+        }
+      ]
+    },
+    {
+      "image": "이어지는 지문/KakaoTalk_20251202_101043325_05.jpg",
+      "page_label": "자이스토리 고1 영어 p102 (Q32~35) — 페이지 경계에서 잘린 문항 포함",
+      "_case_type": ["앞 페이지 문항의 선택지만 상단에 존재", "선택지가 뒷 페이지로 넘어간 문항 2개", "2단 조판"],
+      "questions": [
+        {
+          "problem_number": "31",
+          "type": "mc",
+          "user_answer": { "value": "4", "_confidence": "mid" },
+          "correct_answer": { "value": null, "null_ok": true, "_confidence": "low" },
+          "_note": "p102 우측 상단의 ①~⑤(musical preferences 계열)는 이 페이지에 발문·지문이 없는 앞 페이지 문항의 선택지. problem_number '31'은 32번 직전이라는 추정일 뿐 확정 아님 — 검수 시 실제 번호를 알려주면 확정. 파이프라인이 이 선택지 뭉치를 Q32에 잘못 붙이면 치명적"
+        },
+        { "problem_number": "32", "type": "mc", "user_answer": { "value": "5", "_confidence": "high" }, "correct_answer": { "value": "5", "_confidence": "mid", "_note": "a double-edged sword — 승리가 양날의 검이라는 문맥" } },
+        { "problem_number": "33", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "correct_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "_note": "지문만 있고 선택지가 이 이미지에 없음(다음 페이지로 이어짐). 선택지 없이 답을 만들어내면 안 됨" },
+        { "problem_number": "34", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "low", "_note": "①② 좌측에 흐린 흔적이 있으나 선택 표시로 단정 불가" }, "correct_answer": { "value": "4", "_confidence": "mid" } },
+        { "problem_number": "35", "type": "mc", "user_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "correct_answer": { "value": null, "null_ok": true, "_confidence": "high" }, "_note": "지문 앞부분만 보이고 나머지가 잘림" }
+      ]
+    },
+    {
+      "image": "정갈함/KakaoTalk_20251201_144852014_12.jpg",
+      "page_label": "RAMI ENGLISH 5형식 심화 PAGE 1/3 (Q1~11)",
+      "_case_type": ["빨간 채점 대형 마크가 지면 전체를 관통", "번호 없는 단어나열형 복수선택 3문항", "복수정답 객관식 2문항"],
+      "questions": [
+        {
+          "problem_number": "1", "type": "text", "answer_format": "multi_select",
+          "user_answer": { "ambiguous": true, "accept": ["watch feel see hear"], "null_ok": false, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["smell watch feel see hear"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["watch", "feel", "see", "hear"], "_confidence": "mid", "_note": "검은 펜 동그라미. smell 미선택" },
+          "correct_answers": { "values": ["smell", "watch", "feel", "see", "hear"], "_confidence": "mid", "_note": "지각동사 = 현재분사 목적격보어 가능" },
+          "_note": "선택지 번호가 없고 단어가 나열된 형식 — choices label 스키마와 불일치"
+        },
+        {
+          "problem_number": "2", "type": "text", "answer_format": "multi_select",
+          "user_answer": { "ambiguous": true, "accept": ["make have help"], "null_ok": false, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["hear make have help watch"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["make", "have", "help"], "_confidence": "mid" },
+          "correct_answers": { "values": ["hear", "make", "have", "help", "watch"], "_confidence": "mid", "_note": "사역(make/have) + 지각(hear/watch) + help" }
+        },
+        {
+          "problem_number": "3", "type": "text", "answer_format": "multi_select",
+          "user_answer": { "ambiguous": true, "accept": ["allow ask want help"], "null_ok": false, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["allow ask want help"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["allow", "ask", "want", "help"], "_confidence": "mid" },
+          "correct_answers": { "values": ["allow", "ask", "want", "help"], "_confidence": "mid" }
+        },
+        { "problem_number": "4", "type": "mc", "user_answer": { "value": "4", "_confidence": "high" }, "correct_answer": { "value": "4", "_confidence": "high", "_note": "wants me to speak / had me take" } },
+        { "problem_number": "5", "type": "mc", "user_answer": { "value": "1", "_confidence": "high" }, "correct_answer": { "value": "1", "_confidence": "high", "_note": "saw her study / let her get" } },
+        { "problem_number": "6", "type": "mc", "user_answer": { "value": "2", "_confidence": "high" }, "correct_answer": { "value": "2", "_confidence": "high", "_note": "smell something burning / made his brother turn off" } },
+        {
+          "problem_number": "7", "type": "mc", "answer_format": "multi_select",
+          "user_answer": { "ambiguous": true, "accept": ["2", "4"], "null_ok": true, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["2", "4"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["2", "4"], "_confidence": "mid" },
+          "correct_answers": { "values": ["2", "4"], "_confidence": "high", "_note": "'(2개)' — had the student solve / let the worker take" }
+        },
+        { "problem_number": "8", "type": "mc", "user_answer": { "value": "3", "_confidence": "high" }, "correct_answer": { "value": "3", "_confidence": "high", "_note": "ordered me to bathe" } },
+        { "problem_number": "9", "type": "mc", "user_answer": { "value": "3", "_confidence": "high" }, "correct_answer": { "value": "3", "_confidence": "high", "_note": "made the boy move" } },
+        { "problem_number": "10", "type": "mc", "user_answer": { "value": "4", "_confidence": "mid" }, "correct_answer": { "value": "4", "_confidence": "high", "_note": "'예상한다'=현재시제 → expect her to come" } },
+        {
+          "problem_number": "11", "type": "mc", "answer_format": "multi_select",
+          "user_answer": { "ambiguous": true, "accept": ["1", "3"], "null_ok": true, "_placeholder": true },
+          "correct_answer": { "ambiguous": true, "accept": ["1", "3"], "null_ok": false, "_placeholder": true },
+          "user_answers": { "values": ["1", "3"], "_confidence": "mid" },
+          "correct_answers": { "values": ["1", "3"], "_confidence": "high", "_note": "'(2개)' — saw them sing / singing" }
+        }
+      ],
+      "_critical_check": "빨간 색연필 대형 원·사선은 교사 채점 흔적. 이를 학생 선택으로 읽으면 전 문항이 오염됨. 학생 답은 검은 펜(동그라미/체크)"
+    }
+  ]
+}
