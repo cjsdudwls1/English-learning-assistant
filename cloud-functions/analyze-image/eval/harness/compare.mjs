@@ -22,9 +22,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
 import { loadEnvYaml } from './load-env.mjs';
+import { resolveGtPath } from './gt-path.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GT_PATH = path.resolve(__dirname, '../labels/ground-truth.json');
+const GT_PATH = resolveGtPath(process.argv);
 const TEST_IMAGE_ROOT = path.resolve(__dirname, '../../../../test_image');
 const RESULTS_DIR = path.resolve(__dirname, '../results');
 

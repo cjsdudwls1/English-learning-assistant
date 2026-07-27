@@ -15,14 +15,17 @@
  *   node simulate-grading.mjs                       # results 최신 파일 자동
  *   node simulate-grading.mjs --tag formfix         # 해당 tag 최신
  *   node simulate-grading.mjs --file results/x.json --only 정갈함
+ *   node simulate-grading.mjs --gt draft-answerkey-2026-07-28.json  # 라벨 세트 지정
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeIsCorrect } from '../../shared/dbOperations.js';
+import { normalizeProblemNum } from './score.mjs';
+import { resolveGtPath } from './gt-path.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GT_PATH = path.resolve(__dirname, '../labels/ground-truth.json');
+const GT_PATH = resolveGtPath(process.argv);
 const RESULTS_DIR = path.resolve(__dirname, '../results');
 
 function parseArgs(argv) {
@@ -43,7 +46,9 @@ function latestResult(tag) {
   return path.join(RESULTS_DIR, files[files.length - 1]);
 }
 
-const pn = (v) => (String(v ?? '').match(/\d+/) || [''])[0];
+// 번호 정규화는 score.mjs와 같은 규칙을 쓴다 — 여기만 첫 숫자열로 두면 섹션별로 번호가
+// 1부터 다시 시작하는 교재에서 A-1과 C-1이 같은 문항으로 짝지어진다(score.mjs 주석 참고).
+const pn = normalizeProblemNum;
 function tally(arr) { const m = {}; for (const x of arr) m[x] = (m[x] || 0) + 1; return m; }
 function majority(arr) {
   const c = tally(arr.map(String));

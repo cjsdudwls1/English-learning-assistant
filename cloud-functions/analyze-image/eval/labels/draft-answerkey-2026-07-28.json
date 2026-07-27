@@ -1,6 +1,6 @@
 {
   "meta": {
-    "status": "REVIEWED — 사용자 검수 완료(2026-07-28). ground-truth.json 병합 가능. 병합 시 밑줄 접두 필드와 answer_key는 제거할 것",
+    "status": "REVIEWED — 사용자 검수 완료(2026-07-28), 4쪽 44문항 전량. 하네스가 전량 채점 가능하다. ground-truth.json에 합치지 않고 `--gt draft-answerkey-2026-07-28.json`으로 지정해 쓴다 — 두 세트는 correct_answer 근거의 품질 계층이 다르고(추론 vs 인쇄 해설지), 합치면 문항 수가 바뀌어 이전 결과와의 상대 비교가 끊긴다. 굳이 병합한다면 밑줄 접두 필드와 answer_key는 제거할 것",
     "labeled_by": "Claude (1차 판독) + 사용자 검수(2026-07-28)",
     "labeled_at": "2026-07-28",
     "review_applied": {
@@ -28,12 +28,14 @@
       "2_A_B_짝선택지": "correct_answer는 선택지 번호만 기록('2'). 텍스트 병기 금지 — 구분자·공백 차이로 오탐 발생. 확정(2026-07-27)",
       "3_인쇄된_정답박스": "교재/해설지에 인쇄된 정답을 correct_answer의 1순위 근거로 사용. user_answer로는 절대 쓰지 않음. 확정(2026-07-27). 이 세트가 이 규약을 검증하는 첫 표본이다",
       "4_페이지_경계": "2단 조판에서 좌측 컬럼 하단 문항의 선택지는 우측 컬럼 상단으로 이어진다(같은 페이지). '앞 페이지 문항'으로 오독 금지. 확정(2026-07-27). 이 세트는 1단 조판이라 해당 없음",
-      "5_번호없는_교재연습": "라벨 대상에서 제외. 확정(2026-07-27). 이 세트는 전 문항이 번호를 갖는다"
+      "5_번호없는_교재연습": "라벨 대상에서 제외. 확정(2026-07-27). 이 세트는 전 문항이 번호를 갖는다",
+      "6_섹션별_번호": "한 페이지에서 구획마다 번호가 1부터 다시 시작하면 problem_number에 구획 기호를 붙인다('A-1','B-2'). 지면의 사실을 그대로 적는 쪽을 택했고, 대신 하네스가 섹션을 보존하도록 고쳤다. 확정·코드 반영(2026-07-28). 구획이 없으면 번호만 적는다",
+      "7_다중빈칸": "answer_format='multi_blank' + user_answers/correct_answers 배열(빈칸 순서대로). 채점은 인덱스별. 확정·코드 반영(2026-07-28). 이어붙인 스칼라는 _placeholder로만 남긴다"
     },
     "harness_compatibility": {
       "multi_select": "1문항(147쪽 Q10). score.mjs가 answer_format을 읽고 집합 완전일치 채점(multi_user·multi_correct 버킷). 우회용 _placeholder 스칼라 없음 — 참값은 *_answers 배열뿐. 이 세트에서 복수정답 경로를 인쇄 정답으로 검증할 수 있는 유일한 표본이다",
-      "multi_blank": "9문항(143 B-1~3, 145 B-1~4, 146 Q5, 147 Q14). 인덱스별 텍스트 채점이 미구현이라 text 경로를 타며 q.user_answer / q.correct_answer 스칼라를 참조한다. 이 스칼라는 배열을 ', '로 이어붙인 우회값이므로 해당 문항 수치는 참고치로만 볼 것. 145 B-3의 스칼라는 검수 결과 ambiguous(accept 2개)다",
-      "problem_number_collision": "143·145쪽 Unit Exercise는 섹션 A/B/C가 각각 1부터 다시 번호를 매긴다. score.mjs의 normalizeProblemNum이 첫 숫자열만 뽑으므로 'A-1'·'B-1'·'C-1'이 전부 '1'로 충돌해 byNum Map에서 마지막 항목만 살아남는다. 이 2쪽 29문항은 현행 하네스로 정상 채점되지 않는다 — 146·147쪽(Q1~15 유일 번호) 15문항만 지금 바로 채점 가능하다. REVIEW 문서의 '코드 결손' 절 참고"
+      "multi_blank": "9문항 19빈칸(143 B-1~3, 145 B-1~4, 146 Q5, 147 Q14). 인덱스별 채점 지원 완료(2026-07-28) — score.mjs가 *_answers 배열을 참값으로 읽어 빈칸마다 판정하고 blank_*(문항 단위)·blank_cell_*(빈칸 단위) 버킷에 집계한다. 하나라도 오독이면 문항 wrong, 전 칸 정확해야 correct, 일부만 읽고 기권하면 abstain. q.user_answer / q.correct_answer 스칼라는 _placeholder 우회값으로 남아 있으나 채점에 쓰이지 않는다. 145 B-3의 두 번째 빈칸은 검수 결과 ambiguous(null_ok)다. 회귀 테스트: test/multiBlank.test.mjs",
+      "problem_number_collision": "해결됨(2026-07-28). 143·145쪽 Unit Exercise는 섹션 A/B/C가 각각 1부터 다시 번호를 매긴다. 종전 normalizeProblemNum은 첫 숫자열만 뽑아 'A-1'·'B-1'·'C-1'이 전부 '1'로 충돌했고, 완벽한 예측조차 29문항 중 14개가 wrong으로 찍혔다. 지금은 2단계 매칭이다 — 정밀 키(섹션 보존, 장식 접두 Q/문제/#만 제거) 우선, 실패 시 숫자 키 폴백이되 GT·예측 양쪽에서 그 숫자가 유일할 때만 쓴다. 모호하면 매칭을 포기해 missing(비처벌)으로 둔다. 실측: 44문항 전량 wrong 0, 기존 ground-truth.json 64문항도 회귀 없음. 회귀 테스트: test/problemMatching.test.mjs"
     },
     "confidence_legend": {
       "high": "재판독해도 바뀌지 않을 수준",
@@ -47,7 +49,7 @@
       "page_label": "천일문 GRAMMAR L1 Ch.11 전치사 p.143 Unit Exercise (A 8 + B 3 + C 5)",
       "answer_key": "정답지/KakaoTalk_20260727_204054587_01.jpg (해설지 p.29)",
       "_case_type": ["빈칸 서술형", "교사 빨간펜 채점", "지운 자국", "섹션별 번호 재시작"],
-      "_harness_note": "problem_number가 A-1~C-5로 섹션 접두를 갖는다. 현행 normalizeProblemNum은 이를 1~8로 뭉갠다 — meta.harness_compatibility.problem_number_collision 참고",
+      "_harness_note": "problem_number가 A-1~C-5로 섹션 접두를 갖는다. 2026-07-28 이후 normalizeProblemNum이 접두를 보존하므로 그대로 채점된다 — meta.harness_compatibility.problem_number_collision 참고",
       "questions": [
         { "problem_number": "A-1", "type": "text", "user_answer": { "value": "on", "_confidence": "high" }, "correct_answer": { "value": "on", "_confidence": "high" } },
         { "problem_number": "A-2", "type": "text", "user_answer": { "value": "in", "_confidence": "high" }, "correct_answer": { "value": "in", "_confidence": "high" } },
