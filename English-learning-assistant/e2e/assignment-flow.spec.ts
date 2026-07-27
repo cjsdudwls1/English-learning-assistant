@@ -83,6 +83,14 @@ test.describe('과제 라이프사이클 (교사 생성 → 학생 제출 → �
     await waitForRenderSettled(page);
     await page.getByPlaceholder(T.assignmentTitle).fill(TITLE);
 
+    // 세기 전에 목록 로드 완료를 확정한다. ProblemSelector는 로딩 중 목록 대신
+    // '문제를 불러오는 중...'만 렌더하는데, count()는 auto-wait을 하지 않아 그 순간을
+    // '문제 0개'로 읽는다 — CI에서 실제로 3회 연속 이렇게 실패했다(helpers.ts 주석 참고).
+    await expect(
+      page.getByRole('heading', { name: T.problemsSelectedRatio }),
+      '문제 목록이 로드되지 않았다',
+    ).toBeVisible({ timeout: 60_000 });
+
     // 자동채점되는 유형만 고른다. essay·ox는 채점 결과가 null이거나 시드에 따라 흔들려
     // '맞음 + 틀림 == 전체' 불변식을 흐린다.
     const mc = problemsOfType(page, 'multiple_choice');

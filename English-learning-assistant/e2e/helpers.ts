@@ -32,6 +32,9 @@ export const T = {
   add: /^(추가|Add)$/,
   addByEmail: /이메일로 추가|Add by email/,
   assignmentTitle: /과제 제목|Assignment title/,
+  // ProblemSelector 헤딩 '{selected} / {total} 문제 선택됨'.
+  // 로딩이 끝나야 렌더되고 목록이 비어도 나오므로, 문제 개수를 세기 전 대기 앵커로 쓴다.
+  problemsSelectedRatio: /\d+\s*\/\s*\d+\s*(?:문제 선택됨|problems selected)/,
   createSubmit: /^(과제 생성|Create Assignment)/,
   submitAnswer: /^(답안 제출|Submit Answer)$/,
   shortAnswerInput: /답을 입력하세요|Enter your answer/,
@@ -63,14 +66,20 @@ export async function login(page: Page, email: string) {
 // - networkidle은 Supabase Realtime WebSocket 상시 연결 때문에 영원히 오지 않는다.
 // - 고정 sleep은 페이지당 수 초를 낭비하고, 로드가 그보다 느린 환경에서는 플래키하다.
 // 대신 "로딩 인디케이터 부재 + DOM 변이 quietMs 지속"을 안정 조건으로 삼고,
-// maxMs 상한에서 강제 진행한다(폴링 등으로 변이가 끝나지 않는 페이지 대비).
+// 상한에서 강제 진행한다(폴링 등으로 변이가 끝나지 않는 페이지 대비).
+//
+// 상한이 두 개인 이유 — 아직 로딩 중인데 maxMs로 빠져나오면, 뒤따르는 읽기가 전부 오독이 된다.
+// count()·innerText()는 assertion과 달리 auto-wait을 하지 않아 로딩 화면을 그대로 '데이터 0건'으로
+// 읽는다. 실제로 CI(2026-07-27)에서 ProblemSelector가 '문제를 불러오는 중...'인 순간을 세어
+// "교사 계정에 자동채점 가능한 생성 문제가 없다"로 3회 연속 실패했다 — 문제는 있었다.
+// 그래서 로딩 인디케이터가 보이는 동안에는 훨씬 긴 loadingMaxMs까지 기다린다.
 export async function waitForRenderSettled(
   page: Page,
-  { quietMs = 1_000, maxMs = 15_000 } = {},
+  { quietMs = 1_000, maxMs = 15_000, loadingMaxMs = 60_000 } = {},
 ) {
   await page.waitForLoadState('load');
   await page.evaluate(
-    ({ quietMs, maxMs }) =>
+    ({ quietMs, maxMs, loadingMaxMs }) =>
       new Promise<void>((resolve) => {
         const started = performance.now();
         let lastMutation = performance.now();
@@ -87,14 +96,15 @@ export async function waitForRenderSettled(
           const now = performance.now();
           // t.common.loading('불러오는 중...'/'Loading...') 계열 표시 중이면 미안정으로 본다
           const loadingVisible = /불러오는 중|Loading/.test(document.body.innerText);
-          if ((!loadingVisible && now - lastMutation >= quietMs) || now - started >= maxMs) {
+          const budget = loadingVisible ? loadingMaxMs : maxMs;
+          if ((!loadingVisible && now - lastMutation >= quietMs) || now - started >= budget) {
             clearInterval(timer);
             observer.disconnect();
             resolve();
           }
         }, 100);
       }),
-    { quietMs, maxMs },
+    { quietMs, maxMs, loadingMaxMs },
   );
 }
 
