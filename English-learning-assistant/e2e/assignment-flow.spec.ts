@@ -183,9 +183,15 @@ test.describe('과제 라이프사이클 (교사 생성 → 학생 제출 → �
     await page.goto('/stats');
     await waitForRenderSettled(page, { quietMs: 1_500, maxMs: 25_000 });
     const after = await readYearSolvingTotals(page);
-    expect(after.total - baseline.total, '풀이 통계 총 문제 수가 제출 수만큼 늘지 않았다').toBe(problemCount);
-    expect(after.correct - baseline.correct, '풀이 통계 정답 수가 채점 결과와 다르다').toBe(studentCorrect);
-    expect(after.incorrect - baseline.incorrect, '풀이 통계 오답 수가 채점 결과와 다르다').toBe(studentWrong);
+    // 증가분 검증은 "이 계정에 다른 풀이가 동시에 들어오지 않는다"는 전제 위에 선다.
+    // 전제가 깨지면 집계 결함과 구분이 안 되므로 실측값을 메시지에 남긴다 —
+    // 2026-07-27 로컬 실행이 +6으로 실패했을 때, DB에는 응답이 3건뿐이고 집계 로직도
+    // 소스별 1회 합산이라(roleStats.fetchAllStatsRows/aggregateByMonth) 코드 결함이 아니라
+    // 같은 계정을 쓰는 다른 실행이 끼어든 것이었는데, 값이 없어 사후 조회로만 판별할 수 있었다.
+    const seen = `baseline=${baseline.total}(${baseline.correct}/${baseline.incorrect}) after=${after.total}(${after.correct}/${after.incorrect})`;
+    expect(after.total - baseline.total, `풀이 통계 총 문제 수가 제출 수만큼 늘지 않았다 — ${seen}`).toBe(problemCount);
+    expect(after.correct - baseline.correct, `풀이 통계 정답 수가 채점 결과와 다르다 — ${seen}`).toBe(studentCorrect);
+    expect(after.incorrect - baseline.incorrect, `풀이 통계 오답 수가 채점 결과와 다르다 — ${seen}`).toBe(studentWrong);
   });
 
   test('teacher: 응답표가 학생 채점 결과와 일치하고, 과제를 삭제할 수 있다', async ({ page }) => {
