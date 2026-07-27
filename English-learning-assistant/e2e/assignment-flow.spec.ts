@@ -68,7 +68,16 @@ test.describe('과제 라이프사이클 (교사 생성 → 학생 제출 → �
     await page.goto('/teacher/dashboard');
     await waitForRenderSettled(page);
     const classLink = page.locator('a[href^="/teacher/classes/"]').first();
-    await expect(classLink, '교사 계정에 학급이 없어 과제 흐름을 검증할 수 없다').toBeVisible({ timeout: 30_000 });
+    // 여기서 실패하면 원인이 셋으로 갈린다 — 아직 로딩 중 / 로드가 실패해 에러 문구 / 정말 학급 0개.
+    // TeacherDashboardPage는 실패를 삼키지 않고 에러를 렌더하므로 화면 텍스트로 구분되는데,
+    // CI는 성공한 run의 artifact를 남기지 않아(재시도로 통과하면 flaky여도 조회 불가) 사후 확인이 안 된다.
+    // 실제로 2026-07-27 CI에서 이 대기가 flaky로 한 번 걸렸고 화면을 확인할 방법이 없었다.
+    try {
+      await expect(classLink).toBeVisible({ timeout: 30_000 });
+    } catch {
+      const shown = (await page.locator('body').innerText()).replace(/\s+/g, ' ').trim().slice(0, 300);
+      throw new Error(`교사 계정에 학급이 없어 과제 흐름을 검증할 수 없다 — 화면: ${shown}`);
+    }
     classId = (await classLink.getAttribute('href'))!.split('/').pop()!;
 
     // 편성은 멱등하게 — 이미 멤버면 앱이 에러 문구를 띄우지만 무시한다.
