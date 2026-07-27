@@ -72,6 +72,87 @@ export function classifyMC(gtField, predRaw) {
   return 'wrong';
 }
 
+// ─── 복수정답(multi_select) 채점 ────────────────────────────────
+// GT 라벨 규약 1(2026-07-27 확정): answer_format="multi_select" + user_answers/correct_answers 배열.
+// 단일 MC와 버킷을 분리한다 — 집합 완전일치는 단일 선택보다 난도가 달라, 섞으면 지표 해석이 흐려지고
+// 기존 mc_* 수치와 이전 결과 파일의 비교 가능성도 잃는다.
+
+const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
+
+/**
+ * 선택지 번호(원문자 ①~⑨ / 숫자 1~9)를 정수 집합으로 추출.
+ * "3, 4" · "③④" · ["3","4"] · [{value:"3"}] 을 모두 같은 집합으로 본다.
+ * dbOperations.extractOptionDigits와 같은 규칙이지만, 이 파일의 '외부 의존 없음' 규약을 지키려 재구현.
+ * 문자열 치환이 아니라 원문 개별 스캔이라 "③④"를 34로 오파싱하지 않는다.
+ */
+export function extractChoiceDigits(v) {
+  const set = new Set();
+  const visit = (x) => {
+    if (x === null || x === undefined) return;
+    if (Array.isArray(x)) { x.forEach(visit); return; }
+    if (typeof x === 'object') { visit(x.value); return; }  // [{value:"3"}, ...] 형태 수용
+    const s = String(x);
+    for (const ch of s) {
+      const ci = CIRCLED.indexOf(ch);
+      if (ci !== -1) set.add(ci + 1);
+    }
+    for (const m of s.matchAll(/\d+/g)) {
+      const n = parseInt(m[0], 10);
+      if (n >= 1 && n <= 9) set.add(n);
+    }
+  };
+  visit(v);
+  return set;
+}
+
+/** answer_format이 복수선택 계열인지. DB/프론트 계약값 'multi'와 GT 라벨값 'multi_select'를 함께 수용. */
+export function isMultiSelectFormat(fmt) {
+  return fmt === 'multi_select' || fmt === 'multi';
+}
+
+/**
+ * multi GT 필드 → 허용 정답집합 목록.
+ * 지원 형태:
+ *   { values: ["3","4"] }                                   단일 허용집합
+ *   ["3","4"] / [{value:"3"}, ...]                          단일 허용집합(배열형)
+ *   { ambiguous: true, accept_sets: [["3","4"],["3","5"]] }  복수 허용집합(판독 모호)
+ * @returns {Set<number>[]|null} null = 라벨이 없거나 형태 불명(채점 불가)
+ */
+export function parseGtAnswerSets(field) {
+  if (field === null || field === undefined) return null;
+  if (field.ambiguous && Array.isArray(field.accept_sets)) {
+    return field.accept_sets.map(extractChoiceDigits);
+  }
+  const raw = Array.isArray(field) ? field : field.values;
+  if (!Array.isArray(raw)) return null;
+  return [extractChoiceDigits(raw)];
+}
+
+function eqSet(a, b) {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+/** 정수 집합 → 안정 비교용 문자열 키("3,4"). 빈 집합은 null. */
+export function setKey(set) {
+  return set.size === 0 ? null : [...set].sort((a, b) => a - b).join(',');
+}
+
+/**
+ * multi_select 한 필드 채점 — 집합 완전일치(부분점수 없음).
+ * 부분집합("③④" 중 ③만 추출)도 wrong — 전사 누락은 기권이 아니라 오답이다.
+ * 다만 아무것도 못 뽑았으면 abstain(비처벌) — precision-first.
+ * @returns 'correct' | 'abstain' | 'wrong'
+ */
+export function classifyMultiSelect(gtField, predRaw) {
+  const acceptSets = parseGtAnswerSets(gtField);
+  if (acceptSets === null) return 'abstain';   // 라벨 결함 → 처벌·가점 모두 보류(multi_gt_invalid로 별도 집계)
+  const pred = extractChoiceDigits(predRaw);
+  if (pred.size === 0) return 'abstain';
+  return acceptSets.some(s => eqSet(pred, s)) ? 'correct' : 'wrong';
+}
+
 /** text 한 필드 채점 → 'correct' | 'abstain' | 'wrong' (loose 매칭 포함) */
 export function classifyText(gtField, predRaw) {
   const pred = normalizeText(predRaw);
@@ -105,8 +186,10 @@ export function scoreRun(groundTruth, runOutputs) {
   const perInstance = [];
   const totals = {
     mc_user: EMPTY(), mc_correct: EMPTY(),
+    multi_user: EMPTY(), multi_correct: EMPTY(),
     text_user: EMPTY(), text_correct: EMPTY(),
     extra_problems: 0,
+    multi_gt_invalid: 0,
   };
 
   for (const page of groundTruth.pages) {
@@ -118,30 +201,41 @@ export function scoreRun(groundTruth, runOutputs) {
       const key = normalizeProblemNum(q.problem_number);
       const found = byNum.get(key);
       seen.add(key);
+      const fmt = q.answer_format || 'single';
+      const isMulti = isMultiSelectFormat(fmt);
+      // multi_blank(순서 있는 텍스트 배열)는 집합채점 대상이 아니다 → 기존 text 경로 유지.
       const isText = q.type === 'text';
-      const ua = found ? found.user_answer : null;
-      const ca = found ? found.correct_answer : null;
+      // 복수정답은 배열 필드가 1순위 — 파이프라인이 스칼라("3, 4")만 냈으면 거기서 번호를 뽑는다.
+      const ua = found ? (isMulti ? (found.user_answers ?? found.user_answer) : found.user_answer) : null;
+      const ca = found ? (isMulti ? (found.correct_answers ?? found.correct_answer) : found.correct_answer) : null;
+      const gtUa = isMulti ? q.user_answers : q.user_answer;
+      const gtCa = isMulti ? q.correct_answers : q.correct_answer;
 
       let uaClass, caClass;
-      if (isText) {
-        uaClass = classifyText(q.user_answer, ua);
-        caClass = classifyText(q.correct_answer, ca);
+      if (isMulti) {
+        uaClass = classifyMultiSelect(gtUa, ua);
+        caClass = classifyMultiSelect(gtCa, ca);
+        if (parseGtAnswerSets(gtUa) === null || parseGtAnswerSets(gtCa) === null) totals.multi_gt_invalid++;
+      } else if (isText) {
+        uaClass = classifyText(gtUa, ua);
+        caClass = classifyText(gtCa, ca);
       } else {
-        uaClass = classifyMC(q.user_answer, ua);
-        caClass = classifyMC(q.correct_answer, ca);
+        uaClass = classifyMC(gtUa, ua);
+        caClass = classifyMC(gtCa, ca);
       }
       // 문제 자체가 누락된 경우(found 없음) → missing 으로 별도 표기 (abstain의 하위범주)
       const missing = !found;
-      const uaBucket = isText ? 'text_user' : 'mc_user';
-      const caBucket = isText ? 'text_correct' : 'mc_correct';
+      const suffix = isMulti ? 'multi' : isText ? 'text' : 'mc';
+      const uaBucket = `${suffix}_user`;
+      const caBucket = `${suffix}_correct`;
       totals[uaBucket][uaClass]++;
       totals[caBucket][caClass]++;
       if (missing) { totals[uaBucket].missing++; totals[caBucket].missing++; }
 
       perInstance.push({
-        image: page.image, problem_number: q.problem_number, type: q.type, missing,
-        user_answer: { gt: q.user_answer, pred: ua ?? null, class: uaClass },
-        correct_answer: { gt: q.correct_answer, pred: ca ?? null, class: caClass },
+        image: page.image, problem_number: q.problem_number, type: q.type, answer_format: fmt, missing,
+        user_answer: { gt: gtUa ?? null, pred: ua ?? null, class: uaClass },
+        correct_answer: { gt: gtCa ?? null, pred: ca ?? null, class: caClass },
       });
     }
     for (const o of out) {
@@ -168,9 +262,12 @@ function summarize(totals) {
   return {
     mc_user: pr(totals.mc_user),
     mc_correct: pr(totals.mc_correct),
+    multi_user: pr(totals.multi_user),
+    multi_correct: pr(totals.multi_correct),
     text_user: pr(totals.text_user),
     text_correct: pr(totals.text_correct),
     extra_problems: totals.extra_problems,
+    multi_gt_invalid: totals.multi_gt_invalid,
   };
 }
 
@@ -189,7 +286,8 @@ export function scoreMultiRun(groundTruth, runs) {
       for (const field of ['user_answer', 'correct_answer']) {
         const k = `${inst.image}||${inst.problem_number}||${field}`;
         if (!dist.has(k)) dist.set(k, {
-          image: inst.image, problem_number: inst.problem_number, type: inst.type, field,
+          image: inst.image, problem_number: inst.problem_number, type: inst.type,
+          answer_format: inst.answer_format, field,
           gt: inst[field].gt, classes: [], preds: [],
         });
         dist.get(k).classes.push(inst[field].class);
@@ -199,20 +297,30 @@ export function scoreMultiRun(groundTruth, runs) {
   }
   const stability = [];
   for (const v of dist.values()) {
+    // 복수정답은 배열/문자열 어느 쪽으로 와도 같은 집합이면 같은 예측이다 → 집합키로 비교.
+    // normalizeMC를 그대로 쓰면 ["3","4"]가 "3"으로 뭉개져 flaky를 놓친다.
+    const canon = (p) => {
+      if (p === null || p === undefined) return 'null';
+      return isMultiSelectFormat(v.answer_format) ? (setKey(extractChoiceDigits(p)) ?? 'null') : normalizeMC(p);
+    };
     const uniqClass = new Set(v.classes);
-    const uniqPred = new Set(v.preds.map(p => (p === null ? 'null' : normalizeMC(p))));
+    const uniqPred = new Set(v.preds.map(canon));
     const flakyClass = uniqClass.size > 1;       // 런마다 정/오/기권이 바뀜
     const flakyPred = uniqPred.size > 1;          // 런마다 예측값 자체가 바뀜
     stability.push({ ...v, flakyClass, flakyPred,
-      classCounts: tally(v.classes), predCounts: tally(v.preds.map(p => p ?? 'null')) });
+      classCounts: tally(v.classes), predCounts: tally(v.preds.map(canon)) });
   }
   // 집계: 평균 precision/recall + flaky 수 + confident-wrong 인스턴스
   const agg = {
     runs: runs.length,
     mc_user: avgPR(runScores, 'mc_user'),
     mc_correct: avgPR(runScores, 'mc_correct'),
+    multi_user: avgPR(runScores, 'multi_user'),
+    multi_correct: avgPR(runScores, 'multi_correct'),
     text_user: avgPR(runScores, 'text_user'),
     text_correct: avgPR(runScores, 'text_correct'),
+    // GT는 런 간 동일하므로 첫 런 값이 대표값.
+    multi_gt_invalid: runScores[0]?.totals.summary.multi_gt_invalid ?? 0,
     flaky_class: stability.filter(s => s.flakyClass).length,
     flaky_pred: stability.filter(s => s.flakyPred).length,
     ever_wrong: stability.filter(s => s.classes.includes('wrong')).length,

@@ -40,6 +40,34 @@ node eval/harness/run-eval.mjs --runs 1 --tag coverage --all
 - `ambiguous`(학생이 흐릿/복수 마킹) 문항은 `null` 반환을 **정답 취급**(abstain, 비처벌).
 - 서술형(text)은 정규화 fuzzy 매칭으로 별도 채점(주 지표에서 분리).
 
+### 버킷 (문항 형식별로 분리 집계)
+
+| 버킷 | 대상 | 비교 방식 | GT 필드 |
+|------|------|-----------|---------|
+| `mc_*` | 단일정답 객관식 | 번호 1개 일치 | `user_answer` / `correct_answer` |
+| `multi_*` | 복수정답 객관식(`answer_format: "multi_select"`) | **번호 집합 완전일치** | `user_answers` / `correct_answers` |
+| `text_*` | 서술형 · 다중빈칸(`multi_blank`) | 정규화 fuzzy 매칭 | `user_answer` / `correct_answer` |
+
+`multi_*`를 `mc_*`와 섞지 않는 이유 — 집합 완전일치는 단일 선택과 난도가 달라 섞으면 지표
+해석이 흐려지고, 기존 `mc_*` 수치의 의미가 바뀌어 이전 결과 파일과 비교할 수 없게 된다.
+
+**복수정답 채점 규칙**
+- 부분집합도 `wrong`. 두 개 중 하나만 뽑은 것은 기권이 아니라 전사 실패다.
+- 아무 번호도 못 뽑았으면 `abstain`(비처벌).
+- `"3, 4"` · `"③④"` · `["3","4"]`를 모두 같은 집합으로 본다(표기·순서 무관).
+- GT의 `user_answers`/`correct_answers` 배열이 없거나 형태가 불명이면 채점을 보류하고
+  `multi_gt_invalid`로 집계한다 — 라벨 결함이 지표에 묻히지 않도록 하네스가 경고를 출력한다.
+- `multi_blank`(순서 있는 텍스트 배열)는 인덱스별 텍스트 채점이 미구현이라 `text_*` 경로를
+  탄다. 스칼라를 이어붙인 우회값으로 채점되므로 해당 문항 수치는 참고치로만 볼 것.
+
+## 단위 테스트
+```bash
+npm test    # node --test "test/**/*.test.mjs" — AI·DB 없이 순수함수만 검증
+```
+`test/multiSelect.test.mjs`가 복수정답 경로 4곳(score.mjs 채점 · simplePipeline
+normalizeItem·프롬프트 · answerSanitizers 별칭 · dbOperations computeIsCorrect)을 묶어
+검증한다. 루트의 `test-*.js`는 실제 GCP/Supabase를 때리는 별개의 수동 스크립트다.
+
 ## 멀티런 안정성 (run-to-run instability)
 - `flaky_class`: N런에서 정/오/기권 분류가 바뀐 인스턴스 수(흐릿 마크의 핵심 문제).
 - `always_wrong`: N런 내내 confident-wrong (구조적 오인 — 가장 위험).

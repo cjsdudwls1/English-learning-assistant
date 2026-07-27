@@ -236,6 +236,8 @@ async function main() {
   console.log(`model=${MODEL} images=${images.length} runs=${args.runs} elapsed=${((Date.now() - t0) / 1000).toFixed(1)}s`);
   console.log('mc_user   ', JSON.stringify(scored.agg.mc_user));
   console.log('mc_correct', JSON.stringify(scored.agg.mc_correct));
+  console.log('multi_user', JSON.stringify(scored.agg.multi_user));
+  console.log('multi_corr', JSON.stringify(scored.agg.multi_correct));
   console.log('text_user ', JSON.stringify(scored.agg.text_user));
   console.log('text_corr ', JSON.stringify(scored.agg.text_correct));
   console.log(`flaky_class=${scored.agg.flaky_class} flaky_pred=${scored.agg.flaky_pred} ever_wrong=${scored.agg.ever_wrong} always_wrong=${scored.agg.always_wrong}`);

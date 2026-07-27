@@ -133,9 +133,12 @@ async function main() {
   console.log(`images=${images.length} runs=${args.runs} concurrency=${args.concurrency} elapsed=${(payload.elapsedMs / 1000).toFixed(1)}s`);
   console.log('mc_user   ', JSON.stringify(scored.agg.mc_user));
   console.log('mc_correct', JSON.stringify(scored.agg.mc_correct));
+  console.log('multi_user', JSON.stringify(scored.agg.multi_user));
+  console.log('multi_corr', JSON.stringify(scored.agg.multi_correct));
   console.log('text_user ', JSON.stringify(scored.agg.text_user));
   console.log('text_corr ', JSON.stringify(scored.agg.text_correct));
   console.log(`flaky_class=${scored.agg.flaky_class} flaky_pred=${scored.agg.flaky_pred} ever_wrong=${scored.agg.ever_wrong} always_wrong=${scored.agg.always_wrong}`);
+  if (scored.agg.multi_gt_invalid) console.log(`[경고] multi_gt_invalid=${scored.agg.multi_gt_invalid} — 복수정답 라벨에 user_answers/correct_answers 배열이 없어 채점 보류됨`);
   console.log('\n--- confident-wrong / flaky 인스턴스 ---');
   for (const s of scored.stability) {
     if (s.classes.includes('wrong') || s.flakyClass) {

@@ -39,9 +39,11 @@ export function buildAIClient() {
 
 /**
  * 단일 이미지에 대해 실제 파이프라인 실행 → marks 추출
- * @returns {{ problem_number, user_answer, correct_answer, user_marked_correctness, choices }[]}
+ * @returns {{ problem_number, user_answer, correct_answer, user_marked_correctness, choices,
+ *            answer_format, user_answers, correct_answers }[]}
  *   user_marked_correctness/choices 포함: is_correct 시뮬(computeIsCorrect)이 prod 채점과 동치되도록.
- *   (score.mjs 추출품질 채점은 user_answer/correct_answer만 사용 → 추가 필드 무시, 무영향)
+ *   answer_format/*_answers 포함: 복수정답(multi_select)은 스칼라로 접으면 집합이 깨져
+ *   score.mjs·computeIsCorrect 양쪽에서 실제 예측을 볼 수 없다. 스칼라만 쓰는 단일정답 경로에는 무영향.
  */
 export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPages = 1, sessionId, correctSource = CORRECT_SOURCE }) {
   const buf = fs.readFileSync(imagePath);
@@ -76,5 +78,8 @@ export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPage
     correct_answer: it.correct_answer ?? null,
     user_marked_correctness: it.user_marked_correctness ?? null,
     choices: Array.isArray(it.choices) ? it.choices : [],
+    answer_format: it.answer_format ?? 'single',
+    user_answers: Array.isArray(it.user_answers) ? it.user_answers : null,
+    correct_answers: Array.isArray(it.correct_answers) ? it.correct_answers : null,
   }));
 }

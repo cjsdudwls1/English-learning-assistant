@@ -14,6 +14,7 @@
 import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from './aiClient.js';
 import { EXTRACTION_TEMPERATURE, THINKING_BUDGET } from './config.js';
 import { executePassC } from './passes.js';
+import { sanitizeMcAnswerSet, isMultiSelectFmt } from './answerSanitizers.js';
 
 // Step 1(추출): 사용자 지정 3.5 Flash 1순위, GA 폴백.
 const EXTRACT_MODEL_SEQUENCE = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
@@ -34,8 +35,9 @@ const CIRCLED_TO_ASCII = {
   '⑥': '6', '⑦': '7', '⑧': '8', '⑨': '9', '⑩': '10',
 };
 
-/** Step 1 프롬프트: 단순 자유형식 추출. */
-function buildExtractPrompt(numImages) {
+/** Step 1 프롬프트: 단순 자유형식 추출.
+ *  export: buildStructurePrompt과 같은 이유 — 복수정답 지시문 누락을 테스트로 잡는다. */
+export function buildExtractPrompt(numImages) {
   const scope = numImages > 1 ? `이미지 ${numImages}장` : '이미지';
   return `다음은 영어 시험지(문제지) ${scope}이다. 각 문항에 대해 아래 항목을 추출해줘:
 
@@ -45,11 +47,18 @@ function buildExtractPrompt(numImages) {
 - 학습자가 손으로 체크한 답
 - 실제 정답
 
+발문에 "모두 고르시오", "정답 2개", "(단, 2개)", "all that apply"처럼 답이 둘 이상이라는 표시가 있으면,
+체크한 답과 실제 정답을 표시된 것 **전부** 적어줘(예: "3, 4"). 하나만 적고 끊지 마.
+
 문항 번호 순서대로 정리해줘. 여러 페이지에 걸친 지문은 하나로 이어서 봐줘.`;
 }
 
-/** Step 2 프롬프트: 자유텍스트 → 문항별 JSON 구조화. */
-function buildStructurePrompt(rawText) {
+/**
+ * Step 2 프롬프트: 자유텍스트 → 문항별 JSON 구조화.
+ * export: test/multiSelect.test.mjs가 복수정답 지시문 존재를 검증한다 — 4-Pass에서 2-스텝으로
+ * 이관할 때 이 지시문이 통째로 누락돼 복수정답이 전부 기권 처리된 전례가 있다.
+ */
+export function buildStructurePrompt(rawText) {
   return `다음은 영어 시험지에서 추출한 내용이다. 이를 문항별 JSON으로 구조화하라.
 
 반드시 아래 형식의 JSON 객체만 출력하라(마크다운/설명 금지):
@@ -63,11 +72,11 @@ function buildStructurePrompt(rawText) {
   "instruction": string|null,        // 발문
   "question_body": string|null,      // 지문 아닌 추가 본문. 없으면 null
   "choices": [ {"label": "1".."5", "text": "..."} ],  // 서술형이면 []
-  "answer_format": "single" | "multi_blank",  // 기본 "single". 아래 다중빈칸 규칙 참고
+  "answer_format": "single" | "multi_select" | "multi_blank",  // 기본 "single". 아래 복수정답·다중빈칸 규칙 참고
   "user_answer": string|null,        // 학습자가 손으로 체크한 답. 객관식=ASCII 숫자, 서술형=텍스트. 없거나 불명확하면 null
   "correct_answer": string|null,     // 실제 정답. 객관식=ASCII 숫자, 서술형=텍스트. 없으면 null
-  "user_answers": (string|null)[] | null,     // answer_format="multi_blank"일 때만 채운다(그 외 null)
-  "correct_answers": (string|null)[] | null,   // answer_format="multi_blank"일 때만 채운다(그 외 null)
+  "user_answers": (string|null)[] | null,     // answer_format="multi_select"/"multi_blank"일 때만 채운다(그 외 null)
+  "correct_answers": (string|null)[] | null,   // 〃
   "user_marked_correctness": "O"|"X"|null   // 채점 표시(O/✓=O, X/✗=X). 없으면 null
 }
 
@@ -81,6 +90,11 @@ function buildStructurePrompt(rawText) {
 - **추출 내용에 등장하는 모든 문항을 하나도 빠뜨리지 말고 item으로 만든다.** 여러 이미지·여러 유형
   (수능형/내신형/교재 연습문제)이 섞여 있어도 전부 포함하며, 시험 번호가 없는 교재 연습문제
   (예: "Let's Use It", 괄호에서 고르기 연습 등)도 반드시 포함한다. 어떤 이미지의 문항도 생략하지 마라.
+- 복수정답 객관식: 발문에 "모두 고르시오", "정답 2개", "(단, 2개)", "all that apply"처럼 답이 둘 이상이라는
+  지시가 있으면 answer_format="multi_select"로 표기한다. user_answers/correct_answers에 해당하는 선택지
+  번호를 **전부** 오름차순 문자열 배열로 담고(예: ["2","4"]), user_answer/correct_answer 스칼라에도
+  쉼표+공백으로 이어 붙여 함께 채운다(예: "2, 4"). 번호 하나로 줄이면 그 문항은 통째로 오답 처리된다.
+  단, 학습자가 지시된 개수보다 적게 표시했으면 실제 표시된 것만 담는다(빠진 답을 지어내지 마라).
 - 다중빈칸 서술형: 한 문항(고유 번호 1개) 아래에 (1)(2)(3)처럼 괄호 번호가 붙은 빈칸이 여러 개인
   서술형이면, 이를 하나의 item으로 두고 answer_format="multi_blank"로 표기한다. user_answers/
   correct_answers를 빈칸 순서대로 같은 길이의 배열로 채우고(학습자 미작성 칸=null),
@@ -109,8 +123,9 @@ function normalizeAnswer(v) {
   return s;
 }
 
-/** 구조화 원시 아이템 → dbOperations(buildContentJson) 계약에 맞는 아이템. */
-function normalizeItem(raw) {
+/** 구조화 원시 아이템 → dbOperations(buildContentJson) 계약에 맞는 아이템.
+ *  export: 순수함수라 test/multiSelect.test.mjs가 모델 출력 없이 직접 검증한다. */
+export function normalizeItem(raw) {
   if (!raw || typeof raw !== 'object') return null;
 
   const choices = Array.isArray(raw.choices)
@@ -135,6 +150,25 @@ function normalizeItem(raw) {
     correct_answer: normalizeAnswer(raw.correct_answer),
     user_marked_correctness: normalizeMarkedCorrectness(raw.user_marked_correctness),
   };
+
+  // 복수정답 객관식: 선택지 번호 '집합'이라 순서·중복이 무의미 → 정렬·중복제거·범위검증(sanitizeMcAnswerSet).
+  // 모델·GT 라벨의 어휘는 'multi_select'이지만 DB/프론트 계약값은 'multi'(multi_answer_contract §2)라,
+  // 모델 출력 경계인 여기서 별칭을 한 번만 정규화해 하위 로직이 두 이름을 알 필요가 없게 한다.
+  // choices 2개 미만이면 적용하지 않는다 — 선택지 없는 문항에 multi_select가 잘못 붙었을 때
+  // sanitizeMcAnswerSet이 빈 배열을 돌려주어 원래 서술형 답을 null로 파괴하는 것을 막는다.
+  if (isMultiSelectFmt(raw.answer_format) && choices.length >= 2) {
+    // 배열이 비었으면 스칼라에서 뽑는다(모델이 한쪽만 채우는 경우가 있다). 둘 다 있으면 배열 우선.
+    const pick = (arr, scalar) => (Array.isArray(arr) && arr.length > 0 ? arr : scalar);
+    const cor = sanitizeMcAnswerSet(pick(raw.correct_answers, raw.correct_answer), choices);
+    const usr = sanitizeMcAnswerSet(pick(raw.user_answers, raw.user_answer), choices);
+    item.answer_format = 'multi';
+    item.correct_answers = cor;
+    item.user_answers = usr;
+    // 스칼라는 하위호환 표시용("2, 4"). 집합이 비면 null(=마크 없음) → 상위에서 기권 처리.
+    item.correct_answer = cor.length > 0 ? cor.join(', ') : null;
+    item.user_answer = usr.length > 0 ? usr.join(', ') : null;
+    return item;
+  }
 
   // 다중빈칸 서술형: resolveAnswerFormat이 answer_format==='multi_blank'만 명시 존중.
   // 빈칸 순서(인덱스) 정렬이 프론트 N행 UI의 생명이므로 길이·인덱스는 보존하고 값만 정규화.

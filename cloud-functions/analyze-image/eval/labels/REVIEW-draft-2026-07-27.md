@@ -31,12 +31,21 @@
 `answer_format: "multi_select"` + 기존 `user_answers`/`correct_answers` 배열 재사용,
 값은 정렬된 문자열 배열(`["3","4"]`).
 
-**코드 변경이 선행되어야 실제 eval이 돈다:**
-- `eval/harness/score.mjs` — `normalizeMC`가 `/[1-5]/`로 첫 숫자 하나만 잘라내므로 `"2, 4"` → `"2"`로 절단됨. `scoreRun`은 `q.type`만 분기하고 `answer_format`을 아예 읽지 않는다.
-- `shared/simplePipeline.js` — 복수정답 지시문이 없다. (구 4-Pass 경로 `shared/prompts.js` 189·301·331행에는 있으나 2-스텝 이관 시 누락됨.)
+**코드 지원 완료 (2026-07-27).** 초안 작성 시점에 지적한 두 결손을 모두 메웠다:
 
-그때까지 `multi_select` 문항의 채점 결과는 **무효로 취급**한다.
-초안 JSON에 병기된 `_placeholder: true` 스칼라는 하네스 크래시 회피용이지 참값이 아니다.
+| 위치 | 초안 시점 문제 | 조치 |
+|------|----------------|------|
+| `eval/harness/score.mjs` | `normalizeMC`가 `/[1-5]/`로 첫 숫자만 잘라 `"2, 4"` → `"2"` 절단. `scoreRun`이 `answer_format`을 아예 안 읽음 | `classifyMultiSelect` 집합채점 + `multi_user`/`multi_correct` 버킷 분리 + `multi_gt_invalid` 카운터 |
+| `shared/simplePipeline.js` | 복수정답 지시문 없음(구 4-Pass `shared/prompts.js`엔 있었으나 2-스텝 이관 시 누락) | Step 1·2 프롬프트에 복수정답 규칙 복원 + `normalizeItem`이 `multi_select` → DB 계약값 `multi`로 정규화하며 번호집합 정렬·중복제거 |
+| `shared/dbOperations.js` | `computeIsCorrect`가 발문 휴리스틱(`detectMultiAnswer`)에만 의존 → `"(2개)"` 단독 표기를 놓쳐 정답 집합이 스칼라 1개로 접힘 | 모델의 명시 태깅(`multi_select`/`multi`)도 집합채점 진입 신호로 인정 |
+| `eval/harness/pipeline-runner.mjs`<br>`simulate-grading.mjs` | marks가 스칼라만 실어 집합이 깨짐 | `answer_format`·`user_answers`·`correct_answers` 전달 |
+
+초안의 `_placeholder: true` 스칼라(하네스 크래시 회피용 우회값)는 **제거했다** — 참값은 `*_answers` 배열뿐이다.
+회귀 테스트: `npm test`(`test/multiSelect.test.mjs`, 37케이스).
+
+**남은 것:** `multi_blank`(다중빈칸 서술형 5문항)는 인덱스별 텍스트 채점이 별개 로직이라
+아직 `text_*` 경로를 탄다. 해당 문항의 `_placeholder` 스칼라는 하네스가 여전히 참조하므로 남겨뒀고,
+그 수치는 참고치로만 봐야 한다.
 
 ### 2. (A)/(B) 짝 선택지 — 선택지 번호만 ✅ 확정
 
@@ -103,12 +112,17 @@ Q33 지문은 "the individual actively has to ______. The search for the right s
 - `맨 처음 받은거/20250420_134446.jpg`의 Q9는 기존 gold `20250420_134039.jpg`의 Q9과 **같은 문항**이다. 클로즈업 케이스로서 값어치가 있어 남겼지만, 중복이 싫으면 빼면 된다.
 - `104852657_01.jpg`에 학생 이름 손글씨가 있다. GT 파일 자체엔 이름을 적지 않았다.
 
-## 하네스 호환성 실측 (rev2 기준)
+## 하네스 호환성 실측 (rev3 — multi_select 지원 후)
+
+35문항 = mc 24 + multi 5 + text 6.
 
 ```
-빈 출력(모델 무응답):  크래시 없음. mc 29 abstain/29 missing, text 6 abstain/6 missing
-완벽 예측:             precision 1.0 (mc_user·mc_correct·text_user·text_correct 전부), wrong 0
+빈 출력(모델 무응답):  크래시 없음. mc 24 abstain/24 missing, multi 5 abstain/5 missing,
+                       text 6 abstain/6 missing, multi_gt_invalid 0
+완벽 예측:             mc 21 correct + 3 abstain(라벨이 value:null인 미표기 문항),
+                       multi 5/5 correct, text 6/6 correct, wrong 0
 ```
 
-정정 후에도 `score.mjs`가 이 GT로 정상 동작함을 확인했다.
-단, `multi_select` 문항은 `_placeholder` 스칼라로 우회 채점되므로 위 수치에 의미가 없다.
+`multi_select` 5문항이 이제 `_placeholder` 우회 없이 배열 라벨로 직접 채점되며,
+`multi_gt_invalid 0` = 5문항 전부 배열 형태가 규약 1을 만족함을 뜻한다.
+완벽 예측에서 `wrong`이 하나도 남지 않으므로 라벨 형태 자체에 채점 불가 케이스는 없다.

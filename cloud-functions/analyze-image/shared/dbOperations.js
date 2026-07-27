@@ -12,7 +12,7 @@
 
 import { StageError } from './errors.js';
 import { cleanOrNull, makeDepthKey, fuzzyMatchTaxonomy, canonicalDepth1 } from './taxonomy.js';
-import { sanitizeMcAnswerSet } from './answerSanitizers.js';
+import { sanitizeMcAnswerSet, isMultiSelectFmt } from './answerSanitizers.js';
 
 // ─── O/X 마크 정규화 ────────────────────────────────────────
 // 원본: validation.ts#normalizeMark
@@ -198,7 +198,12 @@ function resolveAnswerFormat(item, choiceArr) {
     };
   }
   const list = Array.isArray(choiceArr) ? choiceArr : [];
-  const isMulti = list.length >= 2 && detectMultiAnswer(item?.instruction, item?.correct_answer);
+  // 모델의 명시 태깅(answer_format='multi_select'|'multi')도 판정 신호로 인정한다.
+  // detectMultiAnswer는 발문 문구 휴리스틱이라 "(2개)" 단독 표기처럼 패턴에 안 걸리는 표현을 놓치는데,
+  // 그 경우 정답 집합이 통째로 스칼라 1개로 접혀 채점이 조용히 어긋난다. 오탐이 나도 결과는
+  // 집합 게이트(cd.size>=2 && ud.size>=cd.size) 미충족 → 기권이라 confident-wrong 위험은 없다.
+  const isMulti = list.length >= 2
+    && (isMultiSelectFmt(item?.answer_format) || detectMultiAnswer(item?.instruction, item?.correct_answer));
   if (!isMulti) {
     return {
       answerFormat: 'single',
@@ -274,7 +279,7 @@ export function computeIsCorrect({ user_marked_correctness, user_answer, correct
       // Bug B(복수답안): "모두 고르면 / 정답 N개" 또는 정답이 (1)…(2)… 번호매김이면 단일 비교로 채점 불가.
       // 객관식 정답 집합이 온전히 추출된 경우만 완전일치로 채점, 아니면 기권(null) — 단일값만 저장된
       // 현 상태에서 오답 단정(confident-wrong) 방지. (집합/빈칸별 완전 추출은 Stage 2 프롬프트 개선 몫)
-      if (detectMultiAnswer(instruction, correctAns) || answer_format === 'multi') {
+      if (detectMultiAnswer(instruction, correctAns) || isMultiSelectFmt(answer_format)) {
         // 우선순위: 호출측(resolveAnswerFormat)이 sanitizeMcAnswerSet으로 정제한 correct_answers/
         // user_answers 배열을 넘겨줬으면 그것을 신뢰(원문 재파싱보다 정밀). 없으면 기존 Stage 1
         // 안전망(스칼라 문자열에서 번호집합 재추출)으로 폴백 — 게이트(cd.size>=2 && ud.size>=cd.size)는

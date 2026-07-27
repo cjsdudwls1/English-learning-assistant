@@ -22,9 +22,12 @@ const scored = scoreMultiRun(mergedGt, cov.rawRuns);
 console.log(`# rescore ${path.basename(covPath)}  labels=ground-truth+[${extraLabels.join(',')}]`);
 console.log('mc_user   ', JSON.stringify(scored.agg.mc_user));
 console.log('mc_correct', JSON.stringify(scored.agg.mc_correct));
+console.log('multi_user', JSON.stringify(scored.agg.multi_user));
+console.log('multi_corr', JSON.stringify(scored.agg.multi_correct));
 console.log('text_user ', JSON.stringify(scored.agg.text_user));
 console.log('text_corr ', JSON.stringify(scored.agg.text_correct));
 console.log(`flaky_class=${scored.agg.flaky_class} ever_wrong=${scored.agg.ever_wrong} always_wrong=${scored.agg.always_wrong}`);
+if (scored.agg.multi_gt_invalid) console.log(`[경고] multi_gt_invalid=${scored.agg.multi_gt_invalid} — 복수정답 라벨에 user_answers/correct_answers 배열이 없어 채점 보류됨`);
 console.log('\n-- wrong/flaky 인스턴스 (user + correct) --');
 let any = false;
 for (const s of scored.stability) {

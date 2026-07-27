@@ -84,6 +84,10 @@ for (const run of runs) {
       user_answer: m.user_answer,
       correct_answer: m.correct_answer,
       choices: m.choices ?? [],
+      // 복수정답은 이 세 필드가 있어야 prod와 같은 집합채점 분기를 탄다(없으면 스칼라 재파싱 폴백).
+      answer_format: m.answer_format ?? null,
+      correct_answers: m.correct_answers ?? null,
+      user_answers: m.user_answers ?? null,
     });
     rec.sims.push(sim);
     rec.detail.push(m ? { ua: m.user_answer, ca: m.correct_answer, mark: m.user_marked_correctness ?? null } : null);
