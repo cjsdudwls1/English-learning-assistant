@@ -77,6 +77,20 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || 'https://temp.supabase.co'),
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || 'temp_key_for_build')
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // 좀처럼 안 바뀌는 서드파티를 앱 코드와 갈라 캐시 수명을 따로 준다.
+          // 앱을 배포할 때마다 사용자가 React·Supabase까지 다시 받던 걸 막는다.
+          // charts는 /stats에서만 쓰므로 지연 로딩된 StatsPage와 함께만 내려간다.
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            'supabase-vendor': ['@supabase/supabase-js'],
+            'charts-vendor': ['chart.js', 'react-chartjs-2', 'chartjs-plugin-datalabels'],
+          },
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
