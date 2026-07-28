@@ -13,7 +13,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/genai": "^1.21.0",
     "@supabase/supabase-js": "^2.98.0",
     "@types/react-datepicker": "^6.2.0",
     "chart.js": "^4.4.7",
