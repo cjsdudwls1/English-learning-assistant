@@ -87,6 +87,9 @@ export const LIGHTWEIGHT_MODEL_SEQUENCE = [
   // 들어가지만 여기는 앞의 둘이 모두 실패한 뒤의 최종 폴백이라 도달 빈도가 낮다.
   'gemini-3.5-flash',
 ];
+// 주의: 이 시점에 LIGHTWEIGHT_MODEL_SEQUENCE와 MODEL_SEQUENCE의 값이 우연히 같아졌다
+// (양쪽 preview를 각각 3.5-flash로 교체한 결과). 같은 값이라고 하나로 합치지 말 것 —
+// 용도가 다르다(Pass A 구조추출 vs Pass 0/B/C). 한쪽만 조정할 일이 생기면 다시 갈라야 한다.
 
 /** 정답 추론(correct_answer) 전용 모델 시퀀스 — 정확도 우선
  *  - 정답 추론은 '문제당 1회' 저빈도 호출 → 최상위 추론 모델을 1순위로 써도 부하 영향 작음
