@@ -92,11 +92,21 @@ async function main() {
 
   const t0 = Date.now();
   let done = 0;
+  // 실제 응답한 모델을 조합별로 센다. 시퀀스 1순위가 429·타임아웃으로 떨어지면 조용히 폴백
+  // 모델의 수치가 되는데, 그게 기록에 없으면 정확도를 어느 모델의 것이라 말할 수 없다.
+  const modelsSeen = new Map();
   const flat = await pool(jobs, args.concurrency, async ({ img, r }) => {
     const abs = path.join(TEST_IMAGE_ROOT, img);
     const jt0 = Date.now();
     try {
-      const marks = await runPipelineOnImage({ ai, imagePath: abs });
+      const marks = await runPipelineOnImage({
+        ai,
+        imagePath: abs,
+        onModels: ({ extract, structure }) => {
+          const k = `${extract} → ${structure}`;
+          modelsSeen.set(k, (modelsSeen.get(k) || 0) + 1);
+        },
+      });
       done++;
       console.error(`[${done}/${jobs.length}] OK r${r} ${img} (${Date.now() - jt0}ms, ${marks.length} marks)`);
       return { img, r, ok: true, marks };
@@ -125,6 +135,9 @@ async function main() {
   const payload = {
     tag: args.tag, runs: args.runs, concurrency: args.concurrency, all: args.all,
     images, elapsedMs: Date.now() - t0,
+    // "추출모델 → 구조화모델": 호출 수. 항목이 2개 이상이면 폴백이 섞인 실행이라
+    // 지표를 단일 모델의 성적으로 읽으면 안 된다.
+    models: Object.fromEntries(modelsSeen),
     rawRuns: runs,
     agg: scored.agg,
     stability: scored.stability,

@@ -44,8 +44,13 @@ export function buildAIClient() {
  *   user_marked_correctness/choices 포함: is_correct 시뮬(computeIsCorrect)이 prod 채점과 동치되도록.
  *   answer_format/*_answers 포함: 복수정답(multi_select)은 스칼라로 접으면 집합이 깨져
  *   score.mjs·computeIsCorrect 양쪽에서 실제 예측을 볼 수 없다. 스칼라만 쓰는 단일정답 경로에는 무영향.
+ *
+ * @param onModels 선택. 실제 응답한 모델을 { extract, structure }로 알려준다. 반환값(배열)에
+ *   섞지 않고 콜백으로 빼는 이유: 호출처 5곳이 전부 배열을 그대로 쓴다 — 형태를 바꾸면 다 깨진다.
+ *   모델 시퀀스는 폴백이 있어 1순위가 답했다는 보장이 없는데, 그 사실이 결과에 안 남으면
+ *   "어느 모델의 정확도인가"를 사후에 확인할 수 없다(2026-07-28 실측에서 실제로 확인 불가였다).
  */
-export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPages = 1, sessionId, correctSource = CORRECT_SOURCE }) {
+export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPages = 1, sessionId, correctSource = CORRECT_SOURCE, onModels }) {
   const buf = fs.readFileSync(imagePath);
   const ext = path.extname(imagePath).toLowerCase();
   const mimeType = EXT_TO_MIME[ext] || 'image/jpeg';
@@ -57,11 +62,13 @@ export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPage
   const sid = sessionId || `eval-${path.basename(imagePath)}-${Date.now()}`;
   let pageItems;
   if (SIMPLE_PIPELINE) {
-    ({ items: pageItems } = await runSimpleExtractAndStructure({
+    const simple = await runSimpleExtractAndStructure({
       ai, sessionId: sid, images: [imageData],
       taxonomyData: [], userLanguage: 'ko',
       runClassification: false,
-    }));
+    });
+    pageItems = simple.items;
+    onModels?.({ extract: simple.usedModel, structure: simple.structModel });
   } else {
     ({ pageItems } = await processPage({
       ai, sessionId: sid, imageData,

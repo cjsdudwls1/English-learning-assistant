@@ -19,8 +19,10 @@ import { toCardinality } from './answerShape.js';
 
 // Step 1(추출): 사용자 지정 3.5 Flash 1순위, GA 폴백.
 const EXTRACT_MODEL_SEQUENCE = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
-// Step 2(구조화): 사용자 지정 "3 플래시". preview burst 대비 GA 폴백.
-const STRUCTURE_MODEL_SEQUENCE = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
+// Step 2(구조화): 3.5 Flash(GA). 종전 1순위는 gemini-3-flash-preview였으나 2026-07-28
+// preview 전면 제거 — Vertex DSQ 공유풀 제약으로 burst 시 429가 나고, 그때 폴백으로 내려간
+// 모델이 무엇이었는지 결과에 남지 않아 정확도 수치의 출처가 불분명해진다. 폴백은 GA만 남긴다.
+const STRUCTURE_MODEL_SEQUENCE = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
 
 const STEP1_TIMEOUT_MS = 300_000; // 다중 이미지 일괄 처리 → 넉넉히(worker 540s 내)
 
@@ -299,7 +301,10 @@ async function structureItems({ ai, sessionId, rawText }) {
 
 /**
  * 단순 파이프라인 실행: 모든 이미지 일괄 추출 → 구조화 → (옵션)분류.
- * @returns {{items: object[], usedModel: string}}  usedModel은 Step1(추출) 모델.
+ * @returns {{items: object[], usedModel: string, structModel: string}}
+ *   usedModel=Step1(추출), structModel=Step2(구조화)에서 실제 응답한 모델.
+ *   둘 다 폴백 결과일 수 있어 "1순위가 답했다"고 가정하면 안 된다 — eval 하네스가
+ *   이 값을 결과 파일에 기록해 정확도 수치의 출처를 사후 확인한다.
  */
 export async function runSimpleExtractAndStructure({
   ai, sessionId, images, taxonomyData, userLanguage = 'ko', runClassification = true,
@@ -345,5 +350,5 @@ export async function runSimpleExtractAndStructure({
     }
   }
 
-  return { items, usedModel };
+  return { items, usedModel, structModel };
 }

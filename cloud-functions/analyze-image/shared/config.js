@@ -17,19 +17,22 @@ export const DOCUMENT_AI_ENABLED = Boolean(DOCUMENT_AI_PROCESSOR_ID);
 
 /** 구조 추출(Pass A)용 모델 시퀀스
  *  - 30명 동시 부하 대응: GA 모델 우선 (preview는 250 RPM 한도로 burst 시 fetch failed 발생)
- *  - gemini-flash-latest(별칭)/preview 모델은 마지막 폴백으로만 사용
+ *  - 2026-07-28 preview 전면 제거: 마지막 폴백 자리도 GA(3.5-flash)로 교체했다.
+ *    폴백은 앞선 모델이 이미 실패한 뒤라 가장 안정적이어야 하는데, 거기에 429가 나는
+ *    preview를 두면 전체 실패로 직결된다.
  */
 export const MODEL_SEQUENCE = [
   'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
-  'gemini-3-flash-preview',
+  'gemini-3.5-flash',
 ];
 
 export const MODEL_RETRY_POLICY = {
   'gemini-3.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-2.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-3.1-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },
-  'gemini-3-flash-preview': { maxRetries: 1, baseDelayMs: 1500 },
+  // gemini-3-flash-preview 항목은 2026-07-28 삭제. 3.5-flash로 치환하면 위의 3.5-flash 키와
+  // 중복돼 뒤엣것이 이기고, 재시도가 2→1회·지연 2000→1500ms로 조용히 나빠진다.
   'gemini-flash-latest': { maxRetries: 1, baseDelayMs: 2000 },
 };
 
@@ -80,7 +83,9 @@ export const SIMPLE_PIPELINE = process.env.SIMPLE_PIPELINE !== '0';
 export const LIGHTWEIGHT_MODEL_SEQUENCE = [
   'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
-  'gemini-3-flash-preview',
+  // 2026-07-28 preview 전면 제거에 따라 3.5-flash로 교체. '경량' 시퀀스에 상위 모델이
+  // 들어가지만 여기는 앞의 둘이 모두 실패한 뒤의 최종 폴백이라 도달 빈도가 낮다.
+  'gemini-3.5-flash',
 ];
 
 /** 정답 추론(correct_answer) 전용 모델 시퀀스 — 정확도 우선
