@@ -282,6 +282,12 @@ export function scoreRun(groundTruth, runOutputs) {
   };
 
   for (const page of groundTruth.pages) {
+    // 이번에 아예 돌리지 않은 페이지는 채점 대상이 아니다(--only 부분 실행·부분 결과 rescore).
+    // 키 자체가 없는 것과 "키는 있는데 빈 배열"은 다르다 — 후자는 돌렸는데 한 문항도 못 뽑은
+    // 것이므로 missing으로 처벌해야 한다. 이 구분이 없으면 미실행 페이지의 전 문항이 abstain으로
+    // 잡혀 recall이 실제보다 낮게 나온다(2026-07-28 실측: 2쪽만 돌렸는데 4쪽 기준으로 채점돼
+    // mc recall 0.75 → 0.3으로 왜곡).
+    if (!(page.image in runOutputs)) continue;
     const out = runOutputs[page.image] || [];
     // 정밀 키 인덱스(선착순 — 같은 키가 둘이면 앞선 것이 그 문항의 답이다)
     const byExact = new Map();

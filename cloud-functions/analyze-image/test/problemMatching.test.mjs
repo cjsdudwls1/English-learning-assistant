@@ -159,3 +159,33 @@ test('scoreRun: 서로 다른 페이지의 같은 번호는 여전히 각자 채
   const { totals } = scoreRun(gt, run);
   assert.deepEqual(totals.mc_user, { correct: 2, abstain: 0, wrong: 0, missing: 0 });
 });
+
+// ─── 부분 실행(--only) 채점 범위 ──────────────────────────────────────────
+// 이미지 호출은 유료라 일부 페이지만 돌리는 일이 잦다. 그때 안 돌린 페이지가 채점에 섞이면
+// 지표가 실제보다 나쁘게 나와, 멀쩡한 파이프라인을 회귀로 오판하게 된다.
+
+test('scoreRun: 돌리지 않은 페이지는 채점하지 않는다', () => {
+  const gt = {
+    pages: [
+      { image: 'a.jpg', questions: [{ problem_number: '1', type: 'mc', user_answer: { value: '3' }, correct_answer: { value: '3' } }] },
+      { image: 'b.jpg', questions: [{ problem_number: '1', type: 'mc', user_answer: { value: '5' }, correct_answer: { value: '5' } }] },
+    ],
+  };
+  // a.jpg만 돌렸다 — b.jpg는 키 자체가 없다
+  const { totals } = scoreRun(gt, { 'a.jpg': [{ problem_number: '1', user_answer: '3', correct_answer: '3' }] });
+  // b.jpg의 문항이 abstain으로 섞이면 recall이 1 → 0.5로 반토막 난다
+  assert.deepEqual(totals.mc_user, { correct: 1, abstain: 0, wrong: 0, missing: 0 });
+});
+
+test('scoreRun: 돌렸는데 한 건도 못 뽑았으면 missing으로 처벌한다', () => {
+  const gt = {
+    pages: [{
+      image: 'a.jpg',
+      questions: [{ problem_number: '1', type: 'mc', user_answer: { value: '3' }, correct_answer: { value: '3' } }],
+    }],
+  };
+  // 키는 있고 값이 빈 배열 — 파이프라인이 돌았으나 아무것도 못 뽑은 경우(미실행과 구분된다)
+  const { totals } = scoreRun(gt, { 'a.jpg': [] });
+  assert.equal(totals.mc_user.missing, 1);
+  assert.equal(totals.mc_user.abstain, 1);
+});
