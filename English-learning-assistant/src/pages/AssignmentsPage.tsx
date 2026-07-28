@@ -48,7 +48,10 @@ export const AssignmentsPage: React.FC = () => {
                       )}
                     </p>
                     {a.description && <p className="text-sm text-slate-500 mt-1">{a.description}</p>}
-                    <p className="text-xs text-slate-400 mt-2">
+                    {/* text-slate-400 단독은 흰 배경에서 대비 2.63:1로 WCAG AA(4.5:1) 미달 —
+                        프로덕션 a11y 감사(axe-core, 2026-07-28)에서 serious로 검출됐다.
+                        라이트는 500, 다크는 400으로 가르는 코드베이스 공통 패턴을 따른다. */}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                       {new Date(a.created_at).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US')} · {t.assignments.problemCountUnit.replace('{count}', String(a.problem_count ?? 0))}
                       {a.due_date && ` · ${t.assignments.dueLabel.replace('{date}', new Date(a.due_date).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US'))}`}
                     </p>
