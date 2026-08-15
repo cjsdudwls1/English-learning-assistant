@@ -2,6 +2,7 @@ import { supabase } from '../supabaseClient';
 import type { SessionWithProblems } from '../../types';
 import { getCurrentUserId } from './auth';
 import { calculateSessionStats } from '../../utils/sessionStats';
+import { unwrapEmbedded } from '../../utils/postgrestEmbed';
 import { isCorrectFromMark, normalizeMark } from '../marks';
 import { resolveImageUrls } from '../../utils/imageUrl';
 
@@ -265,13 +266,12 @@ export async function fetchPendingLabelingSessions(): Promise<SessionWithProblem
       let incorrect_count = 0;
 
       problems.forEach((problem: any) => {
-        const labels = problem.labels || [];
-        if (labels.length > 0) {
-          const userMark = labels[0].user_mark;
-          if (userMark !== null && userMark !== undefined) {
-            const mark = normalizeMark(userMark);
-            if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
-          }
+        // labels 임베드는 관계 cardinality에 따라 배열/객체로 모양이 갈린다 — unwrapEmbedded 참고.
+        const label = unwrapEmbedded<any>(problem.labels);
+        const userMark = label?.user_mark;
+        if (userMark !== null && userMark !== undefined) {
+          const mark = normalizeMark(userMark);
+          if (isCorrectFromMark(mark)) correct_count++; else incorrect_count++;
         }
       });
 

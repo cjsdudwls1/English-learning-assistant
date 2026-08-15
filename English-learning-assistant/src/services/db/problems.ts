@@ -6,6 +6,7 @@ import { transformToProblemItem, transformFromLabelJoin } from '../../utils/prob
 import { eqSet } from '../../utils/gradingSafety';
 import { toCardinality } from '../../utils/answerShape';
 import { resolveImageUrls } from '../../utils/imageUrl';
+import { unwrapEmbedded } from '../../utils/postgrestEmbed';
 
 const ID_CHUNK = 500;
 
@@ -47,7 +48,8 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
 
   // ProblemItem 형식으로 변환 (AI 분석 결과 포함)
   const items: ProblemItem[] = (problems || []).map((p: any) => {
-    const label = p.labels?.[0] || {};
+    // labels 임베드는 관계 cardinality에 따라 배열/객체로 모양이 갈린다 — unwrapEmbedded 참고.
+    const label = unwrapEmbedded<any>(p.labels) || {};
     return transformToProblemItem(p, label);
   });
 
@@ -249,7 +251,7 @@ export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id:
   return (problems || []).map((p: any) => ({
     id: p.id,
     index_in_image: p.index_in_image,
-    ai_is_correct: p.labels?.[0]?.is_correct ?? null,
+    ai_is_correct: unwrapEmbedded<any>(p.labels)?.is_correct ?? null,
   }));
 }
 
