@@ -26,6 +26,32 @@ const STRUCTURE_MODEL_SEQUENCE = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
 
 const STEP1_TIMEOUT_MS = 300_000; // 다중 이미지 일괄 처리 → 넉넉히(worker 540s 내)
 
+/** Step 1 출력 상한 — 반복 루프(degeneration) 방어.
+ *
+ *  2026-08-15 프로덕션: 같은 이미지 2장을 46분 간격으로 두 번 올렸는데 한 번은 7,413자로
+ *  7문항이 45초에 끝났고, 다른 한 번은 같은 코드·같은 모델이 197,293자를 뱉었다. 후자는
+ *  Step 1에만 4분 30초가 걸렸고, 그 텍스트가 Step 2에 통째로 들어가(66,676토큰) 구조화가
+ *  문항 2개밖에 건지지 못했다. 입력도 코드도 같으니 모델 출력의 비결정성이다.
+ *
+ *  temperature 0.0이 이를 악화시킨다 — greedy 디코딩은 한번 반복 궤도에 들어가면 거기서
+ *  빠져나올 확률적 요동이 없다. 상한이 없으면 컨텍스트가 허용하는 데까지 간다.
+ *
+ *  perImage는 실측 정상치(장당 약 3,700자 / 1,200토큰)의 5배 이상을 남긴 값이고,
+ *  cap은 업로드 상한 10장(index.js MAX_IMAGES)이 전부 정상일 때(약 37,000자)의 2배다.
+ *  charCap(80,000자)이 tokenCap(32,768토큰 ≈ 99,000자)보다 먼저 걸리도록 잡았다 —
+ *  모델이 토큰 상한에 잘려 끝나는 것보다 이쪽이 먼저 감지돼 재시도로 이어지는 게 낫다.
+ */
+const STEP1_MAX_CHARS = { perImage: 20_000, cap: 80_000 };
+const STEP1_MAX_OUTPUT_TOKENS = { perImage: 8_192, cap: 32_768 };
+
+/** 이상 출력 후 재시도할 때 쓰는 온도. 0.0으로 다시 부르면 같은 궤도를 그대로 반복한다. */
+const STEP1_RETRY_TEMPERATURE = 0.3;
+
+/** Step 1 출력의 이상 여부 판정 상한(자). 이미지 수에 비례하되 전체 상한을 넘지 않는다. */
+export function step1CharLimit(numImages) {
+  return Math.min(STEP1_MAX_CHARS.perImage * Math.max(1, numImages), STEP1_MAX_CHARS.cap);
+}
+
 const SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -230,19 +256,32 @@ function dedupeByNumber(items) {
   return order.map((k) => map.get(k));
 }
 
-/** Step 1: 모든 이미지를 한 번에 3.5로 자유추출(자체 타임아웃 + 모델 폴백). */
-async function extractAllImages({ ai, sessionId, images }) {
+/** Step 1: 모든 이미지를 한 번에 3.5로 자유추출(자체 타임아웃 + 모델 폴백 + 이상 출력 방어).
+ *  export: 반복 루프 방어가 실제로 재시도·절단으로 이어지는지 테스트로 고정한다. */
+export async function extractAllImages({ ai, sessionId, images }) {
   const imageParts = images.map((img) => ({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } }));
   const parts = [{ text: buildExtractPrompt(images.length) }, ...imageParts];
 
-  const config = { temperature: EXTRACTION_TEMPERATURE };
-  if (THINKING_BUDGET !== undefined && !Number.isNaN(THINKING_BUDGET)) {
-    config.thinkingConfig = { thinkingBudget: THINKING_BUDGET };
-  }
+  const charLimit = step1CharLimit(images.length);
+  const maxOutputTokens = Math.min(
+    STEP1_MAX_OUTPUT_TOKENS.perImage * Math.max(1, images.length),
+    STEP1_MAX_OUTPUT_TOKENS.cap,
+  );
 
   let lastErr = null;
+  // 모든 모델·시도가 이상 출력이면 마지막 것을 절단해서라도 쓴다 — 전량 실패보다 낫다.
+  let lastOversized = null;
   for (const model of EXTRACT_MODEL_SEQUENCE) {
     for (let attempt = 0; attempt < 2; attempt++) {
+      const config = {
+        // 재시도는 직전 시도가 반복 궤도에 빠졌을 수 있는 상황이다. greedy(0.0)로 다시
+        // 부르면 같은 출력을 그대로 재생하므로 온도를 올려 궤도를 벗어나게 한다.
+        temperature: attempt === 0 ? EXTRACTION_TEMPERATURE : STEP1_RETRY_TEMPERATURE,
+        maxOutputTokens,
+      };
+      if (THINKING_BUDGET !== undefined && !Number.isNaN(THINKING_BUDGET)) {
+        config.thinkingConfig = { thinkingBudget: THINKING_BUDGET };
+      }
       try {
         let timeoutHandle;
         const timeoutPromise = new Promise((_, rej) => {
@@ -259,6 +298,18 @@ async function extractAllImages({ ai, sessionId, images }) {
         }
         const text = extractTextFromResponse(resp, model);
         if (text && text.trim()) {
+          // 빈 응답만이 실패가 아니다. 상한을 넘는 출력은 반복 루프의 산물이고, 그대로
+          // 넘기면 Step 2가 쓰레기 더미에서 문항을 놓친다(실제로 7문항 → 2문항).
+          if (text.length > charLimit) {
+            if (!lastOversized || text.length < lastOversized.text.length) {
+              lastOversized = { text, usedModel: model };
+            }
+            console.warn(
+              `[simplePipeline] Step1 ${model} 이상 출력 ${text.length}자(상한 ${charLimit}) → 재시도/폴백`,
+              { sessionId },
+            );
+            continue;
+          }
           return { text, usedModel: model };
         }
         console.warn(`[simplePipeline] Step1 ${model} 빈 응답 → 폴백`, { sessionId });
@@ -267,6 +318,13 @@ async function extractAllImages({ ai, sessionId, images }) {
         console.error(`[simplePipeline] Step1 ${model} attempt${attempt + 1}: ${e?.message}`, { sessionId });
       }
     }
+  }
+  if (lastOversized) {
+    console.warn(
+      `[simplePipeline] Step1 전 시도 이상 출력 → ${charLimit}자로 절단 진행 (원본 ${lastOversized.text.length}자)`,
+      { sessionId },
+    );
+    return { text: lastOversized.text.slice(0, charLimit), usedModel: lastOversized.usedModel };
   }
   if (lastErr) throw lastErr;
   throw new Error('Step1 추출 실패(빈 응답)');
@@ -311,7 +369,11 @@ export async function runSimpleExtractAndStructure({
 }) {
   // Step 1: 전체 이미지 일괄 자유추출
   const { text: rawText, usedModel } = await extractAllImages({ ai, sessionId, images });
-  console.log(`[simplePipeline] Step1 추출 ${rawText.length}자 (model=${usedModel})`, { sessionId });
+  // 이미지 수를 함께 남긴다 — 장당 자수를 봐야 이상 출력인지 사후에 판단할 수 있다.
+  console.log(
+    `[simplePipeline] Step1 추출 ${rawText.length}자 (이미지 ${images.length}장, model=${usedModel})`,
+    { sessionId },
+  );
 
   // Step 2: 3 Flash 구조화
   const { items: rawItems, usedModel: structModel } = await structureItems({ ai, sessionId, rawText });
