@@ -11,13 +11,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { GoogleGenAI } from '@google/genai';
-import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE } from '../../shared/config.js';
+import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE, SPLIT_PIPELINE } from '../../shared/config.js';
 import { preprocessImage } from '../../shared/imagePreprocessor.js';
 import { processPage } from '../../shared/processPage.js';
 import { runSimpleExtractAndStructure } from '../../shared/simplePipeline.js';
+import { runSplitPipeline } from '../../shared/splitPipeline.js';
 
 // run-eval.mjs가 console.log를 침묵시키므로 경로 표식은 console.error로 1회 출력
-console.error(`[pipeline-runner] pipeline=${SIMPLE_PIPELINE ? 'simple(extract→structure)' : '4pass(processPage)'}`);
+console.error(`[pipeline-runner] pipeline=${
+  SPLIT_PIPELINE ? 'split(structure→user∥correct)'
+    : SIMPLE_PIPELINE ? 'simple(extract→structure)' : '4pass(processPage)'
+}`);
 
 const EXT_TO_MIME = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
@@ -61,7 +65,17 @@ export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPage
 
   const sid = sessionId || `eval-${path.basename(imagePath)}-${Date.now()}`;
   let pageItems;
-  if (SIMPLE_PIPELINE) {
+  if (SPLIT_PIPELINE) {
+    const split = await runSplitPipeline({
+      ai, sessionId: sid, images: [imageData],
+      taxonomyData: [], userLanguage: 'ko',
+      runClassification: false,
+    });
+    pageItems = split.items;
+    // 이 경로는 모델이 셋이지만 콜백 계약은 두 필드다(run-eval이 `extract → structure`로 조합).
+    // 답 호출 둘을 '∥'로 묶어 한 필드에 담는다 — 계약을 안 바꾸면서 세 모델을 전부 남긴다.
+    onModels?.({ extract: split.structModel, structure: `${split.userModel}∥${split.correctModel}` });
+  } else if (SIMPLE_PIPELINE) {
     const simple = await runSimpleExtractAndStructure({
       ai, sessionId: sid, images: [imageData],
       taxonomyData: [], userLanguage: 'ko',

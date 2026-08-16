@@ -242,8 +242,10 @@ export function normalizeItem(raw) {
 }
 
 /** 같은 문항 번호 중복 제거 백스톱(페이지에 걸친 지문이 2개로 쪼개진 경우).
- *  정보량(지문 길이 + 선택지 수 + 답 유무)이 많은 쪽을 유지, 첫 등장 순서 보존. */
-function dedupeByNumber(items) {
+ *  정보량(지문 길이 + 선택지 수 + 답 유무)이 많은 쪽을 유지, 첫 등장 순서 보존.
+ *  export: splitPipeline이 같은 백스톱을 쓴다 — 두 파이프라인이 다른 중복 규칙을 갖게 되면
+ *  eval 비교가 파이프라인 차이가 아니라 후처리 차이를 재게 된다. */
+export function dedupeByNumber(items) {
   const score = (x) => (x.passage || '').length + (x.choices || []).length * 50
     + (x.user_answer ? 10 : 0) + (x.correct_answer ? 10 : 0);
   const map = new Map();

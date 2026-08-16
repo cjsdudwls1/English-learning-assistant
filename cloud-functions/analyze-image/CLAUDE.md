@@ -8,6 +8,7 @@ Pub/Sub worker)로 구성된다.
 
 - `index.js` — 엔트리포인트 (publisher + worker 둘 다 이 파일에서 export)
 - `shared/simplePipeline.js` — **현행 프로덕션 경로** (SIMPLE_PIPELINE, 2스텝: 추출 → 채점)
+- `shared/splitPipeline.js` — 역할분리 3-호출 경로 (SPLIT_PIPELINE, 기본 OFF)
 - `shared/processPage.js`, `shared/pass0.js`/`passA.js`/`passB.js`/`passC.js` — 기존 다단계 Pass 경로 (롤백용 보존)
 - `shared/config.js` — 모델·플래그 등 설정
 - `shared/dbOperations.js` — Supabase 저장 (problems/labels insert)
@@ -18,6 +19,8 @@ Pub/Sub worker)로 구성된다.
 
 - `SIMPLE_PIPELINE=1` (기본, 프로덕션 가동 중): 2스텝 단순 파이프라인
 - `SIMPLE_PIPELINE=0`: 기존 다단계 Pass 경로로 롤백
+- `SPLIT_PIPELINE=1`: 역할분리 3-호출(구조 → 학생답 ∥ 정답). SIMPLE_PIPELINE보다 우선한다.
+  기본 OFF — 정확도 실측 전까지 프로덕션 무영향. 이미지 입력 비용 3배.
 
 ## 규칙
 

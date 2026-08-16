@@ -75,6 +75,16 @@ export const CORRECT_SOURCE = process.env.CORRECT_SOURCE === 'fullpage' ? 'fullp
  */
 export const SIMPLE_PIPELINE = process.env.SIMPLE_PIPELINE !== '0';
 
+/** 역할분리 3-호출 파이프라인 스위치(기본 OFF — 정확도 실측 전까지 프로덕션 무영향).
+ *  ON: 이미지를 보는 호출을 역할별로 셋으로 나눈다.
+ *      Call 1 구조(인쇄된 문제만) → Call 2 학생 마크 ∥ Call 3 정답(병렬).
+ *      Call 2·3이 서로를 모르므로 "정답을 학생답 칸에 베끼는" 오염이 구조적으로 불가능하고,
+ *      각 호출이 자기 역할의 판독 지시만 받아 지시끼리 희석되지 않는다.
+ *      4-Pass와 달리 크롭을 쓰지 않는다 — bbox 예측이 틀리면 통째로 무너지던 실패 축을 제거.
+ *  비용: 이미지 입력 3배. 지연: Call 2·3 병렬이라 2단계.
+ *  우선순위: SPLIT_PIPELINE=1 이면 SIMPLE_PIPELINE보다 우선한다. */
+export const SPLIT_PIPELINE = process.env.SPLIT_PIPELINE === '1';
+
 /** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 (GA 우선)
  *  - 실험(2026-05-25): Pass 0 1순위를 3.1-flash-lite로 바꾸면 분할 품질이 회귀.
  *    Q37(36~37 지문공유) 마크를 fallback에서 복구 못 함(2.5는 2/2 복구), Q41/42 병합.
