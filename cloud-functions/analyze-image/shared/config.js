@@ -31,6 +31,7 @@ export const MODEL_RETRY_POLICY = {
   'gemini-3.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-2.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-3.1-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },
+  'gemini-3.5-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },
   // gemini-3-flash-preview 항목은 2026-07-28 삭제. 3.5-flash로 치환하면 위의 3.5-flash 키와
   // 중복돼 뒤엣것이 이기고, 재시도가 2→1회·지연 2000→1500ms로 조용히 나빠진다.
   'gemini-flash-latest': { maxRetries: 1, baseDelayMs: 2000 },
@@ -75,15 +76,20 @@ export const CORRECT_SOURCE = process.env.CORRECT_SOURCE === 'fullpage' ? 'fullp
  */
 export const SIMPLE_PIPELINE = process.env.SIMPLE_PIPELINE !== '0';
 
-/** 역할분리 3-호출 파이프라인 스위치(기본 OFF — 정확도 실측 전까지 프로덕션 무영향).
+/** 역할분리 3-호출 파이프라인 스위치(기본 ON — 2026-08-16 프로덕션 채택).
  *  ON: 이미지를 보는 호출을 역할별로 셋으로 나눈다.
  *      Call 1 구조(인쇄된 문제만) → Call 2 학생 마크 ∥ Call 3 정답(병렬).
  *      Call 2·3이 서로를 모르므로 "정답을 학생답 칸에 베끼는" 오염이 구조적으로 불가능하고,
  *      각 호출이 자기 역할의 판독 지시만 받아 지시끼리 희석되지 않는다.
  *      4-Pass와 달리 크롭을 쓰지 않는다 — bbox 예측이 틀리면 통째로 무너지던 실패 축을 제거.
  *  비용: 이미지 입력 3배. 지연: Call 2·3 병렬이라 2단계.
- *  우선순위: SPLIT_PIPELINE=1 이면 SIMPLE_PIPELINE보다 우선한다. */
-export const SPLIT_PIPELINE = process.env.SPLIT_PIPELINE === '1';
+ *  우선순위: SPLIT_PIPELINE이 SIMPLE_PIPELINE보다 우선한다.
+ *
+ *  기본값을 OFF→ON으로 뒤집은 이유: 켠 상태를 env로만 유지하면
+ *  deploy-worker.ps1이 `--env-vars-file=.env.yaml`로 env를 통째로 대체하는 탓에
+ *  재배포할 때마다 플래그가 조용히 증발해 2-스텝으로 되돌아간다.
+ *  끄려면 명시적으로 SPLIT_PIPELINE=0. */
+export const SPLIT_PIPELINE = process.env.SPLIT_PIPELINE !== '0';
 
 /** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 (GA 우선)
  *  - 실험(2026-05-25): Pass 0 1순위를 3.1-flash-lite로 바꾸면 분할 품질이 회귀.
@@ -99,7 +105,25 @@ export const LIGHTWEIGHT_MODEL_SEQUENCE = [
 ];
 // 주의: 이 시점에 LIGHTWEIGHT_MODEL_SEQUENCE와 MODEL_SEQUENCE의 값이 우연히 같아졌다
 // (양쪽 preview를 각각 3.5-flash로 교체한 결과). 같은 값이라고 하나로 합치지 말 것 —
-// 용도가 다르다(Pass A 구조추출 vs Pass 0/B/C). 한쪽만 조정할 일이 생기면 다시 갈라야 한다.
+// 용도가 다르다(Pass A 구조추출 vs Pass 0/B). 한쪽만 조정할 일이 생기면 다시 갈라야 한다.
+
+/** Pass C(분류) 전용 시퀀스 — 2026-08-16 LIGHTWEIGHT에서 분리.
+ *
+ *  분리한 이유: Pass C만 3.5-flash-lite로 내리라는 요구인데, LIGHTWEIGHT_MODEL_SEQUENCE는
+ *  Pass 0(페이지 분할)과 공용이다. 위 주석의 실험(2026-05-25)이 "Pass 0 1순위를 lite로 바꾸면
+ *  분할 품질 회귀(Q37 마크 복구 실패, Q41/42 병합)"를 이미 기록해 뒀으므로 공용 배열을
+ *  건드리면 안 된다. 위 주석이 예고한 "다시 갈라야 하는 순간"이 여기다.
+ *
+ *  1순위 gemini-3.5-flash-lite(GA): 공식 문서가 "high-throughput document extraction·data
+ *  parsing에 최적"이라 명시. Pass C는 이미 추출된 텍스트를 taxonomy 코드로 매핑하는
+ *  분류 작업이라 정확히 이 프로파일이고, 입력 6120 / 출력 2920 토큰으로 4개 호출 중
+ *  가장 비쌌다(구형 2.5-flash 사용). 단가도 3.5-flash 대비 낮다.
+ *  폴백은 종전 경로를 그대로 남겨 회귀 시 자동 복구되게 한다. */
+export const CLASSIFICATION_MODEL_SEQUENCE = [
+  'gemini-3.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-3.5-flash',
+];
 
 /** 정답 추론(correct_answer) 전용 모델 시퀀스 — 정확도 우선
  *  - 정답 추론은 '문제당 1회' 저빈도 호출 → 최상위 추론 모델을 1순위로 써도 부하 영향 작음

@@ -3,7 +3,7 @@
  */
 
 import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from './aiClient.js';
-import { LIGHTWEIGHT_MODEL_SEQUENCE, CLASSIFICATION_SCHEMA } from './config.js';
+import { CLASSIFICATION_MODEL_SEQUENCE, CLASSIFICATION_SCHEMA } from './config.js';
 import { buildClassificationPrompt } from './prompts.js';
 import { runWithModelFallback } from './modelFallback.js';
 
@@ -42,7 +42,7 @@ export async function executePassC({ ai, sessionId, taxonomyData, pageItems, use
 
 
   const result = await runWithModelFallback({
-    models: LIGHTWEIGHT_MODEL_SEQUENCE,
+    models: CLASSIFICATION_MODEL_SEQUENCE,
     callFn: async (model) => {
       const { response, usageMetadata } = await generateWithRetry({
         ai, model,

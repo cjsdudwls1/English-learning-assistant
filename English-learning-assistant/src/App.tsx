@@ -39,12 +39,18 @@ const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
  * Canvas API로 이미지를 리사이즈·JPEG 압축한다.
- * 긴 변 maxDimension 이하로 축소, quality 0.8 기본.
+ * 긴 변 maxDimension 이하로 축소, quality 기본 0.92.
+ *
+ * 2026-08-16: 1200px·0.8 → 2048px·0.92. 시험지 사진에서 판독 대상은 연필로 흐리게 친
+ * 동그라미와 작은 체크 표시인데, 스마트폰 원본(3000px+)을 1200px로 줄이고 JPEG 0.8을
+ * 먹이면 그 획이 배경과 뭉개져 사라진다. 모델이 못 읽는 게 아니라 볼 것이 안 간 것이다.
+ * Gemini는 이미지를 768px 타일로 쪼개 처리하므로 1200px는 장당 4타일에 그친다.
+ * 2048px면 타일이 늘어 획당 픽셀이 확보된다(입력 토큰은 그만큼 증가).
  */
 function compressImage(
   file: File,
-  maxDimension = 1200,
-  quality = 0.8,
+  maxDimension = 2048,
+  quality = 0.92,
 ): Promise<{ blob: Blob; mimeType: string }> {
   return new Promise((resolve, reject) => {
     const img = new Image();

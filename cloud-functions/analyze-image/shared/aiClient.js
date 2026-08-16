@@ -40,6 +40,7 @@ export async function generateWithRetry({
   ai, model, contents, sessionId,
   maxRetries, baseDelayMs, temperature,
   maxOutputTokens, tools, responseJsonSchema,
+  thinkingBudget, timeoutMs: timeoutMsOverride,
 }) {
   let attempt = 0;
 
@@ -50,12 +51,18 @@ export async function generateWithRetry({
       const config = { temperature, ...(maxOutputTokens ? { maxOutputTokens } : {}) };
       if (!tools) config.responseMimeType = 'application/json';
       if (responseJsonSchema) config.responseJsonSchema = responseJsonSchema;
-      // thinking 예산 제어(전역). 기본 undefined → 모델 기본 thinking 유지(현행 보존).
-      if (THINKING_BUDGET !== undefined && !Number.isNaN(THINKING_BUDGET)) {
-        config.thinkingConfig = { thinkingBudget: THINKING_BUDGET };
+      // thinking 예산. 호출자가 thinkingBudget을 넘기면 전역 THINKING_BUDGET을 덮는다:
+      //   미지정(undefined) → 전역값 적용(현행 보존)
+      //   null             → thinkingConfig 자체를 안 보냄 = 모델 기본 thinking
+      //   숫자             → 그 값 사용
+      // null이 필요한 이유: 전역 THINKING_BUDGET=0은 지연을 줄이려는 스위치인데,
+      // 정확도가 생명인 경로(splitPipeline)까지 thinking을 꺼버린다. 그 경로만 되살린다.
+      const effectiveBudget = thinkingBudget !== undefined ? thinkingBudget : THINKING_BUDGET;
+      if (effectiveBudget !== undefined && effectiveBudget !== null && !Number.isNaN(effectiveBudget)) {
+        config.thinkingConfig = { thinkingBudget: effectiveBudget };
       }
 
-      const timeoutMs = resolveTimeoutMs(model, !!tools);
+      const timeoutMs = timeoutMsOverride || resolveTimeoutMs(model, !!tools);
 
       let timeoutHandle;
       const timeoutPromise = new Promise((_, reject) => {

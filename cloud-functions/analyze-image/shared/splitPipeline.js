@@ -44,6 +44,20 @@ const MAX_OUTPUT_TOKENS = {
 
 const CALL_TIMEOUT_MS = 300_000;
 
+/** 이 경로는 thinking을 켠다(aiClient에 thinkingBudget: null 전달 → thinkingConfig 미전송 = 모델 기본).
+ *
+ *  근거: 전역 THINKING_BUDGET은 prod env에서 0이다. 지연을 25s→7.9s로 줄이려는 스위치인데,
+ *  config.js 주석 스스로 "정확도 영향은 eval A/B 검증 후 prod 적용"이라 단서를 달아놨고
+ *  그 검증은 이뤄지지 않았다. split의 세 호출은 정확도가 존재 이유다 — 특히 Call 3은
+ *  문제를 실제로 푸는 추론 작업이라 thinking을 끄면 가장 크게 무너진다.
+ *  사용자가 Gemini 웹에서 같은 프롬프트·같은 이미지로 얻은 "완벽한" 결과도 thinking이 켜진
+ *  조건이었다. 웹과 조건을 맞춘다.
+ *
+ *  thinking이 붙으면 호출당 baseline이 ~25s로 오른다. aiClient 기본 타임아웃 90s로는
+ *  밀집 지문에서 폴백(약한 모델)로 새기 쉬우므로 이 경로만 180s로 늘린다.
+ *  바깥 callJson 타임아웃 300s > 이 값 > 기본 90s 순서를 유지할 것. 워커 상한은 540s. */
+const MODEL_TIMEOUT_MS = 180_000;
+
 function tokenCap(kind, numImages) {
   const { perImage, cap } = MAX_OUTPUT_TOKENS[kind];
   return Math.min(perImage * Math.max(1, numImages), cap);
@@ -267,6 +281,9 @@ async function callJson({ ai, sessionId, parts, sequence, maxOutputTokens, pick,
             ai, model,
             contents: [{ role: 'user', parts }],
             sessionId, maxRetries: 2, baseDelayMs: 2000, temperature: 0.0, maxOutputTokens,
+            // 전역 THINKING_BUDGET(=0)을 무시하고 모델 기본 thinking을 쓴다. 아래 주석 참조.
+            thinkingBudget: null,
+            timeoutMs: MODEL_TIMEOUT_MS,
           }),
           timeoutPromise,
         ]));
