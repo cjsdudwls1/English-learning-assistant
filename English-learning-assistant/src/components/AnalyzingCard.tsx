@@ -54,7 +54,7 @@ export const AnalyzingCard: React.FC<AnalyzingCardProps> = ({
           : 'Analyzing the image. Please wait a moment.'}
       </p>
       {displayImageUrls.length > 1 && (
-        <p className="text-xs text-slate-400 dark:text-slate-500 mb-2">
+        <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
           {language === 'ko'
             ? `이미지 ${displayImageUrls.length}장 (클릭하여 확대)`
             : `${displayImageUrls.length} images (click to enlarge)`}

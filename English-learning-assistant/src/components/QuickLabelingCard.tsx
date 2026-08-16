@@ -363,7 +363,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           : `Please review and verify ${problems.length} problem(s) analyzed by AI.`}
       </p>
       {displayImageUrls.length > 1 && (
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
           {language === 'ko'
             ? `이미지 ${displayImageUrls.length}장 (클릭하여 확대)`
             : `${displayImageUrls.length} images (click to enlarge)`}
@@ -472,7 +472,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                   <div className="mb-3 space-y-2">
                     {problem.passage && (
                       <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 p-2">
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400 mb-1">
                           {language === 'ko' ? '지문' : 'Passage'}
                         </div>
                         <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{problem.passage}</p>
@@ -491,7 +491,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     )}
                     {problem.instruction && (
                       <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500 dark:text-indigo-400 mb-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400 mb-1">
                           {language === 'ko' ? '지시문' : 'Instruction'}
                         </div>
                         <p className="text-slate-800 dark:text-slate-200 font-semibold">{problem.instruction}</p>
@@ -499,7 +499,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     )}
                     {problem.question_body && (
                       <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400 mb-1">
                           {language === 'ko' ? '문제 본문' : 'Question'}
                         </div>
                         <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{problem.question_body}</p>
@@ -511,7 +511,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     )}
                     {qType === 'multiple_choice' && problem.문제_보기 && problem.문제_보기.length > 0 && (
                       <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400 mb-1">
                           {language === 'ko' ? '보기' : 'Choices'}
                         </div>
                         <ol className="list-decimal list-inside text-sm text-slate-600 dark:text-slate-400 space-y-1">
