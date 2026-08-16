@@ -54,47 +54,52 @@ function tokenCap(kind, numImages) {
  * export: 손글씨 배제 지시가 빠지면 Call 2·3의 전제가 무너지므로 테스트로 고정한다.
  */
 export function buildParsePrompt(numImages) {
-  const scope = numImages > 1 ? `이미지 ${numImages}장` : '이미지';
-  return `다음은 영어 시험지(문제지) ${scope}이다. **인쇄되어 있는 문제 자체**만 읽어서 문항별 JSON으로 구조화하라.
+  const scope = numImages > 1 ? `${numImages} images` : 'an image';
+  return `The following is ${scope} of a Korean English exam paper. Read **only the printed questions themselves** and structure them as JSON, one entry per item.
 
-## 이 작업에서 하지 않는 것
-- 학생이 손으로 쓴 답, 연필 동그라미·체크·밑줄은 **완전히 무시**한다.
-- 교사가 빨간펜으로 그은 채점 표시(O/X, 사선, 곡선)도 **완전히 무시**한다.
-- 정답이 무엇인지 **판단하지 않는다**. 그건 다른 단계에서 한다.
-- 필기가 인쇄 글자 위에 겹쳐 있으면, 그 아래의 **인쇄 글자만** 읽어라.
+## Not part of this task
+- **Completely ignore** handwritten answers: pencil circles, checks, underlines.
+- **Completely ignore** red-pen grading marks (O/X, slashes, curves).
+- **Do not decide** what the correct answer is. A later stage does that.
+- Where handwriting overlaps printed characters, read **only the printed characters** underneath.
 
-반드시 아래 형식의 JSON 객체만 출력하라(마크다운/설명 금지):
+Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"items": [ <item>, ... ]}
 
-각 <item>:
+Each <item>:
 {
-  "problem_number": string,   // 문항 번호. 페이지 안에서 고유해야 한다(아래 규칙). 빈 문자열 금지
-  "passage": string|null,     // 지문 전문(공유 지문이면 각 문항에 반복). 없으면 null
-  "visual_context": null | {"type": string, "title": string, "content": string},  // 표/그래프/안내문. 없으면 null
-  "instruction": string|null, // 발문
-  "question_body": string|null, // 지문 아닌 추가 본문. 없으면 null
-  "choices": [ {"label": "1".."5", "text": "..."} ],  // 서술형이면 []
+  "problem_number": string,   // item number, unique within the page (see rules). Never an empty string
+  "passage": string|null,     // full passage text (repeat it on every item that shares it); null if none
+  "visual_context": null | {"type": string, "title": string, "content": string},  // table/chart/notice; null if none
+  "instruction": string|null, // the question prompt line
+  "question_body": string|null, // extra body text that is not the passage; null if none
+  "choices": [ {"label": "1".."5", "text": "..."} ],  // [] for free-response items
   "answer_format": "single" | "multi_select" | "multi_blank",
-  "blank_count": number|null  // answer_format="multi_blank"일 때 빈칸 개수. 그 외 null
+  "blank_count": number|null  // number of blanks when answer_format="multi_blank"; null otherwise
 }
 
-규칙:
-- 선택지의 원문자(①②③④⑤)는 label에 ASCII 숫자(1..5)로 적는다.
-- 지문은 요약·절삭 없이 문항별 전문으로. 여러 페이지에 걸친 지문은 하나로 이어 붙인다.
-- 같은 문항 번호는 반드시 한 번만 출력한다(중복 금지).
-- 문항 번호 고유성: 교재 연습(Unit Exercise 등)은 한 페이지 안에서 A·B·C 같은 구획마다 번호가
-  1부터 다시 시작한다. 이때 problem_number를 "A-1", "B-2"처럼 구획 기호를 붙여 페이지 안에서
-  겹치지 않게 한다. 구획이 없으면 번호만 적는다("3"). 없는 구획을 지어내지는 마라.
-- **페이지에 보이는 모든 문항을 하나도 빠뜨리지 마라.** 시험 번호가 없는 교재 연습문제
-  (예: "Let's Use It", 괄호에서 고르기 연습 등)도 반드시 포함한다.
-- answer_format 판정:
-  - "multi_select": 발문이 답을 둘 이상 고르라고 지시한 객관식. "모두 고르시오", "정답 2개",
-    "(단, 2개)", "두 개를 고르세요", "2개를 고르시오", "all that apply" 등 **개수를 명시한 모든 표현**을
-    포함한다 — 숫자로 적혔든("2개") 한글 수사로 적혔든("두 개") 똑같이 취급한다.
-  - "multi_blank": 한 문항 아래에 (1)(2)(3)처럼 괄호 번호가 붙은 빈칸이 여러 개인 서술형.
-    blank_count에 빈칸 개수를 적는다.
-  - 그 외 전부 "single".
-- 문항 번호 순서대로 정리한다.`;
+Rules:
+- **Transcribe every string in its original language, exactly as printed.** Never translate,
+  paraphrase or correct it — Korean prompts and passages stay in Korean, character for character.
+- Write circled numerals (①②③④⑤) as ASCII digits (1..5) in \`label\`.
+- Passages go in full per item, never summarized or truncated. Join a passage spanning several
+  pages into one.
+- Emit each problem_number exactly once (no duplicates).
+- Number uniqueness: workbook drills (Unit Exercise and the like) restart numbering at 1 for each
+  section (A, B, C...) on one page. There, prefix the section — "A-1", "B-2" — so numbers stay
+  unique within the page. With no section, write the bare number ("3"). Never invent a section
+  that isn't printed.
+- **Do not miss a single item visible on the page.** That includes workbook drills with no exam
+  numbering (e.g. "Let's Use It", pick-from-parentheses practice).
+- Deciding answer_format:
+  - "multi_select": a multiple-choice item whose prompt asks for two or more answers. Korean papers
+    phrase this as "모두 고르시오", "정답 2개", "(단, 2개)", "두 개를 고르세요", "2개를 고르시오";
+    English as "all that apply". **Any phrasing that states a count counts** — written as a digit
+    ("2개") or as a Korean numeral word ("두 개"), treat them the same.
+  - "multi_blank": a free-response item with several parenthesized blanks under it, like (1)(2)(3).
+    Put the number of blanks in blank_count.
+  - Everything else: "single".
+- Order by item number.`;
 }
 
 /** Call 2·3 프롬프트에 넣을 문항 목록. 지문 전문은 넣지 않는다 — 이미지에 있고,
@@ -104,9 +109,9 @@ function buildItemRoster(items) {
   return items.map((it) => {
     const choices = Array.isArray(it.choices) && it.choices.length > 0
       ? it.choices.map((c) => `${c.label ?? '?'}) ${String(c.text ?? '').slice(0, 60)}`).join(' / ')
-      : '(선택지 없음 — 서술형)';
-    const fmt = it.answer_format === 'multi_select' ? ' [복수정답]'
-      : it.answer_format === 'multi_blank' ? ` [다중빈칸 ${it.blank_count ?? '?'}개]` : '';
+      : '(no choices — free response)';
+    const fmt = it.answer_format === 'multi_select' ? ' [MULTI-SELECT]'
+      : it.answer_format === 'multi_blank' ? ` [MULTI-BLANK ${it.blank_count ?? '?'}]` : '';
     const instruction = String(it.instruction ?? '').slice(0, 120);
     return `- Q${it.problem_number}${fmt}: ${instruction}\n    ${choices}`;
   }).join('\n');
@@ -116,22 +121,23 @@ function buildItemRoster(items) {
  *  (구 prompts.js의 UNIT MATCHING 규칙: 서로 다른 단위로 나오면 비교 자체가 성립하지 않는다) */
 function answerFormatRules(field) {
   const arrField = field === 'user_answer' ? 'user_answers' : 'correct_answers';
-  return `## 답의 형식
-- 객관식(①②③④⑤ 또는 1~5 번호 선택지): **ASCII 숫자 한 글자**("1"~"5"). 원문자(①②③④⑤)를 그대로
-  출력하지 말고 반드시 ①→"1" … ⑤→"5"로 변환한다.
-- 밑줄형 객관식("밑줄 친 부분 중 …적절하지 않은 것은?"), 문장삽입, 순서배열, 어법, 어휘 문제도
-  전부 **선택지 번호**로 답한다. 밑줄 친 단어("appear")나 지문 문장을 그대로 옮기지 마라.
-- 문장 형식 고르기(선택지가 "1형식".."5형식"): "N형식" 라벨에서 **숫자를 읽어** 답한다. 몇 번째
-  칸에 있는지(위치)가 아니다. "5형식"이 첫 칸에 있어도 답은 "5"다.
-- 괄호고르기(어법 선택형: "(who/which)"처럼 괄호 안 단어 중 하나 고르기): 번호가 아니라
-  **단어 자체**를 인쇄된 철자 그대로 답한다. 여기서 숫자를 내면 확실한 오답이다.
-- 서술형: 빈칸에 들어가는 내용만 자연스러운 한 덩어리로. 쉼표나 슬래시로 토막 내지 마라
-  (NOT "they, do", NOT "Didn't / she / go" → "Yes, they do", "Didn't she go home late yesterday?").
-- 복수정답 [복수정답] 표시 문항: ${arrField}에 해당 번호를 **전부** 오름차순 문자열 배열로 담고
-  (예: ["1","2"]), ${field} 스칼라에도 "1, 2"처럼 이어 붙인다. 하나만 적고 끊으면 그 문항은
-  통째로 오답 처리된다.
-- 다중빈칸 [다중빈칸 N개] 표시 문항: ${arrField}에 빈칸 순서대로 정확히 N개 길이의 배열을 담고
-  (해당 없는 칸은 null), ${field} 스칼라에도 "(1) … (2) …" 형태로 함께 채운다.`;
+  return `## Answer format
+- Multiple choice (①②③④⑤ or numbered choices 1–5): **a single ASCII digit** ("1"–"5"). Never emit
+  the circled numeral itself — always convert ①→"1" … ⑤→"5".
+- Underline-type MC ("밑줄 친 부분 중 …적절하지 않은 것은?"), sentence insertion, ordering, grammar
+  and vocabulary items all answer with the **choice number**. Do not copy out the underlined word
+  ("appear") or a sentence from the passage.
+- Sentence-pattern items (choices labeled "1형식".."5형식"): **read the digit in the label**, not the
+  position of the box. If "5형식" sits in the first box the answer is still "5".
+- Pick-in-parentheses (grammar choice such as "(who/which)"): answer with the **word itself**, spelled
+  exactly as printed, not a number. A digit here is a guaranteed miss.
+- Free response: only what fills the blank, as one natural chunk. Do not chop it up with commas or
+  slashes (NOT "they, do", NOT "Didn't / she / go" → "Yes, they do", "Didn't she go home late yesterday?").
+- Items tagged [MULTI-SELECT]: put **every** selected number in ${arrField} as an ascending array of
+  strings (e.g. ["1","2"]), and also join them in the ${field} scalar as "1, 2". Reporting one and
+  stopping makes the whole item count as wrong.
+- Items tagged [MULTI-BLANK N]: put exactly N entries in ${arrField} in blank order (null for a blank
+  you cannot fill), and also fill the ${field} scalar as "(1) … (2) …".`;
 }
 
 /**
@@ -148,46 +154,47 @@ function answerFormatRules(field) {
  * 새 지시를 추가할 때는 둘 중 어디에 속하는지 먼저 답할 것.
  */
 export function buildUserAnswerPrompt(items, numImages) {
-  const scope = numImages > 1 ? `이미지 ${numImages}장` : '이미지';
-  return `다음은 학생이 풀어놓은 영어 시험지 ${scope}이다.
-너의 임무는 **학생이 종이에 남긴 필기 흔적**을 읽는 것 하나다. 문제를 풀 필요는 없다 —
-학생이 틀리게 썼으면 틀린 그대로가 옳은 보고다. 페이지에 인쇄된 정답표·해설이 보이더라도
-그것은 학생의 흔적이 아니니 옮기지 마라.
+  const scope = numImages > 1 ? `${numImages} images` : 'an image';
+  return `The following is ${scope} of an English exam paper a student has worked through.
+Your single job is to read **the marks the student physically left on the paper**. You do not need to
+solve anything — if the student wrote it wrong, reporting it wrong is the correct output. Even if a
+printed answer key or explanation appears on the page, that is not the student's mark; do not copy it.
 
-## 무엇이 학생의 흔적인가
-- **연필·검정·파랑 볼펜**의 불규칙한 획 — 이것만이 답이다.
-- **빨간펜**(동그라미·사선·곡선·O/X) — 교사의 채점이다. 가장 크고 진해서 먼저 눈에 들어오지만 답이 아니다.
-- **인쇄체**(균일한 활자체) — 문제 자체다.
+## What counts as the student's mark
+- **Pencil, black or blue ballpoint** with irregular strokes — this alone is the answer.
+- **Red pen** (circles, slashes, curves, O/X) — the teacher's grading. It is the boldest thing on the
+  page and catches the eye first, but it is not the answer.
+- **Printed type** (uniform typeface) — the question itself.
 
-## 마크 읽기
-- 선택지 ①②③④⑤를 **하나씩** 확인한 뒤 판단한다. 처음 눈에 띈 마크에서 멈추지 마라.
-- **흐린 연필 자국, 옅은 동그라미, 작은 틱 마크도 전부 유효한 마크다.**
-- 원에 **완전히 둘러싸인** 번호가 가장 강한 신호다. 관통하는 사선은 취소, 화살표는 도착한 쪽이 최종 답.
-- 좌우 선택지 단을 가르는 긴 세로 곡선은 레이아웃 구분선이다.
-- 학생이 자가채점해 X와 O를 **서로 다른** 번호에 적었다면, X 쪽이 학생의 답이다.
+## Reading the marks
+- Inspect choices ①②③④⑤ **one at a time** before deciding. Do not stop at the first mark you notice.
+- **Faint pencil traces, light circles and small tick marks all count as valid marks.**
+- A number **fully enclosed** by a hand-drawn loop is the strongest signal. A slash through a number
+  cancels it; an arrow means the number it lands on is the final answer.
+- A long vertical curve dividing the left and right choice columns is a layout divider.
+- If the student self-graded and put X and O on **different** numbers, the X marks the student's answer.
 
-## 서술형
-- 손으로 쓴 획만 옮기되 **철자·문법 오류를 절대 고치지 마라** — "beetween"이라 썼으면 "beetween"이다.
-- 빈칸 앞뒤에 원래 인쇄돼 있던 글자("A:"/"B:", "Yes,", 주어진 문장 조각, 단어 보기)는 뺀다.
-- 지우고 다시 썼으면 최종본만. 빈칸이 여럿이면 읽는 순서대로 공백 하나로 잇는다.
+## Free response
+- Copy only the handwritten strokes, and **never correct spelling or grammar** — if they wrote
+  "beetween", the answer is "beetween". Transcribe in the original language, exactly as written.
+- Leave out characters that were already printed around the blank ("A:"/"B:", "Yes,", a given
+  sentence fragment, a word bank).
+- If they erased and rewrote, take the final version. For several blanks, join them in reading order
+  with a single space.
 
 ${answerFormatRules('user_answer')}
 
-## 확신이 없으면 null
-마크가 없거나, 있어도 **어느 선택지의 것인지 확신할 수 없으면**(흐리거나 두 번호에 걸쳐 있으면) null이다.
-**추측하지 마라 — 틀린 답은 null보다 나쁘다.**
-
-## 대상 문항
-**목록의 번호를 그대로 사용**하고, 목록에 없는 번호를 만들지 마라.
+## Items to answer
+**Use the numbers from this list exactly** and never invent one that is not on it.
 ${buildItemRoster(items)}
 
-반드시 아래 형식의 JSON 객체만 출력하라(마크다운/설명 금지):
+Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"answers": [
   {"problem_number": "3", "user_answer": "2", "user_answers": null, "user_marked_correctness": null}
 ]}
-- user_answers: 복수정답·다중빈칸 문항에서만 배열로 채우고, 그 외에는 null.
-- user_marked_correctness: 그 문항에 채점 표시가 보이면 "O" 또는 "X", 없으면 null.
-- 위 예시 값은 자리표시자다. 실제 마크를 읽어 채워라. 모든 문항을 빠짐없이 포함하라.`;
+- user_answers: fill as an array only for MULTI-SELECT / MULTI-BLANK items; null otherwise.
+- user_marked_correctness: "O" or "X" if a grading mark is visible on that item, else null.
+- The values above are placeholders. Read the actual marks. Include every item without exception.`;
 }
 
 /**
@@ -195,43 +202,44 @@ ${buildItemRoster(items)}
  * export: 학생 마크 배제 지시가 빠지면 Call 2와의 독립성이 무너진다 — 테스트로 고정.
  */
 export function buildCorrectAnswerPrompt(items, numImages) {
-  const scope = numImages > 1 ? `이미지 ${numImages}장` : '이미지';
-  return `다음은 영어 시험지 ${scope}이다.
-너의 유일한 임무는 각 문항의 **실제 정답**을 확정하는 것이다.
+  const scope = numImages > 1 ? `${numImages} images` : 'an image';
+  return `The following is ${scope} of an English exam paper.
+Your single job is to establish the **actual correct answer** for each item.
 
-## 절대 규칙 — 학생의 답을 근거로 삼지 마라
-- 학생이 연필로 친 동그라미·체크는 **틀렸을 수 있다.** 그것을 정답으로 옮기지 마라.
-- 정답은 (1) 페이지에 인쇄된 정답·해설, (2) 교사가 빨간펜으로 표시한 채점, (3) 네가 직접 푼 결과
-  순서로 판단한다. 학생의 연필 마크는 근거가 아니다.
-- 교사의 빨간펜 O 표시가 특정 번호에 있으면 그 번호가 정답이다. 반대로 학생 답에 X가 쳐져
-  있으면 그 답은 정답이 아니다.
+## Absolute rule — the student's answer is not evidence
+- The circles and checks the student drew in pencil **may be wrong.** Do not copy them as correct.
+- Establish the answer from, in this order: (1) an answer key or explanation printed on the page,
+  (2) the teacher's red-pen grading, (3) solving it yourself. The student's pencil marks are not evidence.
+- A teacher's red O on a number means that number is correct. Conversely, an X on the student's
+  answer means that answer is not correct.
 
-## 인쇄된 정답이 없으면 직접 풀어라
-- 지문과 선택지를 읽고 문제를 실제로 풀어 정답을 확정한다.
-- 문장 형식 고르기는 다음을 적용한다: 1형식=S+V(자동사 sleep/go/arrive); 2형식=S+V+C
-  (be·become·seem·감각동사 look/feel/sound + 보어 — be동사 뒤에 명사나 형용사가 오면 2형식이다.
-  "She is my business partner"→2형식, 3형식 아님); 3형식=S+V+O; 4형식=S+V+IO+DO
-  (수여동사 give/buy/make/send/tell + 사람 + 사물); 5형식=S+V+O+OC(make/find/keep/call/leave +
-  목적어 + 목적격보어. "I found it difficult"→5형식, "keeps you healthy"→5형식).
+## If no answer is printed, solve it yourself
+- Read the passage and the choices and actually work the item out.
+- For sentence-pattern items (choices labeled "1형식".."5형식") apply: Pattern 1 = S+V (intransitive
+  sleep/go/arrive); Pattern 2 = S+V+C (be, become, seem, sense verbs look/feel/sound + complement —
+  a noun or adjective after \`be\` makes it Pattern 2: "She is my business partner" → 2형식, not 3형식);
+  Pattern 3 = S+V+O; Pattern 4 = S+V+IO+DO (ditransitive give/buy/make/send/tell + person + thing);
+  Pattern 5 = S+V+O+OC (make/find/keep/call/leave + object + object complement: "I found it difficult"
+  → 5형식, "keeps you healthy" → 5형식).
 
 ${answerFormatRules('correct_answer')}
 
-## 지어내지 마라
-- 문항 번호만 보이고 실제 문제 내용(발문·선택지·지문)이 페이지에 없으면(잘린 페이지 조각,
-  "[11-12]" 같은 묶음 머리글) null을 반환한다. 보이지 않는 내용의 정답을 만들어 내는 것은
-  확실한 오답이며 null보다 나쁘다.
-- 그 외의 경우에는 반드시 정답을 낸다.
+## Do not invent
+- If only an item number is visible and the actual content (prompt, choices, passage) is not on the
+  page — a cropped page fragment, a group header like "[11-12]" — return null. Manufacturing an answer
+  for content you cannot see is a guaranteed miss and worse than null.
+- In every other case, always produce an answer.
 
-## 대상 문항
-아래 문항들에 대해 답하라. **목록의 번호를 그대로 사용**하고, 목록에 없는 번호를 만들지 마라.
+## Items to answer
+Answer the items below. **Use the numbers from this list exactly** and never invent one that is not on it.
 ${buildItemRoster(items)}
 
-반드시 아래 형식의 JSON 객체만 출력하라(마크다운/설명 금지):
+Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"answers": [
   {"problem_number": "3", "correct_answer": "2", "correct_answers": null}
 ]}
-- correct_answers: 복수정답·다중빈칸 문항에서만 배열로 채우고, 그 외에는 null.
-- 위 예시 값은 자리표시자다. 실제로 풀어서 채워라. 모든 문항을 빠짐없이 포함하라.`;
+- correct_answers: fill as an array only for MULTI-SELECT / MULTI-BLANK items; null otherwise.
+- The values above are placeholders. Solve them for real. Include every item without exception.`;
 }
 
 /** 이미지 파트 생성. 세 호출이 각자 같은 이미지를 받는다(크롭 없음). */

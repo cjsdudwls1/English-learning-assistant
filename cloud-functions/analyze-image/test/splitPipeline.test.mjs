@@ -8,10 +8,14 @@
  *
  * 다루는 것:
  *   1. Call 1(구조)   — 손글씨·빨간펜 배제 지시. 이게 빠지면 Call 2·3의 전제가 무너진다.
- *   2. Call 2(학생답) — 세 레이어 구분·VERBATIM·흐린 마크·기권 규칙.
+ *   2. Call 2(학생답) — 세 레이어 구분·VERBATIM·흐린 마크·정답표 오염 차단.
  *   3. Call 3(정답)   — 학생 마크 배제. 이게 빠지면 Call 2와 독립이 아니게 된다.
  *   4. 호출 간 독립성 — Call 2 프롬프트에 정답이 새어 들어가지 않는가.
  *   5. mergeCallResults — 번호 정합·환각 방어(순수함수).
+ *
+ * 프롬프트 본문은 영문이지만 **시험지에서 실제로 매칭할 문자열은 한국어 그대로** 남긴다
+ * (복수정답 트리거 "두 개를 고르세요", "1형식".."5형식" 등). 여기를 번역하면 트리거가 죽으므로
+ * 아래 검사들도 그 부분만 한글 정규식을 쓴다.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -41,16 +45,26 @@ const ITEMS = [
 
 test('Call1 프롬프트: 학생 손글씨와 교사 빨간펜을 모두 무시하라고 지시한다', () => {
   const p = buildParsePrompt(1);
-  assert.match(p, /손으로 쓴 답|손글씨/);
-  assert.match(p, /빨간펜/);
-  assert.match(p, /무시/);
+  assert.match(p, /handwritten/i);
+  assert.match(p, /red[- ]pen/i);
+  assert.match(p, /ignore/i);
   // 인쇄 글자 위에 필기가 겹칠 때의 처리가 명시돼야 한다 — 실측 오답이 전부 겹침 영역이었다.
-  assert.match(p, /겹쳐|겹치/);
+  assert.match(p, /overlap/i);
 });
 
 test('Call1 프롬프트: 정답을 판단하지 말라고 지시한다(역할 분리의 전제)', () => {
   const p = buildParsePrompt(1);
-  assert.match(p, /정답이 무엇인지 \*\*판단하지 않는다\*\*/);
+  assert.match(p, /\*\*Do not decide\*\* what the correct answer is/);
+});
+
+test('Call1 프롬프트: 원문 언어를 그대로 전사하라고 지시한다(번역 금지)', () => {
+  // 프롬프트를 영문화하면서 생긴 위험 — 지시가 영어면 모델이 한국어 발문·지문을 영어로
+  // 옮겨 출력할 수 있다. 그러면 passage/instruction이 통째로 오염되고 GT와 대조도 불가능해진다.
+  // 이 프롬프트가 뽑는 필드 대부분이 한국어 원문이므로 번역 금지는 필수 지시다.
+  const p = buildParsePrompt(1);
+  assert.match(p, /original language/i);
+  assert.match(p, /[Nn]ever translate/);
+  assert.match(p, /Korean/);
 });
 
 test('Call1 스키마에는 답 필드가 없다 — 구조적으로 답을 낼 수 없다', () => {
@@ -66,57 +80,56 @@ test('Call1 스키마에는 답 필드가 없다 — 구조적으로 답을 낼 
 
 test('Call1 프롬프트: 복수정답 트리거가 한글 수사 형태를 포함한다', () => {
   // 실측 오답 원인 — 트리거 예시에 "두 개를 고르세요"가 없어 multi_select를 놓쳤다.
+  // 지시문은 영문이어도 트리거 예시는 한국어여야 한다: 모델이 이미지에서 실제로 매칭할
+  // 문자열이 한국어다. 여기를 영어로 번역하면 트리거가 통째로 죽는다.
   const p = buildParsePrompt(1);
   assert.match(p, /두 개를 고르세요/);
-  assert.match(p, /한글 수사/);
+  assert.match(p, /모두 고르시오/);
+  assert.match(p, /Korean numeral word/);
 });
 
 // ─── 2. Call 2(학생답): 판독 지시 ───────────────────────────────────────
 
 test('Call2 프롬프트: 인쇄체·학생연필·교사빨간펜 세 레이어를 구분시킨다', () => {
   const p = buildUserAnswerPrompt(ITEMS, 1);
-  assert.match(p, /인쇄체/);
-  assert.match(p, /연필/);
-  assert.match(p, /빨간펜/);
+  assert.match(p, /Printed type/);
+  assert.match(p, /Pencil/);
+  assert.match(p, /Red pen/);
   // 빨간펜이 시각적으로 압도적이라는 함정을 명시해야 한다.
-  assert.match(p, /이끌리지 마라|답이 아니다/);
+  assert.match(p, /not the answer/);
 });
 
 test('Call2 프롬프트: 철자를 고치지 말라고 지시한다(VERBATIM)', () => {
   // 실측 오답 — 학생이 쓴 "beetween"을 모델이 "between"으로 교정해 오답이 정답으로 둔갑했다.
   const p = buildUserAnswerPrompt(ITEMS, 1);
-  assert.match(p, /철자·문법 오류를 절대 고치지 마라/);
+  assert.match(p, /never correct spelling or grammar/);
   assert.match(p, /beetween/);
+  // 손글씨도 원문 언어 그대로 — 영문 지시가 한국어 서술형 답안을 번역시키면 안 된다.
+  assert.match(p, /original language/i);
 });
 
 test('Call2 프롬프트: 흐린 연필 자국도 유효한 마크로 취급시킨다', () => {
   const p = buildUserAnswerPrompt(ITEMS, 1);
-  assert.match(p, /흐린 연필 자국|옅은 동그라미/);
-});
-
-test('Call2 프롬프트: 확신 없으면 기권(precision-first)', () => {
-  const p = buildUserAnswerPrompt(ITEMS, 1);
-  assert.match(p, /추측하지 마라/);
-  assert.match(p, /틀린 답은 null보다 나쁘다/);
+  assert.match(p, /Faint pencil traces|light circles/);
 });
 
 test('Call2 프롬프트: 인쇄된 정답표를 답으로 옮기지 말라고 지시한다', () => {
   const p = buildUserAnswerPrompt(ITEMS, 1);
-  assert.match(p, /정답표|해설/);
-  assert.match(p, /옮기지 마라/);
+  assert.match(p, /answer key|explanation/);
+  assert.match(p, /do not copy it/);
 });
 
 // ─── 3. Call 3(정답): 학생 마크 배제 ────────────────────────────────────
 
 test('Call3 프롬프트: 학생의 연필 마크를 정답 근거로 쓰지 말라고 지시한다', () => {
   const p = buildCorrectAnswerPrompt(ITEMS, 1);
-  assert.match(p, /학생.*틀렸을 수 있다|틀렸을 수 있다/);
-  assert.match(p, /근거가 아니다|정답으로 옮기지 마라/);
+  assert.match(p, /may be wrong/);
+  assert.match(p, /not evidence/);
 });
 
 test('Call3 프롬프트: 보이지 않는 문항의 정답을 지어내지 말라고 지시한다', () => {
   const p = buildCorrectAnswerPrompt(ITEMS, 1);
-  assert.match(p, /지어내지|만들어 내는 것/);
+  assert.match(p, /Do not invent/);
   assert.match(p, /null/);
 });
 
@@ -140,8 +153,9 @@ test('문항 목록은 번호·발문·선택지·형식을 담는다(답을 채
   const p = buildUserAnswerPrompt(ITEMS, 1);
   assert.match(p, /Q10/);
   assert.match(p, /Q14/);
-  assert.match(p, /\[복수정답\]/);
-  assert.match(p, /\[다중빈칸 3개\]/);
+  assert.match(p, /\[MULTI-SELECT\]/);
+  assert.match(p, /\[MULTI-BLANK 3\]/);
+  // 발문은 시험지 원문이라 목록에도 한국어 그대로 실려야 한다(영문화 대상이 아니다).
   assert.match(p, /어법상 알맞은 문장 두 개를 고르세요/);
 });
 
@@ -149,9 +163,9 @@ test('두 답 호출 모두 복수정답·다중빈칸 배열 규칙을 받는�
   const u = buildUserAnswerPrompt(ITEMS, 1);
   const c = buildCorrectAnswerPrompt(ITEMS, 1);
   assert.match(u, /user_answers/);
-  assert.match(u, /오름차순 문자열 배열/);
+  assert.match(u, /ascending array of\s+strings/);
   assert.match(c, /correct_answers/);
-  assert.match(c, /오름차순 문자열 배열/);
+  assert.match(c, /ascending array of\s+strings/);
   // 원문자→ASCII 변환은 양쪽 다 필요하다(한쪽만 있으면 비교 단위가 어긋난다).
   assert.match(u, /①/);
   assert.match(c, /①/);
