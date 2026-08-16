@@ -41,8 +41,9 @@ import { normalizeItem, dedupeByNumber } from './simplePipeline.js';
  *
  *  폴백은 3.5-flash를 유지한다(직전까지 프로덕션에서 돌던 검증된 모델).
  *  3.6이 400·쿼터·회귀로 죽어도 어제 수준으로는 자동 복귀한다.
- *  ⚠️ 3.6은 temperature/top_p/top_k와 숫자 thinkingBudget을 거부한다(HTTP 400).
- *     aiClient의 NO_SAMPLING_PARAMS가 걸러주므로 여기서 따로 처리하지 않는다. */
+ *  ⚠️ 3.6은 temperature/top_p/top_k를 **거부하지 않고 조용히 무시한다**(실측: 400 아님, 200).
+ *     그래서 잘못 보내도 증상이 없다 — aiClient의 NO_SAMPLING_PARAMS가 걸러주고
+ *     재현성은 아래 SEED + THINKING_LEVEL이 맡는다. */
 const STRUCTURE_MODEL_SEQUENCE = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'];
 const ANSWER_MODEL_SEQUENCE = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'];
 
