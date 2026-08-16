@@ -56,19 +56,30 @@ const MAX_OUTPUT_TOKENS = {
 
 const CALL_TIMEOUT_MS = 300_000;
 
-/** 이 경로는 thinking을 켠다(aiClient에 thinkingBudget: null 전달 → thinkingConfig 미전송 = 모델 기본).
+/** 이 경로는 thinking을 명시적으로 high로 올린다.
  *
  *  근거: 전역 THINKING_BUDGET은 prod env에서 0이다. 지연을 25s→7.9s로 줄이려는 스위치인데,
  *  config.js 주석 스스로 "정확도 영향은 eval A/B 검증 후 prod 적용"이라 단서를 달아놨고
  *  그 검증은 이뤄지지 않았다. split의 세 호출은 정확도가 존재 이유다 — 특히 Call 3은
  *  문제를 실제로 푸는 추론 작업이라 thinking을 끄면 가장 크게 무너진다.
  *  사용자가 Gemini 웹에서 같은 프롬프트·같은 이미지로 얻은 "완벽한" 결과도 thinking이 켜진
- *  조건이었다. 웹과 조건을 맞춘다.
+ *  조건이었다. 웹과 조건을 맞추되, 정확도가 최우선이므로 한 단계 더 올린다.
  *
- *  thinking이 붙으면 호출당 baseline이 ~25s로 오른다. aiClient 기본 타임아웃 90s로는
- *  밀집 지문에서 폴백(약한 모델)로 새기 쉬우므로 이 경로만 180s로 늘린다.
- *  바깥 callJson 타임아웃 300s > 이 값 > 기본 90s 순서를 유지할 것. 워커 상한은 540s. */
+ *  thinking이 붙으면 호출당 baseline이 ~25s로 오른다(실측: 2장 세션 42s → 89s).
+ *  high면 더 길어진다. aiClient 기본 타임아웃 90s로는 밀집 지문에서 폴백(약한 모델)로
+ *  새기 쉬우므로 이 경로만 180s로 늘린다. 구조는 Call1 → (Call2 ∥ Call3) 2단계라
+ *  최악이 180+180=360s, 워커 상한 540s 안에 든다.
+ *  바깥 callJson 타임아웃 300s > 이 값 > 기본 90s 순서를 유지할 것. */
 const MODEL_TIMEOUT_MS = 180_000;
+const THINKING_LEVEL = 'high';
+
+/** 재현성 시드. 3.6 이후 세대는 temperature를 무시하므로(문서: "strip temperature/top_p/top_k",
+ *  실측: T=0.0에서도 출력이 갈림) 같은 이미지가 실행마다 다른 답을 낼 수 있다.
+ *  seed를 고정하면 "mostly deterministic"까지는 간다 — 공식 레퍼런스의 표현도 딱 그 정도다.
+ *  실측상 seed 단독으로는 부족하고 thinkingLevel과 함께 고정해야 잡힌다(aiClient 주석의 표 참조).
+ *
+ *  값 자체에 의미는 없다. 바꾸면 결과가 달라질 수 있으니 정확도 실측 중에는 건드리지 말 것. */
+const SEED = 42;
 
 function tokenCap(kind, numImages) {
   const { perImage, cap } = MAX_OUTPUT_TOKENS[kind];
@@ -293,8 +304,10 @@ async function callJson({ ai, sessionId, parts, sequence, maxOutputTokens, pick,
             ai, model,
             contents: [{ role: 'user', parts }],
             sessionId, maxRetries: 2, baseDelayMs: 2000, temperature: 0.0, maxOutputTokens,
-            // 전역 THINKING_BUDGET(=0)을 무시하고 모델 기본 thinking을 쓴다. 아래 주석 참조.
-            thinkingBudget: null,
+            // 전역 THINKING_BUDGET(=0)을 무시하고 thinking을 high로 고정한다. 위 주석 참조.
+            // temperature는 3.6에서 무시되므로(aiClient가 걸러낸다) 재현성은 seed가 맡는다.
+            thinkingLevel: THINKING_LEVEL,
+            seed: SEED,
             timeoutMs: MODEL_TIMEOUT_MS,
           }),
           timeoutPromise,

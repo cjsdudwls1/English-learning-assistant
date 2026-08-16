@@ -48,6 +48,10 @@ export async function executePassC({ ai, sessionId, taxonomyData, pageItems, use
         ai, model,
         contents: [{ role: 'user', parts }],
         sessionId, maxRetries: 1, baseDelayMs: 3000, temperature: 0.0,
+        // 분류는 taxonomy에서 고르는 작업이라 깊은 사고가 필요 없다. low로 명시해
+        // 지연·비용을 눌러둔다 — 명시하지 않으면 모델 기본(medium)이 걸린다.
+        // seed는 재현성용. 같은 문항이 실행마다 다른 유형으로 분류되면 통계가 흔들린다.
+        thinkingLevel: 'low', seed: 42,
         responseJsonSchema: CLASSIFICATION_SCHEMA,
       });
       const text = extractTextFromResponse(response, model);
