@@ -11,13 +11,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { GoogleGenAI } from '@google/genai';
-import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE } from '../../shared/config.js';
+import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE, SPLIT_PIPELINE } from '../../shared/config.js';
 import { preprocessImage } from '../../shared/imagePreprocessor.js';
 import { processPage } from '../../shared/processPage.js';
 import { runSimpleExtractAndStructure } from '../../shared/simplePipeline.js';
+import { runSplitPipeline } from '../../shared/splitPipeline.js';
 
 // run-eval.mjs가 console.log를 침묵시키므로 경로 표식은 console.error로 1회 출력
-console.error(`[pipeline-runner] pipeline=${SIMPLE_PIPELINE ? 'simple(extract→structure)' : '4pass(processPage)'}`);
+console.error(`[pipeline-runner] pipeline=${
+  SPLIT_PIPELINE ? 'split(structure→user∥correct)'
+    : SIMPLE_PIPELINE ? 'simple(extract→structure)' : '4pass(processPage)'
+}`);
 
 const EXT_TO_MIME = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
@@ -39,11 +43,18 @@ export function buildAIClient() {
 
 /**
  * 단일 이미지에 대해 실제 파이프라인 실행 → marks 추출
- * @returns {{ problem_number, user_answer, correct_answer, user_marked_correctness, choices }[]}
+ * @returns {{ problem_number, user_answer, correct_answer, user_marked_correctness, choices,
+ *            answer_format, user_answers, correct_answers }[]}
  *   user_marked_correctness/choices 포함: is_correct 시뮬(computeIsCorrect)이 prod 채점과 동치되도록.
- *   (score.mjs 추출품질 채점은 user_answer/correct_answer만 사용 → 추가 필드 무시, 무영향)
+ *   answer_format/*_answers 포함: 복수정답(multi_select)은 스칼라로 접으면 집합이 깨져
+ *   score.mjs·computeIsCorrect 양쪽에서 실제 예측을 볼 수 없다. 스칼라만 쓰는 단일정답 경로에는 무영향.
+ *
+ * @param onModels 선택. 실제 응답한 모델을 { extract, structure }로 알려준다. 반환값(배열)에
+ *   섞지 않고 콜백으로 빼는 이유: 호출처 5곳이 전부 배열을 그대로 쓴다 — 형태를 바꾸면 다 깨진다.
+ *   모델 시퀀스는 폴백이 있어 1순위가 답했다는 보장이 없는데, 그 사실이 결과에 안 남으면
+ *   "어느 모델의 정확도인가"를 사후에 확인할 수 없다(2026-07-28 실측에서 실제로 확인 불가였다).
  */
-export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPages = 1, sessionId, correctSource = CORRECT_SOURCE }) {
+export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPages = 1, sessionId, correctSource = CORRECT_SOURCE, onModels }) {
   const buf = fs.readFileSync(imagePath);
   const ext = path.extname(imagePath).toLowerCase();
   const mimeType = EXT_TO_MIME[ext] || 'image/jpeg';
@@ -54,12 +65,24 @@ export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPage
 
   const sid = sessionId || `eval-${path.basename(imagePath)}-${Date.now()}`;
   let pageItems;
-  if (SIMPLE_PIPELINE) {
-    ({ items: pageItems } = await runSimpleExtractAndStructure({
+  if (SPLIT_PIPELINE) {
+    const split = await runSplitPipeline({
       ai, sessionId: sid, images: [imageData],
       taxonomyData: [], userLanguage: 'ko',
       runClassification: false,
-    }));
+    });
+    pageItems = split.items;
+    // 이 경로는 모델이 셋이지만 콜백 계약은 두 필드다(run-eval이 `extract → structure`로 조합).
+    // 답 호출 둘을 '∥'로 묶어 한 필드에 담는다 — 계약을 안 바꾸면서 세 모델을 전부 남긴다.
+    onModels?.({ extract: split.structModel, structure: `${split.userModel}∥${split.correctModel}` });
+  } else if (SIMPLE_PIPELINE) {
+    const simple = await runSimpleExtractAndStructure({
+      ai, sessionId: sid, images: [imageData],
+      taxonomyData: [], userLanguage: 'ko',
+      runClassification: false,
+    });
+    pageItems = simple.items;
+    onModels?.({ extract: simple.usedModel, structure: simple.structModel });
   } else {
     ({ pageItems } = await processPage({
       ai, sessionId: sid, imageData,
@@ -76,5 +99,8 @@ export async function runPipelineOnImage({ ai, imagePath, pageNum = 1, totalPage
     correct_answer: it.correct_answer ?? null,
     user_marked_correctness: it.user_marked_correctness ?? null,
     choices: Array.isArray(it.choices) ? it.choices : [],
+    answer_format: it.answer_format ?? 'single',
+    user_answers: Array.isArray(it.user_answers) ? it.user_answers : null,
+    correct_answers: Array.isArray(it.correct_answers) ? it.correct_answers : null,
   }));
 }

@@ -1,27 +1,31 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { supabase } from './services/supabaseClient';
 import { AuthGate } from './components/AuthGate';
 import { PageLayout } from './components/PageLayout';
-import { EditPage } from './pages/EditPage';
-import { StatsPage } from './pages/StatsPage';
-import { RecentProblemsPage } from './pages/RecentProblemsPage';
-import { AnalyzingPage } from './pages/AnalyzingPage';
-import { SessionDetailPage } from './pages/SessionDetailPage';
-import { RetryProblemsPage } from './pages/RetryProblemsPage';
-import { AllProblemsPage } from './pages/AllProblemsPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { TeacherDashboardPage } from './pages/TeacherDashboardPage';
-import { AssignmentsPage } from './pages/AssignmentsPage';
-import { AssignmentSolvePage } from './pages/AssignmentSolvePage';
-import { ParentDashboardPage } from './pages/ParentDashboardPage';
-import { DirectorDashboardPage } from './pages/DirectorDashboardPage';
-import { AcademyListPage } from './pages/AcademyListPage';
-import { AcademyCreatePage } from './pages/AcademyCreatePage';
-import { AcademyMembersPage } from './pages/AcademyMembersPage';
-import { ClassDetailPage } from './components/teacher/ClassDetailPage';
-import { AssignmentCreatePage } from './components/teacher/AssignmentCreatePage';
-import { AssignmentDetailPage } from './components/teacher/AssignmentDetailPage';
+// 라우트 페이지는 지연 로딩한다. 정적 import이던 시절 전체가 단일 청크(1.22MB)로 묶여
+// Vite의 500kB 경고가 상시로 떴고, 학생 하나가 원장·교사 화면까지 전부 내려받았다.
+// MainPage만 예외로 정적 유지 — '/'와 '/upload'의 첫 화면이라 지연시키면 초기 표시가 되레 늦다.
+// lazy()는 default export를 기대하는데 이 프로젝트는 named export라 매핑해준다.
+const EditPage = lazy(() => import('./pages/EditPage').then(m => ({ default: m.EditPage })));
+const StatsPage = lazy(() => import('./pages/StatsPage').then(m => ({ default: m.StatsPage })));
+const RecentProblemsPage = lazy(() => import('./pages/RecentProblemsPage').then(m => ({ default: m.RecentProblemsPage })));
+const AnalyzingPage = lazy(() => import('./pages/AnalyzingPage').then(m => ({ default: m.AnalyzingPage })));
+const SessionDetailPage = lazy(() => import('./pages/SessionDetailPage').then(m => ({ default: m.SessionDetailPage })));
+const RetryProblemsPage = lazy(() => import('./pages/RetryProblemsPage').then(m => ({ default: m.RetryProblemsPage })));
+const AllProblemsPage = lazy(() => import('./pages/AllProblemsPage').then(m => ({ default: m.AllProblemsPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const TeacherDashboardPage = lazy(() => import('./pages/TeacherDashboardPage').then(m => ({ default: m.TeacherDashboardPage })));
+const AssignmentsPage = lazy(() => import('./pages/AssignmentsPage').then(m => ({ default: m.AssignmentsPage })));
+const AssignmentSolvePage = lazy(() => import('./pages/AssignmentSolvePage').then(m => ({ default: m.AssignmentSolvePage })));
+const ParentDashboardPage = lazy(() => import('./pages/ParentDashboardPage').then(m => ({ default: m.ParentDashboardPage })));
+const DirectorDashboardPage = lazy(() => import('./pages/DirectorDashboardPage').then(m => ({ default: m.DirectorDashboardPage })));
+const AcademyListPage = lazy(() => import('./pages/AcademyListPage').then(m => ({ default: m.AcademyListPage })));
+const AcademyCreatePage = lazy(() => import('./pages/AcademyCreatePage').then(m => ({ default: m.AcademyCreatePage })));
+const AcademyMembersPage = lazy(() => import('./pages/AcademyMembersPage').then(m => ({ default: m.AcademyMembersPage })));
+const ClassDetailPage = lazy(() => import('./components/teacher/ClassDetailPage').then(m => ({ default: m.ClassDetailPage })));
+const AssignmentCreatePage = lazy(() => import('./components/teacher/AssignmentCreatePage').then(m => ({ default: m.AssignmentCreatePage })));
+const AssignmentDetailPage = lazy(() => import('./components/teacher/AssignmentDetailPage').then(m => ({ default: m.AssignmentDetailPage })));
 import { RoleGate } from './components/RoleGate';
 import { UserRoleProvider } from './contexts/UserRoleContext';
 import { useLanguage } from './contexts/LanguageContext';
@@ -35,12 +39,18 @@ const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
  * Canvas API로 이미지를 리사이즈·JPEG 압축한다.
- * 긴 변 maxDimension 이하로 축소, quality 0.8 기본.
+ * 긴 변 maxDimension 이하로 축소, quality 기본 0.92.
+ *
+ * 2026-08-16: 1200px·0.8 → 2048px·0.92. 시험지 사진에서 판독 대상은 연필로 흐리게 친
+ * 동그라미와 작은 체크 표시인데, 스마트폰 원본(3000px+)을 1200px로 줄이고 JPEG 0.8을
+ * 먹이면 그 획이 배경과 뭉개져 사라진다. 모델이 못 읽는 게 아니라 볼 것이 안 간 것이다.
+ * Gemini는 이미지를 768px 타일로 쪼개 처리하므로 1200px는 장당 4타일에 그친다.
+ * 2048px면 타일이 늘어 획당 픽셀이 확보된다(입력 토큰은 그만큼 증가).
  */
 function compressImage(
   file: File,
-  maxDimension = 1200,
-  quality = 0.8,
+  maxDimension = 2048,
+  quality = 0.92,
 ): Promise<{ blob: Blob; mimeType: string }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -340,6 +350,11 @@ const App: React.FC = () => {
 
   return (
     <UserRoleProvider>
+      {/* 지연 로딩 청크를 받는 동안의 대기 화면.
+          문구는 t.common.loading('불러오는 중...'/'Loading...')을 그대로 쓴다 —
+          e2e의 waitForRenderSettled가 이 문자열을 로딩 신호로 보고 대기하므로,
+          다른 문구를 쓰면 청크 수신 중을 '렌더 완료'로 오독한다. */}
+      <Suspense fallback={<div className="py-16 text-center text-slate-500 dark:text-slate-400">{t.common.loading}</div>}>
       <Routes>
         <Route path="/" element={mainPageElement} />
         <Route path="/upload" element={mainPageElement} />
@@ -385,6 +400,7 @@ const App: React.FC = () => {
           </AuthGate>
         } />
       </Routes>
+      </Suspense>
       <InstallBanner />
     </UserRoleProvider>
   );

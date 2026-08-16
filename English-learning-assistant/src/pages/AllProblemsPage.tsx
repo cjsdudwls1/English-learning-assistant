@@ -6,6 +6,7 @@ import { deleteProblems } from '../services/db/problems';
 import { fetchUnifiedProblemSummary, UnifiedSummary } from '../services/stats';
 import { useLanguage } from '../contexts/LanguageContext';
 import { resolveImageUrls } from '../utils/imageUrl';
+import { unwrapEmbedded } from '../utils/postgrestEmbed';
 import type { QuestionType } from '../types';
 
 interface ProblemRow {
@@ -105,7 +106,8 @@ export const AllProblemsPage: React.FC = () => {
       const limited = problemsRows.slice(0, 500);
 
       const rows: ProblemRow[] = limited.map((p: any) => {
-        const label = p.labels?.[0] || {};
+        // labels 임베드는 관계 cardinality에 따라 배열/객체로 모양이 갈린다 — unwrapEmbedded 참고.
+        const label = unwrapEmbedded<any>(p.labels) || {};
         const session = sessionMap.get(p.session_id);
         return {
           id: p.id,

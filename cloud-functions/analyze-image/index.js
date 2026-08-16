@@ -17,11 +17,12 @@ import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 import { StageError, markSessionFailed, parseModelError } from './shared/errors.js';
-import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE } from './shared/config.js';
+import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE, SPLIT_PIPELINE } from './shared/config.js';
 import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { processPage } from './shared/processPage.js';
 import { runSimpleExtractAndStructure } from './shared/simplePipeline.js';
+import { runSplitPipeline } from './shared/splitPipeline.js';
 import { uploadImages, createSession, saveProblems, saveLabels, finalizeAnalysisSession } from './shared/dbOperations.js';
 import { downloadImagesFromStorage } from './shared/imageDownloader.js';
 import { generateAllProblemTypes } from './shared/generateProblems.js';
@@ -292,10 +293,12 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
   let allValidatedItems = [];
   let finalUsedModel = '';
 
-  if (SIMPLE_PIPELINE) {
-    // 단순 파이프라인(기본 ON): 입력된 모든 이미지를 한 번에 Gemini 3.5로 자유추출 →
-    // Gemini 3 Flash로 문항별 JSON 구조화. 페이지 분리/크롭 없이 모델이 전체를 보고 처리
-    // (여러 페이지에 걸친 지문도 자연히 병합). env SIMPLE_PIPELINE=0 이면 아래 4-Pass 경로.
+  if (SPLIT_PIPELINE || SIMPLE_PIPELINE) {
+    // 크롭 없는 통짜 이미지 경로. 페이지 분리/크롭 없이 모델이 전체를 보고 처리하므로
+    // 여러 페이지에 걸친 지문도 자연히 병합된다. 두 변형이 있다:
+    //  - SPLIT_PIPELINE=1: 역할분리 3-호출(구조 → 학생답 ∥ 정답). 이미지 입력 3배.
+    //  - 기본(SIMPLE_PIPELINE): 2-스텝(이미지 1회 자유추출 → 텍스트 구조화).
+    // env SIMPLE_PIPELINE=0 이고 SPLIT_PIPELINE도 아니면 아래 4-Pass 경로.
     // 서버 측 전처리(긴 변 1200px + JPEG 80%)를 모든 이미지에 적용.
     for (const imageData of images) {
       try {
@@ -307,13 +310,15 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
       }
     }
     try {
-      const { items, usedModel } = await runSimpleExtractAndStructure({
+      const runPipeline = SPLIT_PIPELINE ? runSplitPipeline : runSimpleExtractAndStructure;
+      console.log(`[handler] 파이프라인=${SPLIT_PIPELINE ? 'split(3-call)' : 'simple(2-step)'}`, { sessionId });
+      const { items, usedModel } = await runPipeline({
         ai, sessionId, images, taxonomyData, userLanguage,
       });
       allValidatedItems = items;
       finalUsedModel = usedModel;
     } catch (e) {
-      console.error(`[handler] 단순 파이프라인 실패:`, e?.message, { sessionId });
+      console.error(`[handler] 파이프라인 실패:`, e?.message, { sessionId });
     }
     // 이미지 메모리 해제
     for (const imageData of images) imageData.imageBase64 = '';

@@ -7,14 +7,17 @@
  * 사용:
  *   node run-eval.mjs --runs 3 --concurrency 3 --tag baseline
  *   node run-eval.mjs --runs 1 --tag coverage --all     # test_image 전체(채점은 gold만)
+ *   node run-eval.mjs --gt draft-answerkey-2026-07-28.json --runs 3 --tag answerkey
+ *                                                       # 다른 라벨 세트로 채점(기본: ground-truth.json)
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnvYaml } from './load-env.mjs';
+import { resolveGtPath } from './gt-path.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GT_PATH = path.resolve(__dirname, '../labels/ground-truth.json');
+const GT_PATH = resolveGtPath(process.argv);
 const TEST_IMAGE_ROOT = path.resolve(__dirname, '../../../../test_image');
 const RESULTS_DIR = path.resolve(__dirname, '../results');
 
@@ -89,11 +92,21 @@ async function main() {
 
   const t0 = Date.now();
   let done = 0;
+  // 실제 응답한 모델을 조합별로 센다. 시퀀스 1순위가 429·타임아웃으로 떨어지면 조용히 폴백
+  // 모델의 수치가 되는데, 그게 기록에 없으면 정확도를 어느 모델의 것이라 말할 수 없다.
+  const modelsSeen = new Map();
   const flat = await pool(jobs, args.concurrency, async ({ img, r }) => {
     const abs = path.join(TEST_IMAGE_ROOT, img);
     const jt0 = Date.now();
     try {
-      const marks = await runPipelineOnImage({ ai, imagePath: abs });
+      const marks = await runPipelineOnImage({
+        ai,
+        imagePath: abs,
+        onModels: ({ extract, structure }) => {
+          const k = `${extract} → ${structure}`;
+          modelsSeen.set(k, (modelsSeen.get(k) || 0) + 1);
+        },
+      });
       done++;
       console.error(`[${done}/${jobs.length}] OK r${r} ${img} (${Date.now() - jt0}ms, ${marks.length} marks)`);
       return { img, r, ok: true, marks };
@@ -122,6 +135,9 @@ async function main() {
   const payload = {
     tag: args.tag, runs: args.runs, concurrency: args.concurrency, all: args.all,
     images, elapsedMs: Date.now() - t0,
+    // "추출모델 → 구조화모델": 호출 수. 항목이 2개 이상이면 폴백이 섞인 실행이라
+    // 지표를 단일 모델의 성적으로 읽으면 안 된다.
+    models: Object.fromEntries(modelsSeen),
     rawRuns: runs,
     agg: scored.agg,
     stability: scored.stability,
@@ -133,9 +149,15 @@ async function main() {
   console.log(`images=${images.length} runs=${args.runs} concurrency=${args.concurrency} elapsed=${(payload.elapsedMs / 1000).toFixed(1)}s`);
   console.log('mc_user   ', JSON.stringify(scored.agg.mc_user));
   console.log('mc_correct', JSON.stringify(scored.agg.mc_correct));
+  console.log('multi_user', JSON.stringify(scored.agg.multi_user));
+  console.log('multi_corr', JSON.stringify(scored.agg.multi_correct));
+  console.log('blank_user', JSON.stringify(scored.agg.blank_user), ' cell', JSON.stringify(scored.agg.blank_cell_user));
+  console.log('blank_corr', JSON.stringify(scored.agg.blank_correct), ' cell', JSON.stringify(scored.agg.blank_cell_correct));
   console.log('text_user ', JSON.stringify(scored.agg.text_user));
   console.log('text_corr ', JSON.stringify(scored.agg.text_correct));
   console.log(`flaky_class=${scored.agg.flaky_class} flaky_pred=${scored.agg.flaky_pred} ever_wrong=${scored.agg.ever_wrong} always_wrong=${scored.agg.always_wrong}`);
+  if (scored.agg.multi_gt_invalid) console.log(`[경고] multi_gt_invalid=${scored.agg.multi_gt_invalid} — 복수정답 라벨에 user_answers/correct_answers 배열이 없어 채점 보류됨`);
+  if (scored.agg.blank_gt_invalid) console.log(`[경고] blank_gt_invalid=${scored.agg.blank_gt_invalid} — 다중빈칸 라벨에 user_answers/correct_answers 배열이 없어 채점 보류됨`);
   console.log('\n--- confident-wrong / flaky 인스턴스 ---');
   for (const s of scored.stability) {
     if (s.classes.includes('wrong') || s.flakyClass) {

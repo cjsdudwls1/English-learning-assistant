@@ -80,7 +80,7 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
           : 'Failed to extract problems from the image. Please re-upload a clearer image.'}
       </p>
       {displayImageUrls.length > 1 && (
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
           {language === 'ko'
             ? `이미지 ${displayImageUrls.length}장 (클릭하여 확대)`
             : `${displayImageUrls.length} images (click to enlarge)`}

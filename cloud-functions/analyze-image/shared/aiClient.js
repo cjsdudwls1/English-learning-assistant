@@ -26,6 +26,33 @@ function resolveTimeoutMs(model, hasTools) {
   return API_TIMEOUT_MS.default;
 }
 
+/** 샘플링 파라미터(temperature/top_p/top_k)와 숫자형 thinkingBudget이 통하지 않는 모델.
+ *
+ *  공식 문서(ai.google.dev/gemini-api/docs/latest-model)는 "Strip temperature, top_p, top_k
+ *  from generation configs"라고 명시하고, 이후 세대에서는 400을 반환한다고 예고한다.
+ *  thinking도 숫자 budget → 문자열 thinkingLevel("low"/"medium"/"high")로 대체됐다.
+ *
+ *  Vertex 실측(2026-08-16, REST 직접 호출, 같은 프롬프트 반복):
+ *   · 400은 아직 안 난다 — temperature·thinkingBudget:0 모두 HTTP 200. "거부"는 미래형이다.
+ *   · 대신 **정말로 무시된다**:
+ *       3.5-flash  T=0.0 → Lion×6 (완전 결정적) / T=2.0 → 흔들림  ⇒ 파라미터가 먹는다
+ *       3.6-flash  T=0.0 → Elephant·Lion·Tiger 혼재            ⇒ 먹지 않는다
+ *
+ *  그래서 이 게이팅의 값어치는 400 예방이 아니라 **코드가 거짓말하지 않게 하는 것**이다.
+ *  temperature: 0.0을 계속 넘기면 "이 경로는 결정적"이라는 착각이 코드에 남는데,
+ *  3.6에서는 같은 입력이 실행마다 다른 답을 낼 수 있다. 결정성이 필요하면 seed를 쓴다
+ *  (아래 generateWithRetry의 seed/thinkingLevel 주석 참조).
+ *
+ *  ⚠️ 새 모델을 시퀀스에 추가할 때 이 목록도 함께 갱신할 것. 판단 기준은 "3.6 이후 세대인가". */
+const NO_SAMPLING_PARAMS = [
+  /^gemini-3\.5-flash-lite/,
+  /^gemini-3\.6-/,
+];
+
+function acceptsSamplingParams(model) {
+  return !NO_SAMPLING_PARAMS.some((re) => re.test(model));
+}
+
 const SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -36,10 +63,30 @@ const SAFETY_SETTINGS = [
 // NOTE: `maxRetries` is the MAX TOTAL ATTEMPT COUNT (not extra retries).
 // e.g. maxRetries=1 → 1 attempt, 0 retries on failure.
 //      maxRetries=2 → up to 2 attempts (1 retry on retryable failure).
+/**
+ * @param {number}  [seed]          난수 시드. 3.6 이후 세대에서 temperature를 대신해 재현성을 얻는
+ *                                  유일한 수단이다. 공식 GenerationConfig 레퍼런스도 "seed를 설정하면
+ *                                  출력이 mostly deterministic"이라고만 말한다 — 보장이 아니다.
+ * @param {'low'|'medium'|'high'} [thinkingLevel]
+ *                                  thinking 강도. 숫자 thinkingBudget의 후속 파라미터.
+ *                                  지정하면 모든 모델에 그대로 전달한다(3.5-flash·3.1-flash-lite·
+ *                                  3.5-flash-lite 모두 200 확인). thinkingBudget보다 우선한다.
+ *
+ * 재현성 실측(2026-08-16, gemini-3.6-flash, 같은 프롬프트 반복):
+ *   seed만 (thinking 미지정)   → 흔들림
+ *   thinkingLevel:low만        → 흔들림
+ *   seed + thinkingLevel:low   → 6/6 동일
+ *   seed + thinkingLevel:high  → 10/10 동일
+ *   seed + thinkingLevel:medium→ 10회 중 앞 5·뒤 5로 갈림
+ * 둘을 **함께** 고정해야 잡힌다. 다만 medium이 갈린 모양이 무작위가 아니라 앞뒤 블록이라
+ * 서버측 라우팅 변화가 의심된다 — 즉 high의 10/10도 "그 시점에 안정적이었다"이지
+ * 재현 보장이 아니다. 정확도를 실측할 때 1회 결과로 판단하면 안 되는 이유.
+ */
 export async function generateWithRetry({
   ai, model, contents, sessionId,
   maxRetries, baseDelayMs, temperature,
   maxOutputTokens, tools, responseJsonSchema,
+  thinkingBudget, thinkingLevel, seed, timeoutMs: timeoutMsOverride,
 }) {
   let attempt = 0;
 
@@ -47,15 +94,34 @@ export async function generateWithRetry({
     try {
       console.log(`[aiClient] 모델 호출 attempt ${attempt + 1}/${maxRetries} (model=${model})`, { sessionId });
 
-      const config = { temperature, ...(maxOutputTokens ? { maxOutputTokens } : {}) };
+      const legacyParamsOk = acceptsSamplingParams(model);
+
+      const config = { ...(maxOutputTokens ? { maxOutputTokens } : {}) };
+      // 샘플링 파라미터는 받아주는 세대에만 보낸다(위 NO_SAMPLING_PARAMS 주석 참조).
+      // 안 보내도 손해가 없다 — temperature 0.0은 결정적 출력을 노린 값이고
+      // 새 세대는 그게 기본 동작이다.
+      if (legacyParamsOk) config.temperature = temperature;
+      // seed는 세대 무관하게 그대로 보낸다 — 구세대에서도 재현성을 해치지 않는다.
+      if (seed !== undefined) config.seed = seed;
       if (!tools) config.responseMimeType = 'application/json';
       if (responseJsonSchema) config.responseJsonSchema = responseJsonSchema;
-      // thinking 예산 제어(전역). 기본 undefined → 모델 기본 thinking 유지(현행 보존).
-      if (THINKING_BUDGET !== undefined && !Number.isNaN(THINKING_BUDGET)) {
-        config.thinkingConfig = { thinkingBudget: THINKING_BUDGET };
+      // thinking 예산. 호출자가 thinkingBudget을 넘기면 전역 THINKING_BUDGET을 덮는다:
+      //   미지정(undefined) → 전역값 적용(현행 보존)
+      //   null             → thinkingConfig 자체를 안 보냄 = 모델 기본 thinking
+      //   숫자             → 그 값 사용
+      // null이 필요한 이유: 전역 THINKING_BUDGET=0은 지연을 줄이려는 스위치인데,
+      // 정확도가 생명인 경로(splitPipeline)까지 thinking을 꺼버린다. 그 경로만 되살린다.
+      //
+      // 새 세대는 숫자 budget 대신 문자열 thinkingLevel을 쓴다. thinkingLevel이 지정되면
+      // 그쪽이 이기고, 숫자 budget은 구세대에서만 의미를 갖는다.
+      const effectiveBudget = thinkingBudget !== undefined ? thinkingBudget : THINKING_BUDGET;
+      if (thinkingLevel) {
+        config.thinkingConfig = { thinkingLevel };
+      } else if (legacyParamsOk && effectiveBudget !== undefined && effectiveBudget !== null && !Number.isNaN(effectiveBudget)) {
+        config.thinkingConfig = { thinkingBudget: effectiveBudget };
       }
 
-      const timeoutMs = resolveTimeoutMs(model, !!tools);
+      const timeoutMs = timeoutMsOverride || resolveTimeoutMs(model, !!tools);
 
       let timeoutHandle;
       const timeoutPromise = new Promise((_, reject) => {

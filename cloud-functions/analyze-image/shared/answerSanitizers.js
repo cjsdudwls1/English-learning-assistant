@@ -157,6 +157,17 @@ export function parseNumberedBlanks(text) {
 }
 
 /**
+ * 복수선택(multi MC) 형식 판정 — 계약값 'multi'와 모델·GT 라벨 어휘 'multi_select'를 함께 수용한다.
+ * 두 이름이 공존하는 이유: 'multi'는 이미 저장된 problems.content와 프론트 타입(types.ts)이 쓰고 있어
+ * 바꾸면 기존 데이터가 깨지고, GT 라벨 규약 1(2026-07-27 확정)과 Step 2 프롬프트는 뜻이 분명한
+ * 'multi_select'를 쓴다. 별칭 흡수는 모델 출력 경계(simplePipeline.normalizeItem)에서 하고,
+ * 이 함수는 그 경계를 우회한 경로(eval 시뮬 등)를 위한 방어선이다.
+ */
+export function isMultiSelectFmt(fmt) {
+  return fmt === 'multi' || fmt === 'multi_select';
+}
+
+/**
  * 다중정답(multi MC) 답안 집합 파싱: 원문에서 선택지 번호(원문자 ①~⑨ 및 콤마/공백 구분 숫자)를
  * 모두 추출해 1..choices.length 범위로 검증 후 오름차순 정렬·중복제거한 number[]를 반환한다.
  * - 원문자와 숫자를 원문(raw) 그대로에서 개별 스캔한다. normalizeChoiceValue의 문자열 치환은

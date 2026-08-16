@@ -1,5 +1,36 @@
 import type { ProblemItem } from '../types';
 import { normalizeMark } from '../services/marks';
+import { toCardinality } from './answerShape';
+
+type AnswerFields = Pick<
+  ProblemItem,
+  'answerFormat' | 'correctAnswers' | 'userAnswers' | 'blankCorrectAnswers' | 'blankUserAnswers'
+>;
+
+/**
+ * content JSONB에서 답 관련 필드를 뽑는다(두 변환 함수가 공유 — 규칙이 갈라지지 않게).
+ *
+ * 값의 모양(cardinality)으로 갈라 담는 이유: correct_answers/user_answers는 같은 키인데
+ * set이면 number[](선택지 번호), list면 (string|null)[](빈칸별 자유서술)이라 타입이 다르다.
+ * 섞이면 자동채점이 오작동하므로 MC 번호배열과 빈칸 배열을 전용 필드로 분리한다.
+ * 모르는 형식(판정 불가)이면 어느 쪽에도 넣지 않는다 — 해석할 수 없는 배열을 채점 가능한
+ * 필드에 넣으면 confident-wrong의 재료가 된다.
+ */
+function pickAnswerFields(content: any): AnswerFields {
+  const answerFormat = content?.answer_format ?? undefined;
+  const card = toCardinality(answerFormat);
+  const correct = Array.isArray(content?.correct_answers) ? content.correct_answers : undefined;
+  const user = Array.isArray(content?.user_answers) ? content.user_answers : undefined;
+  const isList = card === 'list';
+  const gradable = card !== null && !isList; // one | set — MC 번호배열로 해석해도 되는 경우
+  return {
+    answerFormat,
+    correctAnswers: gradable ? correct : undefined,
+    userAnswers: gradable ? user : undefined,
+    blankCorrectAnswers: isList ? correct : undefined,
+    blankUserAnswers: isList ? user : undefined,
+  };
+}
 
 /**
  * DB에서 가져온 문제 데이터를 ProblemItem 형식으로 변환
@@ -53,13 +84,7 @@ export function transformToProblemItem(
     question_body: p.content?.question_body ?? null,
     visual_context: p.content?.visual_context ?? null,
     // 다중정답 객관식(multi_answer_contract v1) — content에 없으면 undefined(레거시=단일 취급)
-    // multi_blank는 correct_answers/user_answers가 문자열 배열(빈칸별)이므로 MC 번호배열 필드에 넣지 않고
-    // 전용 blank* 필드로 분리(타입 충돌 방지 + 자동채점 오작동 방지).
-    answerFormat: p.content?.answer_format ?? undefined,
-    correctAnswers: (p.content?.answer_format !== 'multi_blank' && Array.isArray(p.content?.correct_answers)) ? p.content.correct_answers : undefined,
-    userAnswers: (p.content?.answer_format !== 'multi_blank' && Array.isArray(p.content?.user_answers)) ? p.content.user_answers : undefined,
-    blankCorrectAnswers: (p.content?.answer_format === 'multi_blank' && Array.isArray(p.content?.correct_answers)) ? p.content.correct_answers : undefined,
-    blankUserAnswers: (p.content?.answer_format === 'multi_blank' && Array.isArray(p.content?.user_answers)) ? p.content.user_answers : undefined,
+    ...pickAnswerFields(p.content),
   };
 }
 
@@ -103,12 +128,7 @@ export function transformFromLabelJoin(row: any): ProblemItem {
     question_body: row.problems.content?.question_body ?? null,
     visual_context: row.problems.content?.visual_context ?? null,
     // 다중정답 객관식(multi_answer_contract v1) — content에 없으면 undefined(레거시=단일 취급)
-    // multi_blank는 문자열 배열 → 전용 blank* 필드로 분리(위 transformFromContent와 동일 규칙).
-    answerFormat: row.problems.content?.answer_format ?? undefined,
-    correctAnswers: (row.problems.content?.answer_format !== 'multi_blank' && Array.isArray(row.problems.content?.correct_answers)) ? row.problems.content.correct_answers : undefined,
-    userAnswers: (row.problems.content?.answer_format !== 'multi_blank' && Array.isArray(row.problems.content?.user_answers)) ? row.problems.content.user_answers : undefined,
-    blankCorrectAnswers: (row.problems.content?.answer_format === 'multi_blank' && Array.isArray(row.problems.content?.correct_answers)) ? row.problems.content.correct_answers : undefined,
-    blankUserAnswers: (row.problems.content?.answer_format === 'multi_blank' && Array.isArray(row.problems.content?.user_answers)) ? row.problems.content.user_answers : undefined,
+    ...pickAnswerFields(row.problems.content),
   };
 }
 

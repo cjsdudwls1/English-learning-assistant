@@ -8,7 +8,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "npx @google-cloud/functions-framework --target=analyzeImage --port=8080"
+    "start": "npx @google-cloud/functions-framework --target=analyzeImage --port=8080",
+    "test": "node --test \"test/**/*.test.mjs\""
   },
   "dependencies": {
     "@google-cloud/functions-framework": "^3.4.0",

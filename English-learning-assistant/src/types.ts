@@ -62,6 +62,8 @@ export interface AnalysisResult {
 }
 
 // 멀티 문항 결과 타입 (신규)
+import type { AnswerFormat } from './utils/answerShape';
+
 export type QuestionType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox' | 'unknown';
 
 export interface VisualContext {
@@ -89,7 +91,7 @@ export interface ProblemItem {
   visual_context?: VisualContext | null;
   // 다중정답 객관식 지원 (multi_answer_contract v1) — 미설정(레거시)이면 단일답 경로로 취급
   // multi_blank = 한 문항 안 여러 번호빈칸(1)(2)(3) 서술형. 채점은 항상 기권(빈칸별 자유서술).
-  answerFormat?: 'single' | 'multi' | 'multi_blank' | 'unknown';
+  answerFormat?: AnswerFormat;
   correctAnswers?: number[];
   userAnswers?: number[];
   // 다중빈칸 서술형(multi_blank) 전용 — 빈칸별 자유텍스트 배열(빈 빈칸은 null). MC 번호배열과 타입 분리.

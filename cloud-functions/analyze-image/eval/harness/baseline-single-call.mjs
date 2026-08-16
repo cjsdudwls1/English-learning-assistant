@@ -21,9 +21,10 @@ import { loadEnvYaml } from './load-env.mjs';
 import { VERTEX_PROJECT_ID, VERTEX_LOCATION } from '../../shared/config.js';
 import { preprocessImage } from '../../shared/imagePreprocessor.js';
 import { scoreMultiRun } from './score.mjs';
+import { resolveGtPath } from './gt-path.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GT_PATH = path.resolve(__dirname, '../labels/ground-truth.json');
+const GT_PATH = resolveGtPath(process.argv);
 const TEST_IMAGE_ROOT = path.resolve(__dirname, '../../../../test_image');
 const RESULTS_DIR = path.resolve(__dirname, '../results');
 
@@ -236,9 +237,15 @@ async function main() {
   console.log(`model=${MODEL} images=${images.length} runs=${args.runs} elapsed=${((Date.now() - t0) / 1000).toFixed(1)}s`);
   console.log('mc_user   ', JSON.stringify(scored.agg.mc_user));
   console.log('mc_correct', JSON.stringify(scored.agg.mc_correct));
+  console.log('multi_user', JSON.stringify(scored.agg.multi_user));
+  console.log('multi_corr', JSON.stringify(scored.agg.multi_correct));
+  console.log('blank_user', JSON.stringify(scored.agg.blank_user), ' cell', JSON.stringify(scored.agg.blank_cell_user));
+  console.log('blank_corr', JSON.stringify(scored.agg.blank_correct), ' cell', JSON.stringify(scored.agg.blank_cell_correct));
   console.log('text_user ', JSON.stringify(scored.agg.text_user));
   console.log('text_corr ', JSON.stringify(scored.agg.text_correct));
   console.log(`flaky_class=${scored.agg.flaky_class} flaky_pred=${scored.agg.flaky_pred} ever_wrong=${scored.agg.ever_wrong} always_wrong=${scored.agg.always_wrong}`);
+  if (scored.agg.multi_gt_invalid) console.log(`[경고] multi_gt_invalid=${scored.agg.multi_gt_invalid}`);
+  if (scored.agg.blank_gt_invalid) console.log(`[경고] blank_gt_invalid=${scored.agg.blank_gt_invalid}`);
   console.log('\n--- confident-wrong / flaky 인스턴스 ---');
   for (const s of scored.stability) {
     if (s.classes.includes('wrong') || s.flakyClass) {

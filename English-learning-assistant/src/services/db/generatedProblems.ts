@@ -126,31 +126,6 @@ export async function fetchExistingProblems(
 }
 
 /**
- * 문제 유형별로 기존 문제 개수 조회
- */
-export async function countExistingProblemsByType(
-  problemType: 'multiple_choice' | 'short_answer' | 'essay' | 'ox',
-  classification?: {
-    depth1?: string;
-    depth2?: string;
-    depth3?: string;
-    depth4?: string;
-  },
-  excludeSolved?: boolean,
-  excludeRecentDays?: number,
-  userId?: string
-): Promise<number> {
-  const problems = await fetchExistingProblems({
-    problemType,
-    classification,
-    excludeSolved,
-    excludeRecentDays,
-    userId,
-  });
-  return problems.length;
-}
-
-/**
  * 분류 매칭 우선순위에 따라 기존 문제 조회
  * 1. 완전 일치 (depth1~4 모두 일치)
  * 2. 부분 일치 (depth1~3 일치)

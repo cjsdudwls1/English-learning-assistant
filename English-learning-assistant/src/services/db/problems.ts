@@ -4,7 +4,9 @@ import { getCurrentUserId } from './auth';
 import { isCorrectFromMark, normalizeMark } from '../marks';
 import { transformToProblemItem, transformFromLabelJoin } from '../../utils/problemTransform';
 import { eqSet } from '../../utils/gradingSafety';
+import { toCardinality } from '../../utils/answerShape';
 import { resolveImageUrls } from '../../utils/imageUrl';
+import { unwrapEmbedded } from '../../utils/postgrestEmbed';
 
 const ID_CHUNK = 500;
 
@@ -46,7 +48,8 @@ export async function fetchSessionProblems(sessionId: string): Promise<ProblemIt
 
   // ProblemItem 형식으로 변환 (AI 분석 결과 포함)
   const items: ProblemItem[] = (problems || []).map((p: any) => {
-    const label = p.labels?.[0] || {};
+    // labels 임베드는 관계 cardinality에 따라 배열/객체로 모양이 갈린다 — unwrapEmbedded 참고.
+    const label = unwrapEmbedded<any>(p.labels) || {};
     return transformToProblemItem(p, label);
   });
 
@@ -248,7 +251,7 @@ export async function fetchProblemsForLabeling(sessionId: string): Promise<{ id:
   return (problems || []).map((p: any) => ({
     id: p.id,
     index_in_image: p.index_in_image,
-    ai_is_correct: p.labels?.[0]?.is_correct ?? null,
+    ai_is_correct: unwrapEmbedded<any>(p.labels)?.is_correct ?? null,
   }));
 }
 
@@ -281,7 +284,7 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
     // 다중정답 객관식(multi_answer_contract v1) — 번호 집합이 확신 추출됐으면 eqSet 완전일치로 채점
     // 게이트는 백엔드 computeIsCorrect와 1:1 정합: 정답 2개 이상 + 사용자 선택이 정답 수 이상일 때만 신뢰
     const isMulti = item.answerFormat === 'multi';
-    const isMultiBlank = item.answerFormat === 'multi_blank';
+    const isMultiBlank = toCardinality(item.answerFormat) === 'list';
     const hasConfidentSets = isMulti
       && Array.isArray(item.correctAnswers) && item.correctAnswers.length >= 2
       && Array.isArray(item.userAnswers) && item.userAnswers.length >= item.correctAnswers.length;
