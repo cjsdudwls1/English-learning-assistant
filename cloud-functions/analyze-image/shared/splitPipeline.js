@@ -31,8 +31,20 @@ import { generateWithRetry, extractTextFromResponse, parseJsonResponse } from '.
 import { executePassC } from './passes.js';
 import { normalizeItem, dedupeByNumber } from './simplePipeline.js';
 
-const STRUCTURE_MODEL_SEQUENCE = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
-const ANSWER_MODEL_SEQUENCE = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+/** 1순위 gemini-3.6-flash (2026-08-16 교체).
+ *
+ *  근거는 사용자 실측이다. 같은 이미지의 실제 학생 답이 `5145213`일 때
+ *    - Gemini 웹(3.6-flash, 원본 이미지, thinking ON): `5144213` — 1개 오차
+ *    - 프로덕션(3.5-flash, 1200px 압축, thinking OFF):  `5353215` — 4개 오차
+ *  조건이 셋이나 달라 모델 단독 기여도는 분리되지 않지만, 웹에서 확인된 조합을
+ *  프로덕션에서 재현하는 것이 지금 목표다.
+ *
+ *  폴백은 3.5-flash를 유지한다(직전까지 프로덕션에서 돌던 검증된 모델).
+ *  3.6이 400·쿼터·회귀로 죽어도 어제 수준으로는 자동 복귀한다.
+ *  ⚠️ 3.6은 temperature/top_p/top_k와 숫자 thinkingBudget을 거부한다(HTTP 400).
+ *     aiClient의 NO_SAMPLING_PARAMS가 걸러주므로 여기서 따로 처리하지 않는다. */
+const STRUCTURE_MODEL_SEQUENCE = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+const ANSWER_MODEL_SEQUENCE = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'];
 
 /** 호출별 출력 상한. 구조는 지문 전문을 담아 크고, 답은 문항당 몇 글자라 작다.
  *  JSON 모드(aiClient가 responseMimeType을 강제)라 자유텍스트만큼 폭주하지 않지만,

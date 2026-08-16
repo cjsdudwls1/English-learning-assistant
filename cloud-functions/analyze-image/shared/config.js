@@ -28,6 +28,7 @@ export const MODEL_SEQUENCE = [
 ];
 
 export const MODEL_RETRY_POLICY = {
+  'gemini-3.6-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-3.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-2.5-flash': { maxRetries: 2, baseDelayMs: 2000 },
   'gemini-3.1-flash-lite': { maxRetries: 2, baseDelayMs: 2000 },

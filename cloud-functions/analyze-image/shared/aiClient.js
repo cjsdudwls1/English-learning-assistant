@@ -26,6 +26,27 @@ function resolveTimeoutMs(model, hasTools) {
   return API_TIMEOUT_MS.default;
 }
 
+/** 샘플링 파라미터(temperature/top_p/top_k)와 숫자형 thinkingBudget을 거부하는 모델.
+ *
+ *  공식 문서(ai.google.dev/gemini-api/docs/latest-model): gemini-3.6-flash와
+ *  gemini-3.5-flash-lite부터 "이후 모든 Gemini 모델"에서 이 파라미터들이 deprecated이며,
+ *  보내면 HTTP 400을 반환한다. thinking도 숫자 budget → 문자열 thinking_level로 대체됐다.
+ *
+ *  실측(2026-08-16): Vertex AI는 아직 3.5-flash-lite에 temperature를 보내도 400을 내지 않는다
+ *  (Pass C가 attempt 1/1로 통과). 즉 지금 당장 깨지진 않지만 문서가 예고한 대로 조여지면
+ *  1순위 모델이 통째로 400으로 죽고 폴백만 도는 상태가 된다 — 로그를 안 보면 "모델은 바꿨는데
+ *  왜 그대로지"로만 보인다. 미리 막는다.
+ *
+ *  ⚠️ 새 모델을 시퀀스에 추가할 때 이 목록도 함께 갱신할 것. 판단 기준은 "3.6 이후 세대인가". */
+const NO_SAMPLING_PARAMS = [
+  /^gemini-3\.5-flash-lite/,
+  /^gemini-3\.6-/,
+];
+
+function acceptsSamplingParams(model) {
+  return !NO_SAMPLING_PARAMS.some((re) => re.test(model));
+}
+
 const SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -48,7 +69,13 @@ export async function generateWithRetry({
     try {
       console.log(`[aiClient] 모델 호출 attempt ${attempt + 1}/${maxRetries} (model=${model})`, { sessionId });
 
-      const config = { temperature, ...(maxOutputTokens ? { maxOutputTokens } : {}) };
+      const legacyParamsOk = acceptsSamplingParams(model);
+
+      const config = { ...(maxOutputTokens ? { maxOutputTokens } : {}) };
+      // 샘플링 파라미터는 받아주는 세대에만 보낸다(위 NO_SAMPLING_PARAMS 주석 참조).
+      // 안 보내도 손해가 없다 — temperature 0.0은 결정적 출력을 노린 값이고
+      // 새 세대는 그게 기본 동작이다.
+      if (legacyParamsOk) config.temperature = temperature;
       if (!tools) config.responseMimeType = 'application/json';
       if (responseJsonSchema) config.responseJsonSchema = responseJsonSchema;
       // thinking 예산. 호출자가 thinkingBudget을 넘기면 전역 THINKING_BUDGET을 덮는다:
@@ -57,8 +84,13 @@ export async function generateWithRetry({
       //   숫자             → 그 값 사용
       // null이 필요한 이유: 전역 THINKING_BUDGET=0은 지연을 줄이려는 스위치인데,
       // 정확도가 생명인 경로(splitPipeline)까지 thinking을 꺼버린다. 그 경로만 되살린다.
+      //
+      // 새 세대는 숫자 budget 대신 문자열 thinking_level을 쓴다. 0에 대응하는 enum 값이
+      // 문서에 확정돼 있지 않으므로(medium/high만 명시) 추측해 보내지 않고 생략한다
+      // = 모델 기본(3.6-flash는 medium). 분류 같은 가벼운 경로가 조금 느려지는 대신
+      // 400으로 죽지 않는다.
       const effectiveBudget = thinkingBudget !== undefined ? thinkingBudget : THINKING_BUDGET;
-      if (effectiveBudget !== undefined && effectiveBudget !== null && !Number.isNaN(effectiveBudget)) {
+      if (legacyParamsOk && effectiveBudget !== undefined && effectiveBudget !== null && !Number.isNaN(effectiveBudget)) {
         config.thinkingConfig = { thinkingBudget: effectiveBudget };
       }
 
