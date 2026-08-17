@@ -299,7 +299,8 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
     //  - SPLIT_PIPELINE=1: 역할분리 3-호출(구조 → 학생답 ∥ 정답). 이미지 입력 3배.
     //  - 기본(SIMPLE_PIPELINE): 2-스텝(이미지 1회 자유추출 → 텍스트 구조화).
     // env SIMPLE_PIPELINE=0 이고 SPLIT_PIPELINE도 아니면 아래 4-Pass 경로.
-    // 서버 측 전처리(긴 변 1200px + JPEG 80%)를 모든 이미지에 적용.
+    // 서버 측 전처리(긴 변 2048px + JPEG 92%, EXIF 정립)를 모든 이미지에 적용.
+    // 프론트 compressImage()와 같은 사양이라 프론트를 거친 이미지는 재인코딩 없이 통과한다.
     for (const imageData of images) {
       try {
         const { imageBase64, mimeType } = await preprocessImage(imageData.imageBase64, imageData.mimeType);
@@ -334,7 +335,7 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
       const batchResults = await Promise.all(batchIndices.map(async (idx) => {
         const imageData = images[idx];
         try {
-          // 서버 측 이미지 전처리: 긴 변 1200px + JPEG 80%로 리사이즈
+          // 서버 측 이미지 전처리: 긴 변 2048px + JPEG 92%로 리사이즈
           const { imageBase64: resizedBase64, mimeType: resizedMimeType } = await preprocessImage(
             imageData.imageBase64, imageData.mimeType
           );
