@@ -141,15 +141,32 @@ Rules:
 }
 
 /** Call 2·3 프롬프트에 넣을 문항 목록. 지문 전문은 넣지 않는다 — 이미지에 있고,
- *  넣으면 프롬프트가 비대해져 정작 중요한 판독 지시가 묻힌다. 답을 어느 칸에 어떤
- *  형식으로 채울지 알기에 필요한 최소치(번호·발문·선택지·형식)만 준다. */
-function buildItemRoster(items) {
+ *  넣으면 프롬프트가 비대해져 정작 중요한 판독 지시가 묻힌다.
+ *
+ *  `withText`로 두 호출의 필요가 갈린다. **Call 3는 문항을 실제로 푸는 것이 임무이므로**
+ *  발문·선택지 원문이 근거가 된다(withText: true). **Call 2는 연필이 어느 번호에 닿았는지만
+ *  읽으면 되고, 선택지 원문은 그 판독에 쓰이지 않는다** — 마크는 문장 위가 아니라 번호 위에
+ *  찍힌다. 그런데 선택지 원문이 들어가면 Call 2도 문항을 풀 수 있게 되어, 학생 마크 대신
+ *  자기가 추론한 정답을 내는 경로가 열린다(실측: 학생 ③ / 출력 ⑤ = 정답, 2회차 재현).
+ *  그래서 Call 2에는 답을 어느 칸에 어떤 형식으로 채울지에 필요한 최소치만 준다:
+ *  번호(병합 조인 키) · 선택지 개수(범위 검증) · 형식 태그(스칼라냐 배열이냐).
+ *  번호 표기 흔들림은 mergeCallResults의 numKey가 흡수하므로 목록은 조인의 필수 조건이 아니다.
+ *  형식 태그만은 뺄 수 없다 — 이미지만으로는 "두 개 칠함"이 복수정답인지 지우고 다시 칠한
+ *  것인지 구분되지 않고, 그때 하나만 답하면 문항 전체가 오답이 된다. */
+function buildItemRoster(items, { withText = true } = {}) {
   return items.map((it) => {
-    const choices = Array.isArray(it.choices) && it.choices.length > 0
-      ? it.choices.map((c) => `${c.label ?? '?'}) ${String(c.text ?? '').slice(0, 60)}`).join(' / ')
-      : '(no choices — free response)';
     const fmt = it.answer_format === 'multi_select' ? ' [MULTI-SELECT]'
       : it.answer_format === 'multi_blank' ? ` [MULTI-BLANK ${it.blank_count ?? '?'}]` : '';
+    const n = Array.isArray(it.choices) ? it.choices.length : 0;
+
+    if (!withText) {
+      const shape = n > 0 ? `${n} choices` : 'free response';
+      return `- Q${it.problem_number}${fmt}: ${shape}`;
+    }
+
+    const choices = n > 0
+      ? it.choices.map((c) => `${c.label ?? '?'}) ${String(c.text ?? '').slice(0, 60)}`).join(' / ')
+      : '(no choices — free response)';
     const instruction = String(it.instruction ?? '').slice(0, 120);
     return `- Q${it.problem_number}${fmt}: ${instruction}\n    ${choices}`;
   }).join('\n');
@@ -187,16 +204,28 @@ function answerFormatRules(field) {
  * **스키마가 이미 막는 것**이다 — Call 2의 응답 스키마에는 correct_answer 자리가 없으므로
  * "정답을 판단하지 마라"를 여러 줄로 반복할 이유가 없다. 금지 문구가 많을수록 모델은
  * 그 개념을 오히려 붙잡고, 정작 "무엇을 보라"는 지시가 묻힌다.
- * 여기 남긴 것은 두 부류뿐이다: (1) 실측 오답을 직접 겨냥한 것(VERBATIM·흐린 마크·복수정답),
- * (2) 스키마로는 막을 수 없는 것(인쇄된 정답표를 user_answer 칸에 옮기는 오염).
+ * 여기 남긴 것은 두 부류뿐이다: (1) 실측 오답을 직접 겨냥한 것(VERBATIM·흐린 마크·복수정답·
+ * 자체 풀이 금지), (2) 스키마로는 막을 수 없는 것(인쇄된 정답표를 user_answer 칸에 옮기는 오염).
  * 새 지시를 추가할 때는 둘 중 어디에 속하는지 먼저 답할 것.
+ *
+ * "Do not solve the items"는 부류 (1)이다. 스키마에 correct_answer 자리가 없어도 **정답과 같은
+ * 값을 user_answer 칸에 적는 것**은 막지 못한다 — 실측에서 학생이 ③에 마크한 문항을 두 회차 연속
+ * ⑤(=정답)로 냈고, 하필 정답과 같아 is_correct=true로 저장되어 오답이 정답으로 기록됐다.
+ * 같은 사건을 겨냥해 문항 목록에서 선택지 원문을 뺐다(buildItemRoster의 withText 주석 참고):
+ * 지시로 말리는 것과 근거 자체를 주지 않는 것을 함께 건다.
  */
 export function buildUserAnswerPrompt(items, numImages) {
   const scope = numImages > 1 ? `${numImages} images` : 'an image';
   return `The following is ${scope} of an English exam paper a student has worked through.
-Your single job is to read **the marks the student physically left on the paper**. You do not need to
-solve anything — if the student wrote it wrong, reporting it wrong is the correct output. Even if a
+Your single job is to read **the marks the student physically left on the paper**. Even if a
 printed answer key or explanation appears on the page, that is not the student's mark; do not copy it.
+
+## Do not solve the items
+- **Never work out which choice is correct.** If you catch yourself weighing the choices against the
+  passage, you have left your job — another call does that, and here it produces a wrong answer.
+- A mark that differs from the correct answer is the **normal, expected case**; it is the whole reason
+  this paper is worth reading. If the student wrote it wrong, reporting it wrong is the correct output.
+- Report the number the pencil touched even when you are confident that number is wrong.
 
 ## What counts as the student's mark
 - **Pencil, black or blue ballpoint** with irregular strokes — this alone is the answer.
@@ -223,8 +252,10 @@ printed answer key or explanation appears on the page, that is not the student's
 ${answerFormatRules('user_answer')}
 
 ## Items to answer
-**Use the numbers from this list exactly** and never invent one that is not on it.
-${buildItemRoster(items)}
+Number, choice count and answer format only. The choice text is withheld on purpose — you do not need
+it to see which number the pencil touched. **Use these numbers exactly** and never invent one that is
+not on the list.
+${buildItemRoster(items, { withText: false })}
 
 Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"answers": [

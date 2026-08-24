@@ -149,14 +149,42 @@ test('Call2/Call3 프롬프트에 학생 답이 새어 들어가지 않는다', 
     'Call3가 학생 답을 보면 그것을 정답으로 베낄 수 있다');
 });
 
-test('문항 목록은 번호·발문·선택지·형식을 담는다(답을 채울 자리를 알기 위한 최소치)', () => {
-  const p = buildUserAnswerPrompt(ITEMS, 1);
+test('Call3의 문항 목록은 번호·발문·선택지·형식을 담는다(문항을 실제로 풀어야 하므로)', () => {
+  const p = buildCorrectAnswerPrompt(ITEMS, 1);
   assert.match(p, /Q10/);
   assert.match(p, /Q14/);
   assert.match(p, /\[MULTI-SELECT\]/);
   assert.match(p, /\[MULTI-BLANK 3\]/);
   // 발문은 시험지 원문이라 목록에도 한국어 그대로 실려야 한다(영문화 대상이 아니다).
   assert.match(p, /어법상 알맞은 문장 두 개를 고르세요/);
+  assert.match(p, /He goes/);
+});
+
+test('Call2의 문항 목록에는 선택지 원문과 발문이 없다(자체 풀이의 근거를 주지 않는다)', () => {
+  // 실측 오답 — 학생이 ③에 마크한 문항을 두 회차 연속 ⑤(=정답)로 냈다. 마크는 번호 위에
+  // 찍히지 문장 위에 찍히지 않으므로 선택지 원문은 판독에 쓰이지 않는데, 그것이 들어 있으면
+  // Call 2도 문항을 풀 수 있게 되어 마크 대신 추론한 정답을 낼 길이 열린다.
+  const p = buildUserAnswerPrompt(ITEMS, 1);
+  assert.ok(!p.includes('He goes'), 'Call2 목록에 선택지 원문이 있으면 스스로 답을 고를 수 있다');
+  assert.ok(!p.includes('어법상 알맞은 문장 두 개를 고르세요'),
+    'Call2 목록에 발문이 있으면 문항 유형을 풀이 단서로 쓸 수 있다');
+  // 대신 답을 채울 칸을 알기 위한 최소치는 남아야 한다.
+  assert.match(p, /Q10/);
+  assert.match(p, /Q14/);
+  assert.match(p, /\[MULTI-SELECT\]/);
+  assert.match(p, /\[MULTI-BLANK 3\]/);
+  assert.match(p, /2 choices/);        // 선택지 개수 = 답의 범위 검증용
+  assert.match(p, /free response/);    // 선택지 없는 문항의 형태
+});
+
+test('Call2 프롬프트: 문항을 스스로 풀지 말라고 지시한다', () => {
+  // 스키마에 correct_answer 자리가 없어도 "정답과 같은 값을 user_answer 칸에 적는 것"은
+  // 막지 못한다 — 지시로도 함께 건다.
+  const p = buildUserAnswerPrompt(ITEMS, 1);
+  assert.match(p, /Do not solve the items/);
+  assert.match(p, /[Nn]ever work out which choice is correct/);
+  // 마크와 정답이 다른 것이 정상이라는 점을 명시해야 모델이 불일치를 오류로 보지 않는다.
+  assert.match(p, /normal, expected case/);
 });
 
 test('두 답 호출 모두 복수정답·다중빈칸 배열 규칙을 받는다', () => {
