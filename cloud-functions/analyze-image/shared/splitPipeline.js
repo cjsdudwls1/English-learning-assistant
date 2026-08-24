@@ -9,21 +9,28 @@
  *
  *   Call 1 (구조)  이미지 → 문항번호·발문·지문·선택지·답형식. 손글씨는 무시하라고 명시.
  *                  스키마에 답 필드 자체가 없어 답을 낼 수 없다.
- *   Call 2 (학생답) 이미지 + Call 1 문항목록 → user_answer만.
- *   Call 3 (정답)   이미지 + Call 1 문항목록 → correct_answer만.
+ *   Call 2 (학생답) 이미지 → user_answer만.
+ *   Call 3 (정답)   이미지 → correct_answer만.
  *
- * Call 2·3은 서로를 모르고 병렬로 돈다. 이것이 단순한 비용 증가가 아니라 구조적 이득인 이유:
+ * **셋은 서로의 출력을 보지 않는다.** 각자 같은 이미지를 받아 자기 역할만 수행하고, 종합은
+ * 코드(mergeCallResults)가 한다. 이것이 단순한 비용 증가가 아니라 구조적 이득인 이유:
  *
  *  1. 오염 차단 — 한 호출이 학생답과 정답을 동시에 내면 모델이 정답을 학생답 칸에 베낀다.
  *     구 프롬프트(prompts.js)가 "NEVER copy the solved answer into user_answer"를 네 군데서
  *     반복하는 것이 그 증거다. 호출이 분리되면 Call 2는 정답을 알지 못하므로 베낄 수가 없다.
  *  2. 전용 지시 — 각 호출이 자기 역할의 지시만 받는다. 학생답 호출은 필기 판독 노하우를,
  *     정답 호출은 풀이·정답표 규칙을 전부 받는다. 서로 희석되지 않는다.
- *  3. 번호 정합 — Call 2·3이 Call 1의 문항 목록을 받아 "이 목록의 답만 채우는" 형태라
- *     세 결과의 problem_number가 어긋날 수 없다. 4-Pass는 크롭 bbox로 이걸 맞추려다
- *     bbox가 틀리면 통째로 무너졌는데, 여기서는 크롭 없이 전체 이미지를 세 번 보낸다.
+ *  3. 오류 격리 — 한 호출의 실수가 다른 호출의 입력이 되지 않는다. 한때 Call 2·3에 Call 1의
+ *     문항 목록을 넘겼는데(번호를 맞추려는 의도였다), 목록에 무엇을 담든 답이 오염됐다:
+ *     선택지 원문을 담으면 Call 2가 마크 대신 스스로 푼 답을 냈고, 개수만 담으면("5 choices")
+ *     프롬프트의 숫자 편중이 답을 그 숫자로 끌었다. 두 실측 모두 roster 주석에 남겼다.
  *
- * 비용은 이미지 입력이 3배. 지연은 Call 2·3 병렬이라 2단계.
+ * 번호는 세 호출이 각자 이미지에서 읽는다. 그래서 표기 규칙(bare "3", 섹션은 "A-1")을 세
+ * 프롬프트가 공유하고, 남은 흔들림은 numKey가 흡수하며, 병합은 구조를 기준선으로 삼되
+ * Call 2·3이 함께 본 번호는 구조가 놓쳤어도 살린다. 4-Pass는 크롭 bbox로 정합을 맞추려다
+ * bbox가 틀리면 통째로 무너졌는데, 여기서는 크롭 없이 전체 이미지를 세 번 보낸다.
+ *
+ * 비용은 이미지 입력이 3배. 지연은 셋 다 병렬이라 1단계(+ 분류 Pass C).
  * 진입점(index.js runAnalysisPipeline)에서 SPLIT_PIPELINE 플래그로 스위치한다.
  */
 
@@ -68,8 +75,8 @@ const CALL_TIMEOUT_MS = 300_000;
  *
  *  thinking이 붙으면 호출당 baseline이 ~25s로 오른다(실측: 2장 세션 42s → 89s).
  *  high면 더 길어진다. aiClient 기본 타임아웃 90s로는 밀집 지문에서 폴백(약한 모델)로
- *  새기 쉬우므로 이 경로만 180s로 늘린다. 구조는 Call1 → (Call2 ∥ Call3) 2단계라
- *  최악이 180+180=360s, 워커 상한 540s 안에 든다.
+ *  새기 쉬우므로 이 경로만 180s로 늘린다. 세 호출이 병렬이라 최악이 180s(+ Pass C)로,
+ *  워커 상한 540s 안에 넉넉히 든다 — Call1 → (Call2 ∥ Call3) 2단계이던 때는 360s였다.
  *  바깥 callJson 타임아웃 300s > 이 값 > 기본 90s 순서를 유지할 것. */
 const MODEL_TIMEOUT_MS = 180_000;
 const THINKING_LEVEL = 'high';
@@ -140,42 +147,38 @@ Rules:
 - Order by item number.`;
 }
 
-/** Call 2·3 프롬프트에 넣을 문항 목록. 지문 전문은 넣지 않는다 — 이미지에 있고,
- *  넣으면 프롬프트가 비대해져 정작 중요한 판독 지시가 묻힌다.
+/* 문항 목록(roster)을 Call 2·3에 넘기지 않는다 — 세 호출은 서로의 출력을 보지 않는다.
  *
- *  `withText`로 두 호출의 필요가 갈린다. **Call 3는 문항을 실제로 푸는 것이 임무이므로**
- *  발문·선택지 원문이 근거가 된다(withText: true). **Call 2는 연필이 어느 번호에 닿았는지만
- *  읽으면 되고, 선택지 원문은 그 판독에 쓰이지 않는다** — 마크는 문장 위가 아니라 번호 위에
- *  찍힌다. 그런데 선택지 원문이 들어가면 Call 2도 문항을 풀 수 있게 되어, 학생 마크 대신
- *  자기가 추론한 정답을 내는 경로가 열린다(실측: 학생 ③ / 출력 ⑤ = 정답, 2회차 재현).
- *  그래서 Call 2에는 답을 어느 칸에 어떤 형식으로 채울지에 필요한 최소치만 준다:
- *  번호(병합 조인 키) · 선택지 개수(범위 검증) · 형식 태그(스칼라냐 배열이냐).
- *  번호 표기 흔들림은 mergeCallResults의 numKey가 흡수하므로 목록은 조인의 필수 조건이 아니다.
- *  형식 태그만은 뺄 수 없다 — 이미지만으로는 "두 개 칠함"이 복수정답인지 지우고 다시 칠한
- *  것인지 구분되지 않고, 그때 하나만 답하면 문항 전체가 오답이 된다. */
-function buildItemRoster(items, { withText = true } = {}) {
-  return items.map((it) => {
-    const fmt = it.answer_format === 'multi_select' ? ' [MULTI-SELECT]'
-      : it.answer_format === 'multi_blank' ? ` [MULTI-BLANK ${it.blank_count ?? '?'}]` : '';
-    const n = Array.isArray(it.choices) ? it.choices.length : 0;
-
-    if (!withText) {
-      const shape = n > 0 ? `${n} choices` : 'free response';
-      return `- Q${it.problem_number}${fmt}: ${shape}`;
-    }
-
-    const choices = n > 0
-      ? it.choices.map((c) => `${c.label ?? '?'}) ${String(c.text ?? '').slice(0, 60)}`).join(' / ')
-      : '(no choices — free response)';
-    const instruction = String(it.instruction ?? '').slice(0, 120);
-    return `- Q${it.problem_number}${fmt}: ${instruction}\n    ${choices}`;
-  }).join('\n');
-}
+ * 두 번 시도했고 두 번 다 실측에서 답을 오염시켰다.
+ *   - 발문·선택지 원문을 실었을 때: Call 2가 문항을 풀 수 있게 되어 학생 마크 대신 자기가
+ *     추론한 정답을 냈다(학생 ③ / 출력 ⑤ = 정답, 2회차 재현).
+ *   - 선택지 개수만 남겼을 때("- Q39: 5 choices" × 7줄): 프롬프트 안의 숫자가 5로 편중되고
+ *     (5가 14회, 나머지 3~8회) 답 형식이 마침 "1"–"5" 한 자리라, 오독한 문항이 전부 5로
+ *     쏠렸다. 오독 1건 → 3건으로 늘었다.
+ * 무엇을 넣든 같은 자리에서 새는 것이 요점이다. 목록은 Call 2에게 "이 칸을 채우라"는
+ * 압력으로 작동하는데, 판독은 이미지에서 끝나야 하고 종이에 없는 정보는 답의 근거가 될 수 없다.
+ *
+ * 뺄 수 있는 이유:
+ *   - 번호: 이미지에 인쇄돼 있다. 표기가 흔들려도 mergeCallResults의 numKey가 흡수한다.
+ *   - 선택지 개수: answerFormatRules가 이미 범위("1"–"5")를 말한다. 중복이었다.
+ *   - 형식 태그: 스칼라냐 배열이냐는 Call 1의 answer_format이 병합 때 정한다(normalizeItem).
+ *     Call 2는 "칠해진 것을 전부" 보고하기만 하면 되고, 그건 이미지만 보고도 된다.
+ */
 
 /** 답 형식 공통 규칙 — Call 2·3이 같은 단위로 답해야 직접 비교가 된다.
- *  (구 prompts.js의 UNIT MATCHING 규칙: 서로 다른 단위로 나오면 비교 자체가 성립하지 않는다) */
+ *  (구 prompts.js의 UNIT MATCHING 규칙: 서로 다른 단위로 나오면 비교 자체가 성립하지 않는다)
+ *
+ *  복수답 조건은 호출마다 근거가 다르다. 학생답은 **종이에 칠해진 개수**가, 정답은 **발문이
+ *  요구하는 개수**가 정한다. 예전에는 Call 1이 붙인 [MULTI-SELECT] 태그로 양쪽을 한꺼번에
+ *  지시했는데, 태그를 넘기려면 roster가 필요했다(위 주석 참고). 각자 이미지에서 읽게 한다. */
 function answerFormatRules(field) {
-  const arrField = field === 'user_answer' ? 'user_answers' : 'correct_answers';
+  const isUser = field === 'user_answer';
+  const arrField = isUser ? 'user_answers' : 'correct_answers';
+  const multiWhen = isUser
+    ? `If the student marked **two or more** numbers on one item and neither is crossed out, that is a
+  multiple-answer item — not a correction. Put every marked number in`
+    : `If the prompt asks for two or more answers ("모두 고르시오", "정답 2개", "두 개를 고르세요",
+  "all that apply"), put every correct number in`;
   return `## Answer format
 - Multiple choice (①②③④⑤ or numbered choices 1–5): **a single ASCII digit** ("1"–"5"). Never emit
   the circled numeral itself — always convert ①→"1" … ⑤→"5".
@@ -188,11 +191,12 @@ function answerFormatRules(field) {
   exactly as printed, not a number. A digit here is a guaranteed miss.
 - Free response: only what fills the blank, as one natural chunk. Do not chop it up with commas or
   slashes (NOT "they, do", NOT "Didn't / she / go" → "Yes, they do", "Didn't she go home late yesterday?").
-- Items tagged [MULTI-SELECT]: put **every** selected number in ${arrField} as an ascending array of
-  strings (e.g. ["1","2"]), and also join them in the ${field} scalar as "1, 2". Reporting one and
-  stopping makes the whole item count as wrong.
-- Items tagged [MULTI-BLANK N]: put exactly N entries in ${arrField} in blank order (null for a blank
-  you cannot fill), and also fill the ${field} scalar as "(1) … (2) …".`;
+- ${multiWhen} ${arrField} as an ascending array of strings (e.g. ["1","2"]),
+  and also join them in the ${field} scalar as "1, 2". Reporting one and stopping makes the whole
+  item count as wrong.
+- Free-response items with several parenthesized blanks under them, like (1)(2)(3): put one entry per
+  blank in ${arrField} in blank order (null for a blank you cannot fill), and also fill the ${field}
+  scalar as "(1) … (2) …".`;
 }
 
 /**
@@ -211,10 +215,10 @@ function answerFormatRules(field) {
  * "Do not solve the items"는 부류 (1)이다. 스키마에 correct_answer 자리가 없어도 **정답과 같은
  * 값을 user_answer 칸에 적는 것**은 막지 못한다 — 실측에서 학생이 ③에 마크한 문항을 두 회차 연속
  * ⑤(=정답)로 냈고, 하필 정답과 같아 is_correct=true로 저장되어 오답이 정답으로 기록됐다.
- * 같은 사건을 겨냥해 문항 목록에서 선택지 원문을 뺐다(buildItemRoster의 withText 주석 참고):
- * 지시로 말리는 것과 근거 자체를 주지 않는 것을 함께 건다.
+ * 같은 사건을 겨냥해 Call 1의 문항 목록 자체를 끊었다(위 roster 주석 참고): 지시로 말리는 것과
+ * 근거를 아예 주지 않는 것을 함께 건다. 이 호출에 들어가는 것은 이미지와 판독 지시뿐이다.
  */
-export function buildUserAnswerPrompt(items, numImages) {
+export function buildUserAnswerPrompt(numImages) {
   const scope = numImages > 1 ? `${numImages} images` : 'an image';
   return `The following is ${scope} of an English exam paper a student has worked through.
 Your single job is to read **the marks the student physically left on the paper**. Even if a
@@ -251,11 +255,14 @@ printed answer key or explanation appears on the page, that is not the student's
 
 ${answerFormatRules('user_answer')}
 
-## Items to answer
-Number, choice count and answer format only. The choice text is withheld on purpose — you do not need
-it to see which number the pencil touched. **Use these numbers exactly** and never invent one that is
-not on the list.
-${buildItemRoster(items, { withText: false })}
+## Which items to report
+- Work down the page and report **every item you can see**. No list is given — the page is the only
+  source, and an item you skip is lost for good.
+- Read each item number **as printed next to it**. Write it bare ("3"). Workbook drills that restart
+  at 1 in every section (A, B, C…) take the section prefix — "A-1", "B-2" — so numbers stay unique
+  on the page. Never invent a section that isn't printed.
+- An item the student left blank still gets a row, with user_answer null. Omitting it and reporting
+  a guess are both wrong; a blank is a fact about the paper.
 
 Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"answers": [
@@ -269,8 +276,13 @@ Output ONLY a JSON object in this shape (no markdown, no commentary):
 /**
  * Call 3 — 정답만 구한다. 학생 마크는 근거로 쓰지 않는다.
  * export: 학생 마크 배제 지시가 빠지면 Call 2와의 독립성이 무너진다 — 테스트로 고정.
+ *
+ * Call 1의 문항 목록을 받지 않는다. 이 호출은 문항을 실제로 푸는 것이 임무라 발문·선택지가
+ * 근거인데, 그 원문은 이미지에 있다 — 목록으로 받으면 Call 1의 OCR 오류가 근거로 승격되고
+ * (선택지 60자 절단본까지 그대로 들어갔다), 목록 자체가 답을 특정 값으로 끄는 부작용이 있다
+ * (roster 주석의 "5 choices" 실측). 세 호출이 같은 이미지를 각자 읽는 것이 이 설계의 요점이다.
  */
-export function buildCorrectAnswerPrompt(items, numImages) {
+export function buildCorrectAnswerPrompt(numImages) {
   const scope = numImages > 1 ? `${numImages} images` : 'an image';
   return `The following is ${scope} of an English exam paper.
 Your single job is to establish the **actual correct answer** for each item.
@@ -299,9 +311,12 @@ ${answerFormatRules('correct_answer')}
   for content you cannot see is a guaranteed miss and worse than null.
 - In every other case, always produce an answer.
 
-## Items to answer
-Answer the items below. **Use the numbers from this list exactly** and never invent one that is not on it.
-${buildItemRoster(items)}
+## Which items to answer
+- Work down the page and answer **every item you can see**. No list is given — the page is the only
+  source, and an item you skip is lost for good.
+- Read each item number **as printed next to it**. Write it bare ("3"). Workbook drills that restart
+  at 1 in every section (A, B, C…) take the section prefix — "A-1", "B-2" — so numbers stay unique
+  on the page. Never invent a section that isn't printed.
 
 Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"answers": [
@@ -373,9 +388,9 @@ export async function parseStructure({ ai, sessionId, images }) {
   });
 }
 
-/** Call 2: 이미지 + 문항목록 → 학생 마크. */
-export async function detectUserAnswers({ ai, sessionId, images, items }) {
-  const parts = [{ text: buildUserAnswerPrompt(items, images.length) }, ...imageParts(images)];
+/** Call 2: 이미지 → 학생 마크. Call 1의 결과를 받지 않는다(독립 호출). */
+export async function detectUserAnswers({ ai, sessionId, images }) {
+  const parts = [{ text: buildUserAnswerPrompt(images.length) }, ...imageParts(images)];
   return callJson({
     ai, sessionId, parts,
     sequence: ANSWER_MODEL_SEQUENCE,
@@ -385,9 +400,9 @@ export async function detectUserAnswers({ ai, sessionId, images, items }) {
   });
 }
 
-/** Call 3: 이미지 + 문항목록 → 정답. */
-export async function solveCorrectAnswers({ ai, sessionId, images, items }) {
-  const parts = [{ text: buildCorrectAnswerPrompt(items, images.length) }, ...imageParts(images)];
+/** Call 3: 이미지 → 정답. Call 1의 결과를 받지 않는다(독립 호출). */
+export async function solveCorrectAnswers({ ai, sessionId, images }) {
+  const parts = [{ text: buildCorrectAnswerPrompt(images.length) }, ...imageParts(images)];
   return callJson({
     ai, sessionId, parts,
     sequence: ANSWER_MODEL_SEQUENCE,
@@ -405,27 +420,35 @@ function numKey(v) {
 
 /**
  * 세 호출 결과를 problem_number로 병합.
- * 구조(Call 1)가 기준이다 — Call 2·3이 목록에 없는 번호를 냈다면 버린다(환각 방어).
+ *
+ * 구조(Call 1)가 기준선이되 **유일한 근거는 아니다.** 세 호출이 각자 이미지를 읽으므로 번호
+ * 집합이 어긋날 수 있는데, 예전처럼 구조에 없는 번호를 전부 버리면 Call 1의 누락 하나가
+ * Call 2·3이 정확히 읽은 답까지 같이 버린다. 그렇다고 한쪽만 본 번호를 받으면 환각이 그대로
+ * 들어온다. 그래서 **Call 2·3이 둘 다 같은 번호를 냈을 때만** 구제한다 — 서로를 모르는 두
+ * 호출이 같은 번호에 도달했다면 그 문항은 종이에 있다고 보는 것이 합리적이다.
+ * 구제된 행에는 발문·선택지·지문이 없다(구조를 못 읽었으므로). 답만이라도 남기는 쪽이
+ * 통째로 사라지는 것보다 낫다는 판단이고, hasContent가 답만 있는 행도 살려 보낸다.
+ *
  * export: 병합 규칙은 순수함수라 모델 호출 없이 테스트할 수 있다.
  */
 export function mergeCallResults({ structureRows, userRows, correctRows }) {
-  const userByNum = new Map();
-  for (const r of userRows || []) {
-    const k = numKey(r?.problem_number);
-    if (k && !userByNum.has(k)) userByNum.set(k, r);
-  }
-  const correctByNum = new Map();
-  for (const r of correctRows || []) {
-    const k = numKey(r?.problem_number);
-    if (k && !correctByNum.has(k)) correctByNum.set(k, r);
-  }
+  const index = (rows) => {
+    const m = new Map();
+    for (const r of rows || []) {
+      const k = numKey(r?.problem_number);
+      if (k && !m.has(k)) m.set(k, r);
+    }
+    return m;
+  };
+  const userByNum = index(userRows);
+  const correctByNum = index(correctRows);
 
-  return (structureRows || []).map((s) => {
+  // normalizeItem이 소비하는 형태로 합친다. answer_format은 구조(발문 근거)가 정하고
+  // 답 호출은 그 형식에 맞춰 값만 채운다 — 형식과 값을 다른 근거로 정하는 것이 요점이다.
+  const join = (s) => {
     const k = numKey(s?.problem_number);
     const u = userByNum.get(k) || {};
     const c = correctByNum.get(k) || {};
-    // normalizeItem이 소비하는 형태로 합친다. answer_format은 구조(발문 근거)가 정하고
-    // 답 호출은 그 형식에 맞춰 값만 채운다 — 형식과 값을 다른 근거로 정하는 것이 요점이다.
     return {
       ...s,
       user_answer: u.user_answer ?? null,
@@ -434,11 +457,26 @@ export function mergeCallResults({ structureRows, userRows, correctRows }) {
       correct_answer: c.correct_answer ?? null,
       correct_answers: Array.isArray(c.correct_answers) ? c.correct_answers : null,
     };
-  });
+  };
+
+  const merged = (structureRows || []).map(join);
+
+  const known = new Set();
+  for (const s of structureRows || []) {
+    const k = numKey(s?.problem_number);
+    if (k) known.add(k);
+  }
+  for (const [k, u] of userByNum) {
+    if (known.has(k) || !correctByNum.has(k)) continue;
+    merged.push(join({ problem_number: u.problem_number }));
+    known.add(k);
+  }
+
+  return merged;
 }
 
 /**
- * 역할분리 파이프라인 실행: 구조 추출 → (학생답 ∥ 정답) 병렬 → 병합 → (옵션)분류.
+ * 역할분리 파이프라인 실행: (구조 ∥ 학생답 ∥ 정답) 3중 병렬 → 병합 → (옵션)분류.
  * runSimpleExtractAndStructure와 반환 계약을 맞춘다(items/usedModel/structModel) —
  * 호출처(index.js·eval pipeline-runner)가 두 파이프라인을 같은 모양으로 소비한다.
  *
@@ -448,39 +486,45 @@ export function mergeCallResults({ structureRows, userRows, correctRows }) {
 export async function runSplitPipeline({
   ai, sessionId, images, taxonomyData, userLanguage = 'ko', runClassification = true,
 }) {
-  // Call 1: 구조
-  const { rows: structureRows, usedModel: structModel } = await parseStructure({ ai, sessionId, images });
-  console.log(
-    `[splitPipeline] Call1 구조 ${structureRows.length}문항 (이미지 ${images.length}장, model=${structModel})`,
-    { sessionId },
-  );
-  if (structureRows.length === 0) {
-    return { items: [], usedModel: structModel, structModel, userModel: '', correctModel: '' };
-  }
-
-  // Call 2·3: 서로를 모른 채 병렬. 한쪽이 실패해도 다른 쪽 결과는 살린다 —
-  // 학생답만 있고 정답이 없어도(또는 그 반대) 문항 자체는 저장할 가치가 있다.
-  const [userRes, correctRes] = await Promise.allSettled([
-    detectUserAnswers({ ai, sessionId, images, items: structureRows }),
-    solveCorrectAnswers({ ai, sessionId, images, items: structureRows }),
+  // Call 1·2·3: 서로의 출력을 보지 않으므로 셋을 한꺼번에 띄운다. 지연이
+  // (구조 + max(학생답, 정답))에서 max(셋)으로 줄어든다 — 예전에 Call 2·3이 구조를
+  // 기다린 것은 문항 목록을 넘기기 위해서였고, 그 목록을 끊은 지금 기다릴 이유가 없다.
+  // 하나가 실패해도 나머지는 살린다: 구조가 없어도 답만으로 남길 가치가 있고, 답이 없어도
+  // 문항 자체는 저장할 가치가 있다.
+  const [structRes, userRes, correctRes] = await Promise.allSettled([
+    parseStructure({ ai, sessionId, images }),
+    detectUserAnswers({ ai, sessionId, images }),
+    solveCorrectAnswers({ ai, sessionId, images }),
   ]);
+  if (structRes.status === 'rejected') {
+    console.error(`[splitPipeline] Call1(구조) 실패: ${structRes.reason?.message}`, { sessionId });
+  }
   if (userRes.status === 'rejected') {
     console.error(`[splitPipeline] Call2(학생답) 실패: ${userRes.reason?.message}`, { sessionId });
   }
   if (correctRes.status === 'rejected') {
     console.error(`[splitPipeline] Call3(정답) 실패: ${correctRes.reason?.message}`, { sessionId });
   }
+  const structureRows = structRes.status === 'fulfilled' ? structRes.value.rows : [];
   const userRows = userRes.status === 'fulfilled' ? userRes.value.rows : [];
   const correctRows = correctRes.status === 'fulfilled' ? correctRes.value.rows : [];
+  const structModel = structRes.status === 'fulfilled' ? structRes.value.usedModel : '';
   const userModel = userRes.status === 'fulfilled' ? userRes.value.usedModel : '';
   const correctModel = correctRes.status === 'fulfilled' ? correctRes.value.usedModel : '';
   console.log(
-    `[splitPipeline] Call2 학생답 ${userRows.length}건(model=${userModel}) · `
-    + `Call3 정답 ${correctRows.length}건(model=${correctModel})`,
+    `[splitPipeline] 이미지 ${images.length}장 · Call1 구조 ${structureRows.length}문항(model=${structModel || '실패'})`
+    + ` · Call2 학생답 ${userRows.length}건(model=${userModel || '실패'})`
+    + ` · Call3 정답 ${correctRows.length}건(model=${correctModel || '실패'})`,
     { sessionId },
   );
 
   const merged = mergeCallResults({ structureRows, userRows, correctRows });
+  if (merged.length > structureRows.length) {
+    console.log(
+      `[splitPipeline] 구조가 놓친 ${merged.length - structureRows.length}문항 구제(Call2·3이 둘 다 본 번호)`,
+      { sessionId },
+    );
+  }
   const normalized = merged.map(normalizeItem).filter(Boolean);
 
   // 번호 없는 교재 연습문제(Let's Use It 등) 유지 — simplePipeline과 동일 백스톱.
@@ -516,5 +560,8 @@ export async function runSplitPipeline({
   }
 
   // usedModel은 계약상 "이미지를 읽은 주 모델" — 여기서는 구조 호출이 그 역할이다.
-  return { items, usedModel: structModel, structModel, userModel, correctModel };
+  // 구조가 실패해도 답 호출로 문항이 남을 수 있으므로, 빈 문자열 대신 실제로 읽은 모델을 준다.
+  return {
+    items, usedModel: structModel || userModel || correctModel, structModel, userModel, correctModel,
+  };
 }

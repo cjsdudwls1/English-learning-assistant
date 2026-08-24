@@ -10,8 +10,8 @@
  *   1. Call 1(구조)   — 손글씨·빨간펜 배제 지시. 이게 빠지면 Call 2·3의 전제가 무너진다.
  *   2. Call 2(학생답) — 세 레이어 구분·VERBATIM·흐린 마크·정답표 오염 차단.
  *   3. Call 3(정답)   — 학생 마크 배제. 이게 빠지면 Call 2와 독립이 아니게 된다.
- *   4. 호출 간 독립성 — Call 2 프롬프트에 정답이 새어 들어가지 않는가.
- *   5. mergeCallResults — 번호 정합·환각 방어(순수함수).
+ *   4. 호출 간 독립성 — Call 2·3이 Call 1의 결과를 받지 않는가(문항 목록 포함).
+ *   5. mergeCallResults — 번호 정합·환각 방어·구조 누락 구제(순수함수).
  *
  * 프롬프트 본문은 영문이지만 **시험지에서 실제로 매칭할 문자열은 한국어 그대로** 남긴다
  * (복수정답 트리거 "두 개를 고르세요", "1형식".."5형식" 등). 여기를 번역하면 트리거가 죽으므로
@@ -24,22 +24,6 @@ import {
   buildParsePrompt, buildUserAnswerPrompt, buildCorrectAnswerPrompt, mergeCallResults,
 } from '../shared/splitPipeline.js';
 import { normalizeItem } from '../shared/simplePipeline.js';
-
-const ITEMS = [
-  {
-    problem_number: '10',
-    instruction: '어법상 알맞은 문장 두 개를 고르세요',
-    choices: [{ label: '1', text: 'He go' }, { label: '2', text: 'He goes' }],
-    answer_format: 'multi_select',
-  },
-  {
-    problem_number: '14',
-    instruction: '빈칸에 알맞은 말을 쓰시오',
-    choices: [],
-    answer_format: 'multi_blank',
-    blank_count: 3,
-  },
-];
 
 // ─── 1. Call 1(구조): 필기 배제 ─────────────────────────────────────────
 
@@ -91,7 +75,7 @@ test('Call1 프롬프트: 복수정답 트리거가 한글 수사 형태를 포�
 // ─── 2. Call 2(학생답): 판독 지시 ───────────────────────────────────────
 
 test('Call2 프롬프트: 인쇄체·학생연필·교사빨간펜 세 레이어를 구분시킨다', () => {
-  const p = buildUserAnswerPrompt(ITEMS, 1);
+  const p = buildUserAnswerPrompt(1);
   assert.match(p, /Printed type/);
   assert.match(p, /Pencil/);
   assert.match(p, /Red pen/);
@@ -101,7 +85,7 @@ test('Call2 프롬프트: 인쇄체·학생연필·교사빨간펜 세 레이어
 
 test('Call2 프롬프트: 철자를 고치지 말라고 지시한다(VERBATIM)', () => {
   // 실측 오답 — 학생이 쓴 "beetween"을 모델이 "between"으로 교정해 오답이 정답으로 둔갑했다.
-  const p = buildUserAnswerPrompt(ITEMS, 1);
+  const p = buildUserAnswerPrompt(1);
   assert.match(p, /never correct spelling or grammar/);
   assert.match(p, /beetween/);
   // 손글씨도 원문 언어 그대로 — 영문 지시가 한국어 서술형 답안을 번역시키면 안 된다.
@@ -109,12 +93,12 @@ test('Call2 프롬프트: 철자를 고치지 말라고 지시한다(VERBATIM)',
 });
 
 test('Call2 프롬프트: 흐린 연필 자국도 유효한 마크로 취급시킨다', () => {
-  const p = buildUserAnswerPrompt(ITEMS, 1);
+  const p = buildUserAnswerPrompt(1);
   assert.match(p, /Faint pencil traces|light circles/);
 });
 
 test('Call2 프롬프트: 인쇄된 정답표를 답으로 옮기지 말라고 지시한다', () => {
-  const p = buildUserAnswerPrompt(ITEMS, 1);
+  const p = buildUserAnswerPrompt(1);
   assert.match(p, /answer key|explanation/);
   assert.match(p, /do not copy it/);
 });
@@ -122,65 +106,69 @@ test('Call2 프롬프트: 인쇄된 정답표를 답으로 옮기지 말라고 �
 // ─── 3. Call 3(정답): 학생 마크 배제 ────────────────────────────────────
 
 test('Call3 프롬프트: 학생의 연필 마크를 정답 근거로 쓰지 말라고 지시한다', () => {
-  const p = buildCorrectAnswerPrompt(ITEMS, 1);
+  const p = buildCorrectAnswerPrompt(1);
   assert.match(p, /may be wrong/);
   assert.match(p, /not evidence/);
 });
 
 test('Call3 프롬프트: 보이지 않는 문항의 정답을 지어내지 말라고 지시한다', () => {
-  const p = buildCorrectAnswerPrompt(ITEMS, 1);
+  const p = buildCorrectAnswerPrompt(1);
   assert.match(p, /Do not invent/);
   assert.match(p, /null/);
 });
 
 // ─── 4. 호출 간 독립성 ──────────────────────────────────────────────────
 
-test('Call2 프롬프트에 정답 값이 새어 들어가지 않는다', () => {
-  // 이 파이프라인의 존재 이유 — Call 2가 정답을 모르면 "정답을 학생답 칸에 베끼는" 오염이
-  // 구조적으로 불가능해진다. 문항 목록에 correct_answer를 실어 보내면 그 이득이 사라진다.
-  const withAnswers = ITEMS.map((it) => ({ ...it, correct_answer: '42XYZ', correct_answers: ['42XYZ'] }));
-  const p = buildUserAnswerPrompt(withAnswers, 1);
-  assert.ok(!p.includes('42XYZ'), 'Call2 프롬프트에 정답이 새면 호출 분리의 이득이 사라진다');
+test('Call2·Call3는 Call1의 결과를 인자로 받지 않는다', () => {
+  // 이 파이프라인의 존재 이유 — 세 호출이 각자 이미지만 읽으면 한 호출의 오류가 다른 호출로
+  // 번지지 않는다. 문항 목록을 넘기는 순간 그 격리가 깨지고, 실측에서 두 번 다 답이 오염됐다:
+  // 선택지 원문을 실었을 때는 Call 2가 마크 대신 스스로 푼 정답을 냈고(학생 ③ / 출력 ⑤,
+  // 2회차 재현), 개수만 남겼을 때는("- Q39: 5 choices" × 7줄) 오독한 답이 전부 5로 쏠렸다.
+  assert.equal(buildUserAnswerPrompt.length, 1, 'Call2 프롬프트가 문항 목록을 받으면 격리가 깨진다');
+  assert.equal(buildCorrectAnswerPrompt.length, 1, 'Call3 프롬프트가 문항 목록을 받으면 격리가 깨진다');
 });
 
-test('Call2/Call3 프롬프트에 학생 답이 새어 들어가지 않는다', () => {
-  const withUser = ITEMS.map((it) => ({ ...it, user_answer: '99ABC', user_answers: ['99ABC'] }));
-  assert.ok(!buildCorrectAnswerPrompt(withUser, 1).includes('99ABC'),
-    'Call3가 학생 답을 보면 그것을 정답으로 베낄 수 있다');
+test('Call2·Call3 프롬프트에 문항 목록이 없다', () => {
+  for (const [name, p] of [['Call2', buildUserAnswerPrompt(1)], ['Call3', buildCorrectAnswerPrompt(1)]]) {
+    assert.ok(!/^- Q\d/m.test(p), `${name} 프롬프트에 문항 목록이 남아 있다`);
+    assert.ok(!p.includes('[MULTI-SELECT]'), `${name}에 Call1이 붙인 형식 태그가 남아 있다`);
+    // "N choices"는 답 형식이 마침 한 자리 숫자라 그 N을 답으로 끄는 앵커가 된다(실측).
+    assert.ok(!/\d+ choices/.test(p), `${name}에 선택지 개수가 남아 있다 — 답을 그 숫자로 끈다`);
+  }
 });
 
-test('Call3의 문항 목록은 번호·발문·선택지·형식을 담는다(문항을 실제로 풀어야 하므로)', () => {
-  const p = buildCorrectAnswerPrompt(ITEMS, 1);
-  assert.match(p, /Q10/);
-  assert.match(p, /Q14/);
-  assert.match(p, /\[MULTI-SELECT\]/);
-  assert.match(p, /\[MULTI-BLANK 3\]/);
-  // 발문은 시험지 원문이라 목록에도 한국어 그대로 실려야 한다(영문화 대상이 아니다).
-  assert.match(p, /어법상 알맞은 문장 두 개를 고르세요/);
-  assert.match(p, /He goes/);
+test('Call2·Call3가 같은 번호 표기 규칙을 받는다(독립 호출의 조인 키)', () => {
+  // 목록을 주지 않으므로 번호는 각 호출이 이미지에서 직접 읽는다. 그러면 표기가 유일한
+  // 조인 키인데, 한쪽만 "A-1"을 쓰고 다른 쪽이 "1"을 쓰면 같은 문항이 두 행으로 갈라진다
+  // — numKey는 "Q3"/"3." 수준의 장식만 흡수한다.
+  for (const p of [buildUserAnswerPrompt(1), buildCorrectAnswerPrompt(1)]) {
+    assert.match(p, /as printed next to it/);
+    assert.match(p, /A-1/);
+  }
 });
 
-test('Call2의 문항 목록에는 선택지 원문과 발문이 없다(자체 풀이의 근거를 주지 않는다)', () => {
-  // 실측 오답 — 학생이 ③에 마크한 문항을 두 회차 연속 ⑤(=정답)로 냈다. 마크는 번호 위에
-  // 찍히지 문장 위에 찍히지 않으므로 선택지 원문은 판독에 쓰이지 않는데, 그것이 들어 있으면
-  // Call 2도 문항을 풀 수 있게 되어 마크 대신 추론한 정답을 낼 길이 열린다.
-  const p = buildUserAnswerPrompt(ITEMS, 1);
-  assert.ok(!p.includes('He goes'), 'Call2 목록에 선택지 원문이 있으면 스스로 답을 고를 수 있다');
-  assert.ok(!p.includes('어법상 알맞은 문장 두 개를 고르세요'),
-    'Call2 목록에 발문이 있으면 문항 유형을 풀이 단서로 쓸 수 있다');
-  // 대신 답을 채울 칸을 알기 위한 최소치는 남아야 한다.
-  assert.match(p, /Q10/);
-  assert.match(p, /Q14/);
-  assert.match(p, /\[MULTI-SELECT\]/);
-  assert.match(p, /\[MULTI-BLANK 3\]/);
-  assert.match(p, /2 choices/);        // 선택지 개수 = 답의 범위 검증용
-  assert.match(p, /free response/);    // 선택지 없는 문항의 형태
+test('Call2·Call3는 페이지의 모든 문항을 보고하라는 지시를 받는다', () => {
+  // 목록이 사라진 만큼 "빠짐없이"가 유일한 완전성 장치다.
+  for (const p of [buildUserAnswerPrompt(1), buildCorrectAnswerPrompt(1)]) {
+    assert.match(p, /every item you can see/);
+  }
+});
+
+test('복수답 판정 근거가 호출마다 다르다', () => {
+  // 학생답은 **종이에 칠해진 개수**가, 정답은 **발문이 요구하는 개수**가 정한다. 예전에는
+  // Call 1이 붙인 [MULTI-SELECT] 태그로 양쪽을 한꺼번에 지시했고, 그러려면 목록이 필요했다.
+  const u = buildUserAnswerPrompt(1);
+  const c = buildCorrectAnswerPrompt(1);
+  assert.match(u, /two or more\*\* numbers/);
+  assert.match(c, /모두 고르시오/);
+  assert.ok(!u.includes('모두 고르시오'),
+    'Call2가 발문 문구로 복수답을 판단하면 종이에 칠해진 것을 보지 않게 된다');
 });
 
 test('Call2 프롬프트: 문항을 스스로 풀지 말라고 지시한다', () => {
   // 스키마에 correct_answer 자리가 없어도 "정답과 같은 값을 user_answer 칸에 적는 것"은
   // 막지 못한다 — 지시로도 함께 건다.
-  const p = buildUserAnswerPrompt(ITEMS, 1);
+  const p = buildUserAnswerPrompt(1);
   assert.match(p, /Do not solve the items/);
   assert.match(p, /[Nn]ever work out which choice is correct/);
   // 마크와 정답이 다른 것이 정상이라는 점을 명시해야 모델이 불일치를 오류로 보지 않는다.
@@ -188,8 +176,8 @@ test('Call2 프롬프트: 문항을 스스로 풀지 말라고 지시한다', ()
 });
 
 test('두 답 호출 모두 복수정답·다중빈칸 배열 규칙을 받는다', () => {
-  const u = buildUserAnswerPrompt(ITEMS, 1);
-  const c = buildCorrectAnswerPrompt(ITEMS, 1);
+  const u = buildUserAnswerPrompt(1);
+  const c = buildCorrectAnswerPrompt(1);
   assert.match(u, /user_answers/);
   assert.match(u, /ascending array of\s+strings/);
   assert.match(c, /correct_answers/);
@@ -224,15 +212,41 @@ test('merge: 번호 표기가 달라도("Q3", "3.") 같은 문항으로 묶는�
   assert.equal(merged[0].correct_answer, '5');
 });
 
-test('merge: 구조에 없는 번호를 답 호출이 내면 버린다(환각 방어)', () => {
+test('merge: 구조에 없는 번호를 한쪽 호출만 내면 버린다(환각 방어)', () => {
   const merged = mergeCallResults({
     structureRows: [{ problem_number: '3', answer_format: 'single' }],
     userRows: [{ problem_number: '3', user_answer: '1' }, { problem_number: '99', user_answer: '2' }],
-    correctRows: [{ problem_number: '99', correct_answer: '3' }],
+    correctRows: [{ problem_number: '3', correct_answer: '5' }],
   });
-  assert.equal(merged.length, 1, '구조가 기준이다 — 답 호출이 만든 번호는 문항이 되지 못한다');
+  assert.equal(merged.length, 1, '한 호출만 본 번호는 환각일 수 있다 — 문항이 되지 못한다');
   assert.equal(merged[0].problem_number, '3');
-  assert.equal(merged[0].correct_answer, null, '99번의 정답이 3번으로 새면 안 된다');
+  assert.equal(merged[0].user_answer, '1', '99번의 답이 3번으로 새면 안 된다');
+});
+
+test('merge: 구조가 놓친 번호를 Call2·3이 둘 다 냈으면 구제한다', () => {
+  // 세 호출이 독립이라 Call 1만 문항을 놓칠 수 있다. 예전에는 구조에 없으면 무조건 버려서,
+  // Call 2가 정확히 읽은 학생 답이 구조 누락 하나 때문에 같이 사라졌다. 서로를 모르는 두
+  // 호출이 같은 번호에 도달했다면 그 문항은 종이에 있다고 본다.
+  const merged = mergeCallResults({
+    structureRows: [{ problem_number: '3', answer_format: 'single' }],
+    userRows: [{ problem_number: '3', user_answer: '1' }, { problem_number: '4', user_answer: '2' }],
+    correctRows: [{ problem_number: '3', correct_answer: '5' }, { problem_number: '4', correct_answer: '3' }],
+  });
+  assert.equal(merged.length, 2, '두 호출이 함께 본 번호는 구조가 놓쳐도 살린다');
+  const q4 = merged.find((m) => m.problem_number === '4');
+  assert.equal(q4.user_answer, '2');
+  assert.equal(q4.correct_answer, '3');
+  assert.equal(q4.instruction, undefined, '구조를 못 읽었으므로 발문은 없다 — 답만 남긴다');
+});
+
+test('merge: 구제된 행도 problem_number 표기를 원본대로 쓴다', () => {
+  const merged = mergeCallResults({
+    structureRows: [],
+    userRows: [{ problem_number: 'A-2', user_answer: '1' }],
+    correctRows: [{ problem_number: 'A-2', correct_answer: '3' }],
+  });
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].problem_number, 'A-2');
 });
 
 test('merge: 한쪽 호출이 통째로 실패해도 다른 쪽 결과는 살린다', () => {
