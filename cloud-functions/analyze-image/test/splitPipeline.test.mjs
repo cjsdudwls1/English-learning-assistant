@@ -97,6 +97,44 @@ test('Call2 프롬프트: 흐린 연필 자국도 유효한 마크로 취급시�
   assert.match(p, /Faint pencil traces|light circles/);
 });
 
+/* 아래 세 개는 2026-08-24 실측에서 나온 것이다. 목록(roster)을 걷어낸 직후 돌린 회차에서
+ * 7문항 중 뒤 3개(43·44·45)의 user_answer가 전부 null로 나왔다 — 원본에는 학생이 ②①③을
+ * 분명히 골라 놓았는데도. 값을 낸 4문항은 전부 정확했으니 오답을 내는 문제가 아니라
+ * 답을 포기하는 문제였다. 원본을 열어 보고 두 가지가 겹친 것을 확인했다.
+ *   - 마크가 닫힌 동그라미가 아니라 숫자 왼쪽에 걸친 열린 호였다. 프롬프트는 "fully
+ *     enclosed가 가장 강한 신호"라고만 말해서, 열린 호는 약한 신호로 읽힐 여지가 있었다.
+ *   - null이 난 세 문항이 전부 뒷장 글자가 비쳐 보이는 단에 있었다. 대비가 낮았다.
+ * 여기에 "추측해서 내는 것도 틀린 것"이라는 문장이 얹히자 모델이 안전한 쪽(null)으로 갔다.
+ * 억제 문구를 완전히 뺄 수는 없다(빈칸을 지어내면 그게 더 나쁘다). 그래서 null의 조건을
+ * "아무 자국도 없음"으로 좁히는 쪽으로 고쳤고, 그 경계를 테스트로 잡아 둔다. */
+
+test('Call2 프롬프트: 닫히지 않은 호도 닫힌 동그라미와 동등한 마크로 인정시킨다', () => {
+  const p = buildUserAnswerPrompt(1);
+  assert.match(p, /does not have to close/, '열린 마크를 인정하는 문장이 없다');
+  assert.match(p, /arc/, '호(arc)라는 실제 형태를 짚어주지 않는다');
+  assert.ok(
+    !/fully enclosed.*strongest/s.test(p),
+    '"닫힌 동그라미가 가장 강한 신호"는 열린 호를 약한 신호로 읽히게 한다',
+  );
+});
+
+test('Call2 프롬프트: null을 판독 실패의 도피처로 쓰지 말라고 못박는다', () => {
+  const p = buildUserAnswerPrompt(1);
+  assert.match(p, /no hand-drawn stroke at all/, 'null의 조건이 "자국 없음"으로 좁혀져 있지 않다');
+  assert.match(p, /not the safe answer/, 'null이 안전한 선택이 아니라는 말이 없다');
+  // 이 문구가 억제 방향으로 되돌아가면 43·44·45가 다시 통째로 빈다.
+  assert.ok(
+    !/reporting a guess are both wrong/.test(p),
+    '"추측해서 내는 것도 틀리다"가 되살아났다 — 흐린 마크를 통째로 포기하게 만든 문장이다',
+  );
+});
+
+test('Call2 프롬프트: 뒷장 비침을 마크와 구분시킨다', () => {
+  const p = buildUserAnswerPrompt(1);
+  assert.match(p, /ghosting through|from the back of the sheet/i);
+  assert.match(p, /needs a closer look, not a null/, '비침 구역에서 포기하지 말라는 지시가 없다');
+});
+
 test('Call2 프롬프트: 인쇄된 정답표를 답으로 옮기지 말라고 지시한다', () => {
   const p = buildUserAnswerPrompt(1);
   assert.match(p, /answer key|explanation/);

@@ -236,12 +236,16 @@ printed answer key or explanation appears on the page, that is not the student's
 - **Red pen** (circles, slashes, curves, O/X) — the teacher's grading. It is the boldest thing on the
   page and catches the eye first, but it is not the answer.
 - **Printed type** (uniform typeface) — the question itself.
+- **Text ghosting through from the back of the sheet** — not a mark. It washes out the contrast around
+  a light pencil arc, so a column that looks murky needs a closer look, not a null.
 
 ## Reading the marks
 - Inspect choices ①②③④⑤ **one at a time** before deciding. Do not stop at the first mark you notice.
 - **Faint pencil traces, light circles and small tick marks all count as valid marks.**
-- A number **fully enclosed** by a hand-drawn loop is the strongest signal. A slash through a number
-  cancels it; an arrow means the number it lands on is the final answer.
+- A hand-drawn loop around a number is the signal and it **does not have to close**. The common case
+  is a bare arc — a "(" hugging the number's left side, a half circle, a curve that stops short. That
+  arc picks its number exactly as a closed loop does; do not discount it for being open or faint.
+- A slash through a number cancels it; an arrow means the number it lands on is the final answer.
 - A long vertical curve dividing the left and right choice columns is a layout divider.
 - If the student self-graded and put X and O on **different** numbers, the X marks the student's answer.
 
@@ -261,8 +265,10 @@ ${answerFormatRules('user_answer')}
 - Read each item number **as printed next to it**. Write it bare ("3"). Workbook drills that restart
   at 1 in every section (A, B, C…) take the section prefix — "A-1", "B-2" — so numbers stay unique
   on the page. Never invent a section that isn't printed.
-- An item the student left blank still gets a row, with user_answer null. Omitting it and reporting
-  a guess are both wrong; a blank is a fact about the paper.
+- An item the student left blank still gets a row, with user_answer null. But null means you looked
+  and the item carries **no hand-drawn stroke at all**. It is not the safe answer for a mark you find
+  hard to read — a faint or half-drawn arc still names a number, so report that number. Going null on
+  an item the student did mark loses the answer just as surely as dropping the row.
 
 Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"answers": [
