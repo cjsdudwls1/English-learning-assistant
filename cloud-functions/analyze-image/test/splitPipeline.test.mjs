@@ -72,90 +72,87 @@ test('Call1 프롬프트: 복수정답 트리거가 한글 수사 형태를 포�
   assert.match(p, /Korean numeral word/);
 });
 
-// ─── 2. Call 2(학생답): 판독 지시 ───────────────────────────────────────
+// ─── 2. Call 2·Call 3(답 호출): 최소 지시 ───────────────────────────────
 
-test('Call2 프롬프트: 인쇄체·학생연필·교사빨간펜 세 레이어를 구분시킨다', () => {
+/* 2026-08-24. 이 섹션은 원래 두 프롬프트의 문장을 하나씩 정규식으로 고정하고 있었다
+ * (세 레이어 구분·VERBATIM·흐린 연필·열린 호·뒷장 비침·null 도피처 금지·자력 풀이 금지…).
+ * 그 문장들을 프롬프트에서 전부 걷어냈으므로 테스트도 함께 지운다 — 지운 이유가 요점이다.
+ *
+ * 판독 정확도를 지시로 고치려는 시도를 세 번 했고 세 번 다 다른 곳이 망가졌다. 문항 목록을
+ * 실어 주자 Call 2가 스스로 풀어 자기 정답을 냈고, 목록을 선택지 개수만 남기자 오독이 전부
+ * "5"로 쏠렸고, 목록을 걷어내며 "추측해서 내는 것도 틀린 것"을 넣자 뒤 3문항이 통째로 null이
+ * 됐다. 마지막 회차의 보강(열린 호 인정·비침 경고·null 조건 축소)은 테스트 131개를 통과하고도
+ * 실측에서 효과가 0이었다 — 문구를 더 정교하게 쓰는 방향으로는 움직이지 않는다는 뜻이다.
+ * 문장을 하나씩 정규식으로 붙잡는 테스트는 그 방향을 굳히기만 했다.
+ *
+ * 그래서 남기는 기준을 뒤집었다. 프롬프트에는 **스키마도 코드도 막지 못하는 오염원**만 남기고
+ * 테스트도 그것만 지킨다. 아래가 전부다. 문장을 새로 넣고 싶으면 먼저 답할 것 — 스키마나
+ * normalizeItem이 이미 막는가? 막는다면 프롬프트에도 테스트에도 자리가 없다. */
+
+test('Call2 프롬프트: 빨간펜과 인쇄된 정답표를 학생 마크와 구분시킨다', () => {
+  // 스키마로 못 막는 오염이다. 교사 채점이나 인쇄된 정답을 그대로 옮겨 적으면 값 자체는
+  // 그럴듯해서 사후에 걸러낼 방법이 없고, 채점 결과가 통째로 만점이 된다.
   const p = buildUserAnswerPrompt(1);
-  assert.match(p, /Printed type/);
-  assert.match(p, /Pencil/);
-  assert.match(p, /Red pen/);
-  // 빨간펜이 시각적으로 압도적이라는 함정을 명시해야 한다.
-  assert.match(p, /not the answer/);
+  assert.match(p, /[Rr]ed pen/);
+  assert.match(p, /answer\s+key/);
+  assert.match(p, /neither is the student's answer/);
 });
-
-test('Call2 프롬프트: 철자를 고치지 말라고 지시한다(VERBATIM)', () => {
-  // 실측 오답 — 학생이 쓴 "beetween"을 모델이 "between"으로 교정해 오답이 정답으로 둔갑했다.
-  const p = buildUserAnswerPrompt(1);
-  assert.match(p, /never correct spelling or grammar/);
-  assert.match(p, /beetween/);
-  // 손글씨도 원문 언어 그대로 — 영문 지시가 한국어 서술형 답안을 번역시키면 안 된다.
-  assert.match(p, /original language/i);
-});
-
-test('Call2 프롬프트: 흐린 연필 자국도 유효한 마크로 취급시킨다', () => {
-  const p = buildUserAnswerPrompt(1);
-  assert.match(p, /Faint pencil traces|light circles/);
-});
-
-/* 아래 세 개는 2026-08-24 실측에서 나온 것이다. 목록(roster)을 걷어낸 직후 돌린 회차에서
- * 7문항 중 뒤 3개(43·44·45)의 user_answer가 전부 null로 나왔다 — 원본에는 학생이 ②①③을
- * 분명히 골라 놓았는데도. 값을 낸 4문항은 전부 정확했으니 오답을 내는 문제가 아니라
- * 답을 포기하는 문제였다. 원본을 열어 보고 두 가지가 겹친 것을 확인했다.
- *   - 마크가 닫힌 동그라미가 아니라 숫자 왼쪽에 걸친 열린 호였다. 프롬프트는 "fully
- *     enclosed가 가장 강한 신호"라고만 말해서, 열린 호는 약한 신호로 읽힐 여지가 있었다.
- *   - null이 난 세 문항이 전부 뒷장 글자가 비쳐 보이는 단에 있었다. 대비가 낮았다.
- * 여기에 "추측해서 내는 것도 틀린 것"이라는 문장이 얹히자 모델이 안전한 쪽(null)으로 갔다.
- * 억제 문구를 완전히 뺄 수는 없다(빈칸을 지어내면 그게 더 나쁘다). 그래서 null의 조건을
- * "아무 자국도 없음"으로 좁히는 쪽으로 고쳤고, 그 경계를 테스트로 잡아 둔다. */
-
-test('Call2 프롬프트: 닫히지 않은 호도 닫힌 동그라미와 동등한 마크로 인정시킨다', () => {
-  const p = buildUserAnswerPrompt(1);
-  assert.match(p, /does not have to close/, '열린 마크를 인정하는 문장이 없다');
-  assert.match(p, /arc/, '호(arc)라는 실제 형태를 짚어주지 않는다');
-  assert.ok(
-    !/fully enclosed.*strongest/s.test(p),
-    '"닫힌 동그라미가 가장 강한 신호"는 열린 호를 약한 신호로 읽히게 한다',
-  );
-});
-
-test('Call2 프롬프트: null을 판독 실패의 도피처로 쓰지 말라고 못박는다', () => {
-  const p = buildUserAnswerPrompt(1);
-  assert.match(p, /no hand-drawn stroke at all/, 'null의 조건이 "자국 없음"으로 좁혀져 있지 않다');
-  assert.match(p, /not the safe answer/, 'null이 안전한 선택이 아니라는 말이 없다');
-  // 이 문구가 억제 방향으로 되돌아가면 43·44·45가 다시 통째로 빈다.
-  assert.ok(
-    !/reporting a guess are both wrong/.test(p),
-    '"추측해서 내는 것도 틀리다"가 되살아났다 — 흐린 마크를 통째로 포기하게 만든 문장이다',
-  );
-});
-
-test('Call2 프롬프트: 뒷장 비침을 마크와 구분시킨다', () => {
-  const p = buildUserAnswerPrompt(1);
-  assert.match(p, /ghosting through|from the back of the sheet/i);
-  assert.match(p, /needs a closer look, not a null/, '비침 구역에서 포기하지 말라는 지시가 없다');
-});
-
-test('Call2 프롬프트: 인쇄된 정답표를 답으로 옮기지 말라고 지시한다', () => {
-  const p = buildUserAnswerPrompt(1);
-  assert.match(p, /answer key|explanation/);
-  assert.match(p, /do not copy it/);
-});
-
-// ─── 3. Call 3(정답): 학생 마크 배제 ────────────────────────────────────
 
 test('Call3 프롬프트: 학생의 연필 마크를 정답 근거로 쓰지 말라고 지시한다', () => {
+  // 반대 방향의 같은 오염. Call 3이 학생 마크를 베끼면 is_correct가 언제나 true가 된다.
   const p = buildCorrectAnswerPrompt(1);
   assert.match(p, /may be wrong/);
   assert.match(p, /not evidence/);
 });
 
-test('Call3 프롬프트: 보이지 않는 문항의 정답을 지어내지 말라고 지시한다', () => {
-  const p = buildCorrectAnswerPrompt(1);
-  assert.match(p, /Do not invent/);
-  assert.match(p, /null/);
+test('두 답 호출 모두 원문자를 ASCII 숫자로 내라는 지시를 받는다', () => {
+  // 한쪽만 ①로 내면 비교 단위가 어긋나 그 문항이 통째로 오답 처리된다. normalizeItem은
+  // 원문자를 흡수하지 않는다.
+  for (const p of [buildUserAnswerPrompt(1), buildCorrectAnswerPrompt(1)]) {
+    assert.match(p, /①/);
+    assert.match(p, /plain digit/);
+  }
 });
 
-// ─── 4. 호출 간 독립성 ──────────────────────────────────────────────────
+test('두 답 호출이 글자 그대로 같은 번호 규칙을 받는다(독립 호출의 조인 키)', () => {
+  // 목록을 주지 않으므로 번호는 각 호출이 이미지에서 직접 읽는다. 그러면 표기가 유일한 조인
+  // 키인데, 한쪽 규칙만 바뀌면 같은 문항이 두 행으로 갈라진다. 문구 자체보다 **양쪽이 같은지**가
+  // 계약이다 — 그래야 문구를 고쳐도 한쪽만 고치는 실수가 잡힌다.
+  const rule = (p) => p.split('\n').find((l) => l.startsWith('- problem_number:'));
+  const u = rule(buildUserAnswerPrompt(1));
+  const c = rule(buildCorrectAnswerPrompt(1));
+  assert.ok(u, 'Call2에 problem_number 규칙 줄이 없다');
+  assert.equal(u, c, '두 호출의 번호 규칙이 갈라졌다 — 조인 키가 어긋난다');
+});
+
+test('두 답 호출 모두 복수답을 담을 배열 필드를 갖는다', () => {
+  // 학생이 두 개를 칠했거나 발문이 두 개를 요구하는 경우다. 단일 필드만 있으면 모델이
+  // 하나를 버리고, 어느 쪽을 버렸는지 알 길이 없다.
+  assert.match(buildUserAnswerPrompt(1), /user_answers/);
+  assert.match(buildCorrectAnswerPrompt(1), /correct_answers/);
+});
+
+test('답 호출 프롬프트는 짧게 유지된다', () => {
+  // 극최소화 직전 Call2는 5446자, Call3은 3931자였고 그 상태에서 정확도가 가장 나빴다.
+  // 상한은 품질 지표가 아니라 브레이크다 — 문장을 하나씩 얹어 원래대로 돌아가는 경로를 막는다.
+  // 넘겼다면 먼저 물을 것: 이 문장이 없으면 스키마도 코드도 못 막는 오염이 실제로 생기는가?
+  for (const [name, p] of [['Call2', buildUserAnswerPrompt(2)], ['Call3', buildCorrectAnswerPrompt(2)]]) {
+    assert.ok(p.length < 1500, `${name} 프롬프트가 ${p.length}자다 — 상한 1500자`);
+  }
+});
+
+test('답 호출 프롬프트의 숫자가 한쪽으로 쏠리지 않는다', () => {
+  // 실측 실패 모드다. 프롬프트에 "5 choices"가 7줄 깔리자 오독한 답이 전부 5로 나왔다.
+  // 답이 한 자리 숫자라서 프롬프트 안에 반복되는 숫자가 그대로 앵커가 된다.
+  for (const [name, p] of [['Call2', buildUserAnswerPrompt(1)], ['Call3', buildCorrectAnswerPrompt(1)]]) {
+    for (const d of ['1', '2', '3', '4', '5']) {
+      const n = (p.match(new RegExp(d, 'g')) || []).length;
+      assert.ok(n <= 3, `${name} 프롬프트에 "${d}"가 ${n}번 나온다 — 답을 그 숫자로 끈다`);
+    }
+  }
+});
+
+// ─── 3. 호출 간 독립성 ──────────────────────────────────────────────────
 
 test('Call2·Call3는 Call1의 결과를 인자로 받지 않는다', () => {
   // 이 파이프라인의 존재 이유 — 세 호출이 각자 이미지만 읽으면 한 호출의 오류가 다른 호출로
@@ -175,57 +172,7 @@ test('Call2·Call3 프롬프트에 문항 목록이 없다', () => {
   }
 });
 
-test('Call2·Call3가 같은 번호 표기 규칙을 받는다(독립 호출의 조인 키)', () => {
-  // 목록을 주지 않으므로 번호는 각 호출이 이미지에서 직접 읽는다. 그러면 표기가 유일한
-  // 조인 키인데, 한쪽만 "A-1"을 쓰고 다른 쪽이 "1"을 쓰면 같은 문항이 두 행으로 갈라진다
-  // — numKey는 "Q3"/"3." 수준의 장식만 흡수한다.
-  for (const p of [buildUserAnswerPrompt(1), buildCorrectAnswerPrompt(1)]) {
-    assert.match(p, /as printed next to it/);
-    assert.match(p, /A-1/);
-  }
-});
-
-test('Call2·Call3는 페이지의 모든 문항을 보고하라는 지시를 받는다', () => {
-  // 목록이 사라진 만큼 "빠짐없이"가 유일한 완전성 장치다.
-  for (const p of [buildUserAnswerPrompt(1), buildCorrectAnswerPrompt(1)]) {
-    assert.match(p, /every item you can see/);
-  }
-});
-
-test('복수답 판정 근거가 호출마다 다르다', () => {
-  // 학생답은 **종이에 칠해진 개수**가, 정답은 **발문이 요구하는 개수**가 정한다. 예전에는
-  // Call 1이 붙인 [MULTI-SELECT] 태그로 양쪽을 한꺼번에 지시했고, 그러려면 목록이 필요했다.
-  const u = buildUserAnswerPrompt(1);
-  const c = buildCorrectAnswerPrompt(1);
-  assert.match(u, /two or more\*\* numbers/);
-  assert.match(c, /모두 고르시오/);
-  assert.ok(!u.includes('모두 고르시오'),
-    'Call2가 발문 문구로 복수답을 판단하면 종이에 칠해진 것을 보지 않게 된다');
-});
-
-test('Call2 프롬프트: 문항을 스스로 풀지 말라고 지시한다', () => {
-  // 스키마에 correct_answer 자리가 없어도 "정답과 같은 값을 user_answer 칸에 적는 것"은
-  // 막지 못한다 — 지시로도 함께 건다.
-  const p = buildUserAnswerPrompt(1);
-  assert.match(p, /Do not solve the items/);
-  assert.match(p, /[Nn]ever work out which choice is correct/);
-  // 마크와 정답이 다른 것이 정상이라는 점을 명시해야 모델이 불일치를 오류로 보지 않는다.
-  assert.match(p, /normal, expected case/);
-});
-
-test('두 답 호출 모두 복수정답·다중빈칸 배열 규칙을 받는다', () => {
-  const u = buildUserAnswerPrompt(1);
-  const c = buildCorrectAnswerPrompt(1);
-  assert.match(u, /user_answers/);
-  assert.match(u, /ascending array of\s+strings/);
-  assert.match(c, /correct_answers/);
-  assert.match(c, /ascending array of\s+strings/);
-  // 원문자→ASCII 변환은 양쪽 다 필요하다(한쪽만 있으면 비교 단위가 어긋난다).
-  assert.match(u, /①/);
-  assert.match(c, /①/);
-});
-
-// ─── 5. mergeCallResults(순수함수) ──────────────────────────────────────
+// ─── 4. mergeCallResults(순수함수) ──────────────────────────────────────
 
 test('merge: 세 호출을 problem_number로 합친다', () => {
   const merged = mergeCallResults({

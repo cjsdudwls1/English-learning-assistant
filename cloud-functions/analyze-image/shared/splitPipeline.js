@@ -160,176 +160,71 @@ Rules:
  *
  * 뺄 수 있는 이유:
  *   - 번호: 이미지에 인쇄돼 있다. 표기가 흔들려도 mergeCallResults의 numKey가 흡수한다.
- *   - 선택지 개수: answerFormatRules가 이미 범위("1"–"5")를 말한다. 중복이었다.
+ *   - 선택지 개수: 답 형식이 한 자리 숫자라는 것은 각 프롬프트가 직접 말한다. 중복이었다.
  *   - 형식 태그: 스칼라냐 배열이냐는 Call 1의 answer_format이 병합 때 정한다(normalizeItem).
  *     Call 2는 "칠해진 것을 전부" 보고하기만 하면 되고, 그건 이미지만 보고도 된다.
  */
 
-/** 답 형식 공통 규칙 — Call 2·3이 같은 단위로 답해야 직접 비교가 된다.
- *  (구 prompts.js의 UNIT MATCHING 규칙: 서로 다른 단위로 나오면 비교 자체가 성립하지 않는다)
- *
- *  복수답 조건은 호출마다 근거가 다르다. 학생답은 **종이에 칠해진 개수**가, 정답은 **발문이
- *  요구하는 개수**가 정한다. 예전에는 Call 1이 붙인 [MULTI-SELECT] 태그로 양쪽을 한꺼번에
- *  지시했는데, 태그를 넘기려면 roster가 필요했다(위 주석 참고). 각자 이미지에서 읽게 한다. */
-function answerFormatRules(field) {
-  const isUser = field === 'user_answer';
-  const arrField = isUser ? 'user_answers' : 'correct_answers';
-  const multiWhen = isUser
-    ? `If the student marked **two or more** numbers on one item and neither is crossed out, that is a
-  multiple-answer item — not a correction. Put every marked number in`
-    : `If the prompt asks for two or more answers ("모두 고르시오", "정답 2개", "두 개를 고르세요",
-  "all that apply"), put every correct number in`;
-  return `## Answer format
-- Multiple choice (①②③④⑤ or numbered choices 1–5): **a single ASCII digit** ("1"–"5"). Never emit
-  the circled numeral itself — always convert ①→"1" … ⑤→"5".
-- Underline-type MC ("밑줄 친 부분 중 …적절하지 않은 것은?"), sentence insertion, ordering, grammar
-  and vocabulary items all answer with the **choice number**. Do not copy out the underlined word
-  ("appear") or a sentence from the passage.
-- Sentence-pattern items (choices labeled "1형식".."5형식"): **read the digit in the label**, not the
-  position of the box. If "5형식" sits in the first box the answer is still "5".
-- Pick-in-parentheses (grammar choice such as "(who/which)"): answer with the **word itself**, spelled
-  exactly as printed, not a number. A digit here is a guaranteed miss.
-- Free response: only what fills the blank, as one natural chunk. Do not chop it up with commas or
-  slashes (NOT "they, do", NOT "Didn't / she / go" → "Yes, they do", "Didn't she go home late yesterday?").
-- ${multiWhen} ${arrField} as an ascending array of strings (e.g. ["1","2"]),
-  and also join them in the ${field} scalar as "1, 2". Reporting one and stopping makes the whole
-  item count as wrong.
-- Free-response items with several parenthesized blanks under them, like (1)(2)(3): put one entry per
-  blank in ${arrField} in blank order (null for a blank you cannot fill), and also fill the ${field}
-  scalar as "(1) … (2) …".`;
-}
-
 /**
  * Call 2 — 학생이 종이에 남긴 흔적만 읽는다.
- * export: 이 프롬프트의 판독 지시가 이 파이프라인의 존재 이유다. 누락을 테스트로 잡는다.
+ * export: 이 프롬프트가 이 파이프라인의 존재 이유다. 누락을 테스트로 잡는다.
  *
- * 길이를 의도적으로 억제한다. 이 프롬프트의 조상(prompts.js)은 한 호출이 문제·학생답·정답을
- * 동시에 내던 시절의 방어 문구가 층층이 쌓여 있었는데, 그중 상당수는 호출을 나눈 지금
- * **스키마가 이미 막는 것**이다 — Call 2의 응답 스키마에는 correct_answer 자리가 없으므로
- * "정답을 판단하지 마라"를 여러 줄로 반복할 이유가 없다. 금지 문구가 많을수록 모델은
- * 그 개념을 오히려 붙잡고, 정작 "무엇을 보라"는 지시가 묻힌다.
- * 여기 남긴 것은 두 부류뿐이다: (1) 실측 오답을 직접 겨냥한 것(VERBATIM·흐린 마크·복수정답·
- * 자체 풀이 금지), (2) 스키마로는 막을 수 없는 것(인쇄된 정답표를 user_answer 칸에 옮기는 오염).
- * 새 지시를 추가할 때는 둘 중 어디에 속하는지 먼저 답할 것.
+ * 지시를 극단적으로 줄여 둔 상태다. 문구를 더해 판독을 고치려는 시도를 세 번 했고 세 번 다
+ * 다른 곳이 망가졌다(2026-08-24 실측). Call 1의 문항 목록을 실어 주자 Call 2가 문항을 풀어
+ * 자기 정답을 냈고, 목록을 선택지 개수만 남기자 프롬프트 안 숫자가 "5"로 쏠려 오독이 전부 5가
+ * 됐고, 목록을 걷어내며 "추측해서 내는 것도 틀린 것"을 넣자 뒤 3문항이 통째로 null이 됐다.
+ * 마지막 회차가 요점이다. 그 문장을 완화하고 "열린 호도 마크다"·"뒷장 비침에 속지 마라"까지
+ * 더해도 null은 그대로였다 — 지시를 더 정교하게 쓰는 방향으로는 움직이지 않는다.
  *
- * "Do not solve the items"는 부류 (1)이다. 스키마에 correct_answer 자리가 없어도 **정답과 같은
- * 값을 user_answer 칸에 적는 것**은 막지 못한다 — 실측에서 학생이 ③에 마크한 문항을 두 회차 연속
- * ⑤(=정답)로 냈고, 하필 정답과 같아 is_correct=true로 저장되어 오답이 정답으로 기록됐다.
- * 같은 사건을 겨냥해 Call 1의 문항 목록 자체를 끊었다(위 roster 주석 참고): 지시로 말리는 것과
- * 근거를 아예 주지 않는 것을 함께 건다. 이 호출에 들어가는 것은 이미지와 판독 지시뿐이다.
+ * 그래서 남길 기준을 뒤집었다: **스키마도 코드도 막지 못하는 오염원**만 남긴다. 빨간펜과 인쇄된
+ * 정답표를 학생 마크로 옮기는 것(값이 그럴듯해서 사후에 걸리지 않는다), 원문자 ①을 그대로
+ * 내보내는 것(비교 단위가 어긋난다). 나머지는 전부 뺐다. 문구를 추가하기 전에 먼저 답할 것 —
+ * 스키마나 normalizeItem이 이미 막는가? 막는다면 넣지 않는다.
  */
 export function buildUserAnswerPrompt(numImages) {
   const scope = numImages > 1 ? `${numImages} images` : 'an image';
   return `The following is ${scope} of an English exam paper a student has worked through.
-Your single job is to read **the marks the student physically left on the paper**. Even if a
-printed answer key or explanation appears on the page, that is not the student's mark; do not copy it.
+Report what the student marked on each item.
 
-## Do not solve the items
-- **Never work out which choice is correct.** If you catch yourself weighing the choices against the
-  passage, you have left your job — another call does that, and here it produces a wrong answer.
-- A mark that differs from the correct answer is the **normal, expected case**; it is the whole reason
-  this paper is worth reading. If the student wrote it wrong, reporting it wrong is the correct output.
-- Report the number the pencil touched even when you are confident that number is wrong.
-
-## What counts as the student's mark
-- **Pencil, black or blue ballpoint** with irregular strokes — this alone is the answer.
-- **Red pen** (circles, slashes, curves, O/X) — the teacher's grading. It is the boldest thing on the
-  page and catches the eye first, but it is not the answer.
-- **Printed type** (uniform typeface) — the question itself.
-- **Text ghosting through from the back of the sheet** — not a mark. It washes out the contrast around
-  a light pencil arc, so a column that looks murky needs a closer look, not a null.
-
-## Reading the marks
-- Inspect choices ①②③④⑤ **one at a time** before deciding. Do not stop at the first mark you notice.
-- **Faint pencil traces, light circles and small tick marks all count as valid marks.**
-- A hand-drawn loop around a number is the signal and it **does not have to close**. The common case
-  is a bare arc — a "(" hugging the number's left side, a half circle, a curve that stops short. That
-  arc picks its number exactly as a closed loop does; do not discount it for being open or faint.
-- A slash through a number cancels it; an arrow means the number it lands on is the final answer.
-- A long vertical curve dividing the left and right choice columns is a layout divider.
-- If the student self-graded and put X and O on **different** numbers, the X marks the student's answer.
-
-## Free response
-- Copy only the handwritten strokes, and **never correct spelling or grammar** — if they wrote
-  "beetween", the answer is "beetween". Transcribe in the original language, exactly as written.
-- Leave out characters that were already printed around the blank ("A:"/"B:", "Yes,", a given
-  sentence fragment, a word bank).
-- If they erased and rewrote, take the final version. For several blanks, join them in reading order
-  with a single space.
-
-${answerFormatRules('user_answer')}
-
-## Which items to report
-- Work down the page and report **every item you can see**. No list is given — the page is the only
-  source, and an item you skip is lost for good.
-- Read each item number **as printed next to it**. Write it bare ("3"). Workbook drills that restart
-  at 1 in every section (A, B, C…) take the section prefix — "A-1", "B-2" — so numbers stay unique
-  on the page. Never invent a section that isn't printed.
-- An item the student left blank still gets a row, with user_answer null. But null means you looked
-  and the item carries **no hand-drawn stroke at all**. It is not the safe answer for a mark you find
-  hard to read — a faint or half-drawn arc still names a number, so report that number. Going null on
-  an item the student did mark loses the answer just as surely as dropping the row.
+- The student's mark is in pencil or ballpoint. Red pen is the teacher's grading and a printed answer
+  key is the book's — neither is the student's answer.
+- Give a marked choice as a plain digit: ①→"1" … ⑤→"5". Give a written-in answer exactly as written.
 
 Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"answers": [
   {"problem_number": "3", "user_answer": "2", "user_answers": null, "user_marked_correctness": null}
 ]}
-- user_answers: fill as an array only for MULTI-SELECT / MULTI-BLANK items; null otherwise.
-- user_marked_correctness: "O" or "X" if a grading mark is visible on that item, else null.
-- The values above are placeholders. Read the actual marks. Include every item without exception.`;
+- problem_number: as printed next to the item.
+- user_answer: null only when the item carries no mark.
+- user_answers: an array when the student marked more than one; null otherwise.
+- user_marked_correctness: "O" or "X" if a grading mark sits on that item, else null.`;
 }
 
 /**
  * Call 3 — 정답만 구한다. 학생 마크는 근거로 쓰지 않는다.
  * export: 학생 마크 배제 지시가 빠지면 Call 2와의 독립성이 무너진다 — 테스트로 고정.
  *
- * Call 1의 문항 목록을 받지 않는다. 이 호출은 문항을 실제로 푸는 것이 임무라 발문·선택지가
- * 근거인데, 그 원문은 이미지에 있다 — 목록으로 받으면 Call 1의 OCR 오류가 근거로 승격되고
- * (선택지 60자 절단본까지 그대로 들어갔다), 목록 자체가 답을 특정 값으로 끄는 부작용이 있다
- * (roster 주석의 "5 choices" 실측). 세 호출이 같은 이미지를 각자 읽는 것이 이 설계의 요점이다.
+ * Call 2와 같은 이유로 극단적으로 줄였다(위 주석). 여기 남은 것도 스키마가 막지 못하는 둘뿐이다:
+ * 학생의 연필 마크를 정답으로 베끼는 것(그러면 채점 결과가 항상 정답이 되어 버린다)과 원문자 표기.
+ * 문형 판별법("1형식".."5형식"의 규칙 나열 등)은 뺐다 — 모델이 이미 아는 것을 프롬프트가 다시
+ * 가르치면 그 유형으로 답이 쏠린다.
  */
 export function buildCorrectAnswerPrompt(numImages) {
   const scope = numImages > 1 ? `${numImages} images` : 'an image';
   return `The following is ${scope} of an English exam paper.
-Your single job is to establish the **actual correct answer** for each item.
+Give the correct answer for each item.
 
-## Absolute rule — the student's answer is not evidence
-- The circles and checks the student drew in pencil **may be wrong.** Do not copy them as correct.
-- Establish the answer from, in this order: (1) an answer key or explanation printed on the page,
-  (2) the teacher's red-pen grading, (3) solving it yourself. The student's pencil marks are not evidence.
-- A teacher's red O on a number means that number is correct. Conversely, an X on the student's
-  answer means that answer is not correct.
-
-## If no answer is printed, solve it yourself
-- Read the passage and the choices and actually work the item out.
-- For sentence-pattern items (choices labeled "1형식".."5형식") apply: Pattern 1 = S+V (intransitive
-  sleep/go/arrive); Pattern 2 = S+V+C (be, become, seem, sense verbs look/feel/sound + complement —
-  a noun or adjective after \`be\` makes it Pattern 2: "She is my business partner" → 2형식, not 3형식);
-  Pattern 3 = S+V+O; Pattern 4 = S+V+IO+DO (ditransitive give/buy/make/send/tell + person + thing);
-  Pattern 5 = S+V+O+OC (make/find/keep/call/leave + object + object complement: "I found it difficult"
-  → 5형식, "keeps you healthy" → 5형식).
-
-${answerFormatRules('correct_answer')}
-
-## Do not invent
-- If only an item number is visible and the actual content (prompt, choices, passage) is not on the
-  page — a cropped page fragment, a group header like "[11-12]" — return null. Manufacturing an answer
-  for content you cannot see is a guaranteed miss and worse than null.
-- In every other case, always produce an answer.
-
-## Which items to answer
-- Work down the page and answer **every item you can see**. No list is given — the page is the only
-  source, and an item you skip is lost for good.
-- Read each item number **as printed next to it**. Write it bare ("3"). Workbook drills that restart
-  at 1 in every section (A, B, C…) take the section prefix — "A-1", "B-2" — so numbers stay unique
-  on the page. Never invent a section that isn't printed.
+- The student's pencil marks may be wrong; they are not evidence. An answer key printed on the page
+  or the teacher's red-pen grading settles it. Otherwise solve the item yourself.
+- Give the answer as a plain digit: ①→"1" … ⑤→"5". Where the item asks for a word, give the word.
 
 Output ONLY a JSON object in this shape (no markdown, no commentary):
 {"answers": [
   {"problem_number": "3", "correct_answer": "2", "correct_answers": null}
 ]}
-- correct_answers: fill as an array only for MULTI-SELECT / MULTI-BLANK items; null otherwise.
-- The values above are placeholders. Solve them for real. Include every item without exception.`;
+- problem_number: as printed next to the item.
+- correct_answer: null when the item's content is not on the page to solve.
+- correct_answers: an array when the item asks for more than one; null otherwise.`;
 }
 
 /** 이미지 파트 생성. 세 호출이 각자 같은 이미지를 받는다(크롭 없음). */
