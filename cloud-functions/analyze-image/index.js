@@ -296,7 +296,7 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
   if (SPLIT_PIPELINE || SIMPLE_PIPELINE) {
     // 크롭 없는 통짜 이미지 경로. 페이지 분리/크롭 없이 모델이 전체를 보고 처리하므로
     // 여러 페이지에 걸친 지문도 자연히 병합된다. 두 변형이 있다:
-    //  - SPLIT_PIPELINE=1: 역할분리 3-호출(구조 → 학생답 ∥ 정답). 이미지 입력 3배.
+    //  - SPLIT_PIPELINE=1: 역할분리 3-호출 병렬(구조 ∥ 학생답 ∥ 정답). 이미지 입력 3배.
     //  - 기본(SIMPLE_PIPELINE): 2-스텝(이미지 1회 자유추출 → 텍스트 구조화).
     // env SIMPLE_PIPELINE=0 이고 SPLIT_PIPELINE도 아니면 아래 4-Pass 경로.
     // 서버 측 전처리(긴 변 2048px + JPEG 92%, EXIF 정립)를 모든 이미지에 적용.
