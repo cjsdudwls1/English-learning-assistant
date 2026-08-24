@@ -227,9 +227,36 @@ Output ONLY a JSON object in this shape (no markdown, no commentary):
 - correct_answers: an array when the item asks for more than one; null otherwise.`;
 }
 
-/** 이미지 파트 생성. 세 호출이 각자 같은 이미지를 받는다(크롭 없음). */
-function imageParts(images) {
-  return images.map((img) => ({ inlineData: { data: img.imageBase64, mimeType: img.mimeType } }));
+/** 호출별 이미지 토큰 예산(`part.mediaResolution`). null이면 모델 기본 — 장당 1120토큰이다.
+ *
+ * **Call 2만 ULTRA_HIGH다.** 2026-08-24 실측이 근거다. 같은 2페이지에서 좌측 단의 Q41·42는
+ * 정확히 읽혔는데 우측 단의 Q43·44·45만 세 회차 연속 user_answer=null이 나왔다. 원본에는
+ * 학생이 ②①③을 분명히 골라 놨고, `content.raw`를 열어 보니 병합이 버린 게 아니라 모델이
+ * null을 냈다. 우측 단은 뒷장 글자가 비쳐 배경 대비가 낮은 구역이고, 토큰 로그상 이미지
+ * 2장이 약 2150토큰(장당 ~1075 ≒ 기본값 1120)으로 들어가고 있었다. 1097×1488이 그 예산에
+ * 맞춰 내부 축소되면서 대비가 낮은 쪽의 흐린 연필 호가 먼저 뭉개진 것이다.
+ *
+ * **프롬프트를 세 번 고쳐도 안 움직인 이유가 이것이다 — 정보가 입력 단계에서 이미 사라진다.**
+ * 문항을 몇 개 읽었는지·지문을 잡았는지로는 드러나지 않는다. 그건 인쇄체라 축소돼도 남는다.
+ *
+ * Call 1·3에는 주지 않는다. 둘 다 인쇄체를 읽는 일이라 기본값으로 충분하고(실제로 문항과
+ * 선택지는 전부 잡힌다), 올리면 이미지 토큰만 2배가 된다. 흐린 손글씨를 보는 Call 2에만 준다.
+ * 판단이 바뀌면 여기만 고치면 된다 — 세 호출이 같은 `imageParts`를 쓰고 예산만 다르게 받는다. */
+export const CALL_MEDIA_RESOLUTION = {
+  structure: null,
+  userAnswer: 'MEDIA_RESOLUTION_ULTRA_HIGH',
+  correct: null,
+};
+
+/** 이미지 파트 생성. 세 호출이 각자 같은 이미지를 받는다(크롭 없음).
+ *  @param level `CALL_MEDIA_RESOLUTION`의 값. null이면 필드를 붙이지 않아 모델 기본이 된다.
+ *  Gemini 3 전용 필드지만 STRUCTURE/ANSWER 시퀀스가 전부 3.x라 폴백에서도 안전하다. */
+export function imageParts(images, level = null) {
+  return images.map((img) => {
+    const part = { inlineData: { data: img.imageBase64, mimeType: img.mimeType } };
+    if (level) part.mediaResolution = { level };
+    return part;
+  });
 }
 
 /** 모델 시퀀스를 순회하며 JSON 응답을 받는다. 자체 타임아웃 + 폴백.
@@ -279,7 +306,10 @@ async function callJson({ ai, sessionId, parts, sequence, maxOutputTokens, pick,
 
 /** Call 1: 이미지 → 문제 구조(답 없음). */
 export async function parseStructure({ ai, sessionId, images }) {
-  const parts = [{ text: buildParsePrompt(images.length) }, ...imageParts(images)];
+  const parts = [
+    { text: buildParsePrompt(images.length) },
+    ...imageParts(images, CALL_MEDIA_RESOLUTION.structure),
+  ];
   return callJson({
     ai, sessionId, parts,
     sequence: STRUCTURE_MODEL_SEQUENCE,
@@ -291,7 +321,10 @@ export async function parseStructure({ ai, sessionId, images }) {
 
 /** Call 2: 이미지 → 학생 마크. Call 1의 결과를 받지 않는다(독립 호출). */
 export async function detectUserAnswers({ ai, sessionId, images }) {
-  const parts = [{ text: buildUserAnswerPrompt(images.length) }, ...imageParts(images)];
+  const parts = [
+    { text: buildUserAnswerPrompt(images.length) },
+    ...imageParts(images, CALL_MEDIA_RESOLUTION.userAnswer),
+  ];
   return callJson({
     ai, sessionId, parts,
     sequence: ANSWER_MODEL_SEQUENCE,
@@ -303,7 +336,10 @@ export async function detectUserAnswers({ ai, sessionId, images }) {
 
 /** Call 3: 이미지 → 정답. Call 1의 결과를 받지 않는다(독립 호출). */
 export async function solveCorrectAnswers({ ai, sessionId, images }) {
-  const parts = [{ text: buildCorrectAnswerPrompt(images.length) }, ...imageParts(images)];
+  const parts = [
+    { text: buildCorrectAnswerPrompt(images.length) },
+    ...imageParts(images, CALL_MEDIA_RESOLUTION.correct),
+  ];
   return callJson({
     ai, sessionId, parts,
     sequence: ANSWER_MODEL_SEQUENCE,

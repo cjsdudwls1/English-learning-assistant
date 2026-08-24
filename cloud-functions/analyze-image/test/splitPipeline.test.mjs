@@ -8,8 +8,8 @@
  *
  * 다루는 것:
  *   1. Call 1(구조)   — 손글씨·빨간펜 배제 지시. 이게 빠지면 Call 2·3의 전제가 무너진다.
- *   2. Call 2(학생답) — 세 레이어 구분·VERBATIM·흐린 마크·정답표 오염 차단.
- *   3. Call 3(정답)   — 학생 마크 배제. 이게 빠지면 Call 2와 독립이 아니게 된다.
+ *   2. Call 2·3(답)   — 최소 지시. 스키마도 코드도 막지 못하는 오염원만 남았는가.
+ *   3. 이미지 해상도  — Call 2만 고해상도인가. 프롬프트가 아니라 전송 페이로드를 본다.
  *   4. 호출 간 독립성 — Call 2·3이 Call 1의 결과를 받지 않는가(문항 목록 포함).
  *   5. mergeCallResults — 번호 정합·환각 방어·구조 누락 구제(순수함수).
  *
@@ -20,8 +20,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { PartMediaResolutionLevel } from '@google/genai';
+
 import {
   buildParsePrompt, buildUserAnswerPrompt, buildCorrectAnswerPrompt, mergeCallResults,
+  parseStructure, detectUserAnswers, solveCorrectAnswers, imageParts, CALL_MEDIA_RESOLUTION,
 } from '../shared/splitPipeline.js';
 import { normalizeItem } from '../shared/simplePipeline.js';
 
@@ -152,7 +155,92 @@ test('답 호출 프롬프트의 숫자가 한쪽으로 쏠리지 않는다', ()
   }
 });
 
-// ─── 3. 호출 간 독립성 ──────────────────────────────────────────────────
+// ─── 3. 이미지 해상도(Call 2만 고해상도) ────────────────────────────────
+
+/**
+ * 세 호출이 모델에 **실제로 보낸** parts를 가로챈다.
+ *
+ * 프롬프트 문자열만 보는 위 검사들과 달리 여기는 전송 페이로드를 본다. 판독이 망가진
+ * 원인이 지시가 아니라 입력이었던 전례가 있어서다 — 같은 페이지에서 좌측 단은 정확히
+ * 읽히고 우측 단만 null이 나왔고, 프롬프트는 문항별로 달라지지 않으니 원인일 수 없었다.
+ *
+ * `splitPipeline → generateWithRetry → ai.models.generateContent`가 유일한 주입점이라
+ * 여기만 잡으면 세 호출을 전부 볼 수 있다.
+ */
+function spyAi(jsonText) {
+  const calls = [];
+  const ai = {
+    models: {
+      async generateContent({ model, contents, config }) {
+        calls.push({ model, parts: contents[0].parts, config });
+        return { text: jsonText };
+      },
+    },
+  };
+  return { ai, calls };
+}
+
+const TWO_IMAGES = [
+  { imageBase64: 'AAAA', mimeType: 'image/jpeg' },
+  { imageBase64: 'BBBB', mimeType: 'image/png' },
+];
+
+/** 한 호출이 보낸 이미지 파트만 뽑는다(맨 앞 텍스트 파트 제외). */
+async function sentImageParts(call) {
+  // pick이 빈 배열을 보면 다음 모델로 폴백한다. items·answers를 다 채워 1회로 끝낸다.
+  const { ai, calls } = spyAi('{"items":[{"problem_number":"1"}],"answers":[{"problem_number":"1"}]}');
+  await call({ ai, sessionId: 'test', images: TWO_IMAGES });
+  assert.equal(calls.length, 1, '폴백 없이 첫 모델에서 끝나야 한다');
+  return calls[0].parts.filter((p) => p.inlineData);
+}
+
+test('Call2만 이미지 해상도를 올린다 — Call1·Call3는 모델 기본값이다', async () => {
+  // 2026-08-24 실측: 이미지 2장이 약 2150토큰(장당 ~1075 ≒ 기본 1120)으로 들어가
+  // 1097×1488이 내부 축소됐고, 대비가 낮은 구역의 흐린 연필 호가 먼저 뭉개졌다.
+  // 올리는 대가는 이미지 토큰 2배다. 그래서 손글씨를 보는 Call 2에만 준다.
+  const structure = await sentImageParts(parseStructure);
+  const user = await sentImageParts(detectUserAnswers);
+  const correct = await sentImageParts(solveCorrectAnswers);
+
+  for (const p of user) {
+    assert.deepEqual(p.mediaResolution, { level: 'MEDIA_RESOLUTION_ULTRA_HIGH' },
+      'Call2는 흐린 연필 마크를 봐야 한다 — 기본 예산에서 뭉개진 것이 실측으로 확인됐다');
+  }
+  for (const p of [...structure, ...correct]) {
+    assert.ok(!('mediaResolution' in p),
+      'Call1·3은 인쇄체를 읽는다. 토큰만 2배 쓰지 않도록 기본값으로 둔다');
+  }
+});
+
+test('해상도를 올려도 이미지 데이터와 개수는 그대로다', async () => {
+  const parts = await sentImageParts(detectUserAnswers);
+  assert.equal(parts.length, TWO_IMAGES.length, '2장을 보냈으면 2파트다 — 크롭도 분할도 없다');
+  assert.deepEqual(parts.map((p) => p.inlineData), [
+    { data: 'AAAA', mimeType: 'image/jpeg' },
+    { data: 'BBBB', mimeType: 'image/png' },
+  ], '해상도는 곁가지 필드다. 원본 바이트와 mimeType을 건드리면 안 된다');
+});
+
+test('해상도 값이 SDK enum과 글자 그대로 같다', () => {
+  // 오타가 나도 API는 400을 주지 않고 조용히 무시할 수 있다. 그러면 이 커밋은 효과 0이면서
+  // 테스트는 통과하는 상태가 된다. 리터럴 대신 SDK가 정의한 값을 직접 대조한다.
+  assert.equal(
+    CALL_MEDIA_RESOLUTION.userAnswer,
+    PartMediaResolutionLevel.MEDIA_RESOLUTION_ULTRA_HIGH,
+  );
+});
+
+test('imageParts: 예산을 안 주면 mediaResolution 키를 만들지 않는다', () => {
+  for (const [name, parts] of [
+    ['명시적 null', imageParts(TWO_IMAGES, null)],
+    ['인자 생략', imageParts(TWO_IMAGES)],
+  ]) {
+    assert.ok(!('mediaResolution' in parts[0]),
+      `${name}: undefined를 남기면 직렬화 결과가 SDK 버전에 따라 갈린다`);
+  }
+});
+
+// ─── 4. 호출 간 독립성 ──────────────────────────────────────────────────
 
 test('Call2·Call3는 Call1의 결과를 인자로 받지 않는다', () => {
   // 이 파이프라인의 존재 이유 — 세 호출이 각자 이미지만 읽으면 한 호출의 오류가 다른 호출로
@@ -172,7 +260,7 @@ test('Call2·Call3 프롬프트에 문항 목록이 없다', () => {
   }
 });
 
-// ─── 4. mergeCallResults(순수함수) ──────────────────────────────────────
+// ─── 5. mergeCallResults(순수함수) ──────────────────────────────────────
 
 test('merge: 세 호출을 problem_number로 합친다', () => {
   const merged = mergeCallResults({
