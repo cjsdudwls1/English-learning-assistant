@@ -6,13 +6,20 @@
  * 곧 진행률이다.
  *
  * 전달 경로는 useProblemGeneration에서 검증된 3중 구조를 그대로 쓴다:
- *   Realtime 구독 → 10초 안에 아무것도 안 오면 폴링 폴백(2초) → 10분 최종 타임아웃
+ *   Realtime 구독 → 10초 안에 아무것도 안 오면 폴링 폴백(2초) → 최종 타임아웃
  * Realtime은 네트워크/프록시 환경에 따라 조용히 죽는다. 폴백이 없으면 그 사용자에게는
  * 기능 자체가 없는 것과 같다.
+ *
+ * ── runId를 여기서 만든다 ────────────────────────────────────────────
+ * 서버(GCF publisher)가 cpu-throttling이라 응답을 flush한 뒤엔 CPU가 안 붙는다. 그래서 루프가
+ * **요청 안에서** 끝나고, POST는 다 끝난 뒤에야 돌아온다. 서버가 id를 정해 응답에 실어주면
+ * 구독을 걸 시점엔 이미 런이 끝나 있어 트레이스가 통째로 사라진다.
+ * → id를 먼저 만들고 · 구독을 먼저 걸고 · POST는 그 다음에 쏜다.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import {
+  AgentRequestError,
   fetchAgentRun,
   fetchAgentSteps,
   startAgentRun,
@@ -24,7 +31,9 @@ import {
 
 const POLL_FALLBACK_DELAY_MS = 10_000;
 const POLL_INTERVAL_MS = 2_000;
-const FINAL_TIMEOUT_MS = 10 * 60 * 1000;
+// 서버 요청 상한이 300s(deploy-image.ps1 --timeout)라, 그 이상 'running'이면 인스턴스가 죽은 것이다.
+// 콜드스타트·큐 대기 여유를 얹어 6분.
+const FINAL_TIMEOUT_MS = 6 * 60 * 1000;
 
 export type AgentRunState = 'idle' | 'running' | 'completed' | 'failed';
 
@@ -101,7 +110,7 @@ export function useAgentRun<TResult = unknown>({ language }: UseAgentRunOptions)
     setError(null);
     setState('running');
 
-    const id = await startAgentRun({ agentType, input, language });
+    const id = crypto.randomUUID();
     setRunId(id);
 
     return new Promise<AgentRunOutcome<TResult>>((resolve, reject) => {
@@ -167,7 +176,7 @@ export function useAgentRun<TResult = unknown>({ language }: UseAgentRunOptions)
         pollTimerRef.current = setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
       }, POLL_FALLBACK_DELAY_MS);
 
-      // ── 최종 타임아웃: 백그라운드 인스턴스가 통째로 죽으면 run은 영원히 'running'이다
+      // ── 최종 타임아웃: 인스턴스가 통째로 죽으면 run은 영원히 'running'이다
       finalTimerRef.current = setTimeout(() => {
         const message = language === 'ko'
           ? '에이전트 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
@@ -176,6 +185,31 @@ export function useAgentRun<TResult = unknown>({ language }: UseAgentRunOptions)
         setState('failed');
         settle(() => reject(new Error(message)));
       }, FINAL_TIMEOUT_MS);
+
+      // ── 요청 발사: 구독을 다 건 뒤다. 응답은 루프가 끝난 뒤에 온다(수십 초~수 분).
+      void startAgentRun({ runId: id, agentType, input, language })
+        .then(() => {
+          // 여기 도달했으면 서버는 finishRun까지 마친 상태다. Realtime이 죽어 있고 폴링이 아직
+          // 시작 전(10초)일 수 있으니 한 번 직접 읽어 완료를 앞당긴다.
+          void poll();
+        })
+        .catch((e: unknown) => {
+          const definitive = e instanceof AgentRequestError ? e.definitive : true;
+          if (!definitive) {
+            // fetch만 끊긴 것 — 서버는 계속 돌고 있을 수 있다. 여기서 실패로 확정하면 이미
+            // 과금된 결과를 버린다. 판단은 Realtime/폴링/최종 타임아웃에 맡기고 폴링만 앞당긴다.
+            console.warn('[useAgentRun] 요청 응답 유실(실행은 계속될 수 있음):', e);
+            if (!pollTimerRef.current && !settledRef.current) {
+              pollTimerRef.current = setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
+            }
+            return;
+          }
+          const message = e instanceof Error ? e.message
+            : (language === 'ko' ? '에이전트 실행에 실패했습니다.' : 'The agent run failed.');
+          setError(message);
+          setState('failed');
+          settle(() => reject(new Error(message)));
+        });
     });
   }, [cleanup, language]);
 

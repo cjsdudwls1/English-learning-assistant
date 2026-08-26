@@ -27,7 +27,9 @@ import { appendStep } from './trace.js';
 import { buildRegistry, findTool, validateArgs, toolCatalogForPrompt, toolNames } from './registry.js';
 
 const DEFAULT_MAX_STEPS = 6;
-const DEFAULT_BUDGET_MS = 240_000;      // 워치독 470s 한참 안쪽
+// 루프는 publisher(analyze-image)의 **요청 안에서** 돈다. 그 요청 상한이 300s(deploy-image.ps1
+// --timeout)이므로 예산은 그보다 작아야 한다. 두 값은 test/agentBudget.test.mjs가 같이 고정한다.
+export const DEFAULT_BUDGET_MS = 240_000;
 const DEFAULT_TOOL_TIMEOUT_MS = 15_000;
 const FINAL_RESERVE_MS = 45_000;        // 강제 final 한 번 더 부를 여유
 const MAX_CONSECUTIVE_TOOL_ERRORS = 3;

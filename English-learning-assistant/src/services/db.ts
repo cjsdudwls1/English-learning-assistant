@@ -136,6 +136,7 @@ export {
   fetchAgentRun,
   fetchAgentSteps,
   startAgentRun,
+  AgentRequestError,
   type AgentType,
   type AgentRunStatus,
   type AgentStopReason,

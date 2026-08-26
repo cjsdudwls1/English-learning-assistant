@@ -29,14 +29,26 @@ function truncateJson(value) {
   }
 }
 
-export async function createRun(supabase, { userId, agentType, input }) {
-  const { data, error } = await supabase
-    .from('agent_runs')
-    .insert({ user_id: userId, agent_type: agentType, status: 'running', input: truncateJson(input) })
-    .select('id')
-    .single();
+/**
+ * 실행 레코드를 만든다.
+ *
+ * id는 **프론트가 만들어 보낸다**. 루프가 응답을 끝까지 붙잡고 있어도(=fire-and-forget이 아니어도)
+ * 프론트가 POST 전에 그 id로 agent_steps를 미리 구독할 수 있어야 하기 때문이다.
+ * 서버가 id를 정하면 구독은 응답이 끝난 뒤에나 가능해져 트레이스가 통째로 사라진다.
+ *
+ * 같은 id로 두 번 오면(중복 POST·재시도) unique 위반이라 여기서 걸린다 — 그대로 멱등성 가드다.
+ */
+export async function createRun(supabase, { id, userId, agentType, input }) {
+  const row = { user_id: userId, agent_type: agentType, status: 'running', input: truncateJson(input) };
+  if (id) row.id = id;
 
-  if (error) throw new Error(`agent_runs 생성 실패: ${String(error.message ?? error).slice(0, 200)}`);
+  const { data, error } = await supabase.from('agent_runs').insert(row).select('id').single();
+
+  if (error) {
+    const e = new Error(`agent_runs 생성 실패: ${String(error.message ?? error).slice(0, 200)}`);
+    e.duplicate = error.code === '23505';
+    throw e;
+  }
   return data.id;
 }
 

@@ -61,41 +61,71 @@ export async function fetchAgentSteps(runId: string): Promise<AgentStepRow[]> {
 }
 
 /**
- * 에이전트 실행 시작. 즉시 runId만 받고 본 작업은 백그라운드에서 돈다
- * (generate-all과 동일한 fire-and-forget — 루프는 수십 초가 걸려 응답을 붙잡고 있을 수 없다).
+ * 에이전트 요청 실패.
+ *
+ * definitive를 나누는 이유: 서버가 4xx/5xx로 **명시적으로 거절**한 것과, fetch가 끊긴 것은
+ * 전혀 다르다. 후자는 서버가 멀쩡히 루프를 계속 돌고 있을 수 있어(응답만 못 받은 것) 여기서
+ * 실패로 확정하면 이미 과금된 결과를 버리게 된다. 그 판단은 Realtime/폴링에 맡긴다.
+ */
+export class AgentRequestError extends Error {
+  readonly definitive: boolean;
+  constructor(message: string, definitive: boolean) {
+    super(message);
+    this.name = 'AgentRequestError';
+    this.definitive = definitive;
+  }
+}
+
+/**
+ * 에이전트 실행 요청.
+ *
+ * 응답은 **루프가 다 끝난 뒤**에 온다(수십 초~수 분). fire-and-forget이 아닌 이유는
+ * cloud-functions/analyze-image/index.js의 handleAgentRun 주석 참고 — 요약하면 publisher가
+ * cpu-throttling 상태라 응답을 flush한 뒤의 백그라운드 작업에 CPU가 안 붙는다.
+ *
+ * 그래서 runId는 **호출자가 만들어 넘긴다.** 그래야 이 fetch를 기다리는 동안에도 그 id로
+ * agent_steps를 구독해 진행 상황을 볼 수 있다.
  */
 export async function startAgentRun(params: {
+  runId: string;
   agentType: AgentType;
   input: Record<string, unknown>;
   language: 'ko' | 'en';
-}): Promise<string> {
+}): Promise<void> {
   const functionUrl = import.meta.env.VITE_ANALYZE_GCF_URL;
   if (!functionUrl) {
-    throw new Error(params.language === 'ko'
+    throw new AgentRequestError(params.language === 'ko'
       ? 'VITE_ANALYZE_GCF_URL 환경변수가 설정되지 않았습니다.'
-      : 'VITE_ANALYZE_GCF_URL environment variable is not set.');
+      : 'VITE_ANALYZE_GCF_URL environment variable is not set.', true);
   }
 
   const { data: { session } } = await supabase.auth.getSession();
-  const response = await fetch(functionUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session?.access_token}`,
-    },
-    body: JSON.stringify({ mode: 'agent', agentType: params.agentType, input: params.input }),
-  });
+
+  let response: Response;
+  try {
+    response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        mode: 'agent',
+        runId: params.runId,
+        agentType: params.agentType,
+        input: params.input,
+      }),
+    });
+  } catch (networkError) {
+    // 네트워크 단절·프록시 idle 컷. 서버는 계속 돌고 있을 수 있다.
+    throw new AgentRequestError((networkError as Error)?.message ?? 'network error', false);
+  }
 
   if (!response.ok) {
-    const text = await response.text();
+    const text = await response.text().catch(() => '');
     let parsed: { error?: string };
     try { parsed = JSON.parse(text); } catch { parsed = { error: text }; }
-    throw new Error(parsed.error || `HTTP ${response.status}`);
+    // 409 = 같은 runId가 이미 도는 중. 새로 시작할 건 없지만 그 런은 살아있다.
+    throw new AgentRequestError(parsed.error || `HTTP ${response.status}`, response.status !== 409);
   }
-
-  const result = await response.json();
-  if (!result?.runId) {
-    throw new Error(params.language === 'ko' ? '에이전트 실행 ID를 받지 못했습니다.' : 'No agent run id returned.');
-  }
-  return result.runId as string;
 }
