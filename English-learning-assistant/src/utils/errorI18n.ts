@@ -32,6 +32,23 @@ const ERROR_MESSAGE_MAP: Record<string, (t: Translations) => string> = {
 };
 
 /**
+ * Supabase auth/네트워크 등 영문 원문 메시지 → translations.errors.* 매핑.
+ * 원문이 영어라 ERROR_MESSAGE_MAP(한글 키)에 안 걸리고 3번 분기에서 그대로 노출되던 것을 차단한다.
+ * 소문자 부분 문자열 매칭 — Supabase가 수치/문구 변형을 붙이는 경우("...at least 6 characters" 등)까지 흡수.
+ */
+const AUTH_MESSAGE_PATTERNS: ReadonlyArray<[string, (t: Translations) => string]> = [
+  ['invalid login credentials', (t) => t.errors.invalidCredentials],
+  ['email not confirmed', (t) => t.errors.emailNotConfirmed],
+  ['already registered', (t) => t.errors.userAlreadyRegistered],
+  ['password should be at least', (t) => t.errors.weakPassword],
+  ['for security purposes', (t) => t.errors.tooManyRequests],
+  ['rate limit', (t) => t.errors.tooManyRequests],
+  ['too many requests', (t) => t.errors.tooManyRequests],
+  ['failed to fetch', (t) => t.errors.networkError],
+  ['networkerror', (t) => t.errors.networkError],
+];
+
+/**
  * 에러 객체에서 사용자에게 표시할 안전한 메시지를 산출한다.
  *
  * @param e        catch로 잡힌 알 수 없는 값(Error | PostgrestError | string 등)
@@ -60,6 +77,16 @@ export function translateError(
   const mapped = ERROR_MESSAGE_MAP[message];
   if (mapped) {
     return mapped(t);
+  }
+
+  // 1.5) 영문 auth/네트워크 원문 → 현재 언어 번역값(부분 매칭, ko·en 공통)
+  if (message) {
+    const lower = message.toLowerCase();
+    for (const [needle, resolve] of AUTH_MESSAGE_PATTERNS) {
+      if (lower.includes(needle)) {
+        return resolve(t);
+      }
+    }
   }
 
   // 2) en 모드에서 매핑 안 된 한글 메시지는 fallback으로 대체(한글 노출 차단)

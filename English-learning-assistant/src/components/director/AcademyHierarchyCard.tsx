@@ -30,8 +30,8 @@ const RatePill: React.FC<{ rate: number; total: number; graded: number }> = ({ r
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${color}`}>
       {language === 'ko'
-        ? `정답률 ${rate}% (채점 ${graded}건)`
-        : `Accuracy ${rate}% (${graded} graded)`}
+        ? `누적 정답률 ${rate}% (채점 ${graded}건)`
+        : `Overall ${rate}% (${graded} graded)`}
     </span>
   );
 };

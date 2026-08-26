@@ -9,6 +9,7 @@ import { HierarchicalStatsTable } from '../components/HierarchicalStatsTable';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
+import { withAuthLockRetry } from '../utils/authLockRetry';
 import type { MonthlyStats, DailyStats } from '../types';
 
 export const ParentDashboardPage: React.FC = () => {
@@ -29,7 +30,7 @@ export const ParentDashboardPage: React.FC = () => {
   const [taxonomyLoading, setTaxonomyLoading] = useState(false);
 
   useEffect(() => {
-    fetchMyChildren()
+    withAuthLockRetry(() => fetchMyChildren())
       .then((c) => { setChildren(c); if (c.length > 0) setSelectedChildId(c[0].user_id); })
       .catch((e) => setError(translateError(e, language, t, t.errors.loadChildrenFailed)))
       .finally(() => setLoading(false));
