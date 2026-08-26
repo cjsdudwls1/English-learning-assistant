@@ -92,6 +92,31 @@ export const SIMPLE_PIPELINE = process.env.SIMPLE_PIPELINE !== '0';
  *  끄려면 명시적으로 SPLIT_PIPELINE=0. */
 export const SPLIT_PIPELINE = process.env.SPLIT_PIPELINE !== '0';
 
+/** 에이전트 종류별 킬 스위치. 쉼표 목록이고 **기본은 빈 값 = 전부 ON**이다.
+ *  기본을 OFF로 두면 이 기능은 아무도 안 쓰게 된다 — 스위치는 켜고 끄기 위한 것이지
+ *  기본값을 뒤집기 위한 것이 아니다.
+ *
+ *  긴급 차단(코드 빌드 없이, 약 30초):
+ *    gcloud run services update analyze-image --region=asia-northeast3 \
+ *      --update-env-vars AGENT_DISABLED=consultant
+ *  차단되면 서버가 503을 돌려주고 프론트(useConsulting)는 기존 단발 Edge Function 경로로
+ *  떨어진다 — 사용자는 보고서를 계속 받는다.
+ *
+ *  **함정**: deploy-image.ps1도 `--env-vars-file=.env.yaml`로 env를 통째로 대체한다.
+ *  위 명령으로 넣은 값은 다음 배포에서 조용히 사라진다. 상시로 끌 거면 아래 기본값
+ *  문자열을 바꿔 커밋한다(SPLIT_PIPELINE이 같은 이유로 기본값을 뒤집었다). */
+export function parseAgentDisabled(raw) {
+  return new Set(
+    String(raw ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+export const AGENT_DISABLED = parseAgentDisabled(process.env.AGENT_DISABLED);
+export const isAgentEnabled = (agentType, disabled = AGENT_DISABLED) =>
+  !disabled.has(String(agentType ?? '').trim().toLowerCase());
+
 /** Pass 0/B/C에서 사용하는 경량 모델 시퀀스 (GA 우선)
  *  - 실험(2026-05-25): Pass 0 1순위를 3.1-flash-lite로 바꾸면 분할 품질이 회귀.
  *    Q37(36~37 지문공유) 마크를 fallback에서 복구 못 함(2.5는 2/2 복구), Q41/42 병합.

@@ -23,7 +23,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 import { StageError, markSessionFailed, parseModelError } from './shared/errors.js';
-import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE, SPLIT_PIPELINE } from './shared/config.js';
+import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE, SPLIT_PIPELINE, isAgentEnabled } from './shared/config.js';
 import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { processPage } from './shared/processPage.js';
@@ -299,6 +299,13 @@ async function handleAgentRun(req, res) {
   const runAgentHandler = AGENT_HANDLERS[agentType];
   if (!runAgentHandler) {
     res.status(400).json({ error: `지원하지 않는 agentType: ${agentType}` });
+    return;
+  }
+  // 킬 스위치. **createRun보다 먼저** 본다 — 여기서 막아야 빈 런 행도, 모델 호출도 안 생긴다.
+  // 프론트는 이 실패를 확정 실패로 보고 단발 Edge Function 경로로 떨어진다(useConsulting).
+  if (!isAgentEnabled(agentType)) {
+    console.warn(`[agent] 비활성화된 agentType 요청: ${agentType} (AGENT_DISABLED)`);
+    res.status(503).json({ error: `에이전트가 비활성화되어 있습니다: ${agentType}`, agentDisabled: true });
     return;
   }
   if (!input || typeof input !== 'object' || Array.isArray(input)) {

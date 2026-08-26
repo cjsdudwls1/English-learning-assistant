@@ -19,9 +19,15 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_BUDGET_MS } from '../shared/agent/runtime.js';
+import { parseAgentDisabled, isAgentEnabled } from '../shared/config.js';
 
 const deployScript = readFileSync(
   fileURLToPath(new URL('../deploy-image.ps1', import.meta.url)),
+  'utf-8',
+);
+
+const indexSource = readFileSync(
+  fileURLToPath(new URL('../index.js', import.meta.url)),
   'utf-8',
 );
 
@@ -81,4 +87,39 @@ test('publisher의 cpu-throttling을 풀지 않는다', () => {
 test('min-instances=0이 유지된다', () => {
   // 과거 5로 바뀌어 수일간 과금된 이력이 있다(스크립트 헤더 주석).
   assert.ok(executableLines().some((l) => /--min-instances=0\b/.test(l)));
+});
+
+/* ── 에이전트 킬 스위치 (AGENT_DISABLED) ──────────────────────────────────
+ * 프론트(useConsulting)에는 에이전트 플래그가 없다 — Vite env는 빌드 시점에 구워지므로
+ * 프론트에 스위치를 두면 끄는 데 Netlify 재빌드가 필요하다. 그래서 스위치는 서버측이고,
+ * "끈다"의 정의는 **503 + 기존 단발 Edge Function 폴백**이다.
+ * 기본값을 실수로 뒤집으면(전부 OFF) 기능이 조용히 죽으므로 여기서 못을 박는다. */
+
+test('AGENT_DISABLED 기본값은 비어 있고 = 전부 ON이다', () => {
+  assert.equal(parseAgentDisabled(undefined).size, 0);
+  assert.equal(parseAgentDisabled('').size, 0);
+  assert.ok(isAgentEnabled('consultant', parseAgentDisabled(undefined)));
+});
+
+test('AGENT_DISABLED에 적힌 종류만 꺼진다', () => {
+  const disabled = parseAgentDisabled('consultant');
+  assert.equal(isAgentEnabled('consultant', disabled), false);
+  assert.ok(isAgentEnabled('planner', disabled), '다른 에이전트까지 끄면 스위치가 아니라 차단기다');
+});
+
+test('쉼표 목록·공백·대소문자를 흡수한다', () => {
+  // 운영 중 급하게 치는 값이라 ` Consultant , PLANNER ` 같은 게 들어온다.
+  const disabled = parseAgentDisabled(' Consultant , PLANNER ');
+  assert.equal(isAgentEnabled('consultant', disabled), false);
+  assert.equal(isAgentEnabled('planner', disabled), false);
+  assert.ok(isAgentEnabled('briefing', disabled));
+});
+
+test('킬 스위치는 createRun보다 먼저 본다', () => {
+  // 순서가 뒤집히면 꺼둔 에이전트가 매 요청마다 빈 런 행을 남긴다(그리고 그 뒤 모델을 부른다).
+  const guard = indexSource.indexOf('isAgentEnabled(agentType)');
+  const create = indexSource.indexOf('createRun(');
+  assert.ok(guard > 0, 'handleAgentRun에 킬 스위치 가드가 없다');
+  assert.ok(create > 0);
+  assert.ok(guard < create, '킬 스위치가 createRun 뒤에 있다 — 막아도 런 행이 생긴다');
 });
