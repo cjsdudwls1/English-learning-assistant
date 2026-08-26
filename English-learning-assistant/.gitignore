@@ -37,3 +37,6 @@ env.txt
 test-results
 playwright-report
 
+
+# E2E 잔여물 정리 스크립트의 삭제 전 덤프 (실계정 응답 원문 포함 — 커밋 금지)
+.e2e-backup/

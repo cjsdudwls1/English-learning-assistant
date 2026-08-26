@@ -225,12 +225,57 @@ test.describe('과제 라이프사이클 (교사 생성 → 학생 제출 → �
     expect(teacherCorrect, '교사가 보는 정답 수가 학생 화면과 다르다').toBe(studentCorrect);
     expect(teacherWrong, '교사가 보는 오답 수가 학생 화면과 다르다').toBe(studentWrong);
 
-    // 정리. 앞 test가 실패하면 이 test는 건너뛰어져 과제가 남지만,
-    // 제목에 실행 타임스탬프가 있어 다음 실행과 충돌하지는 않는다.
+    // 삭제 자체가 검증 대상이다(교사가 과제를 지울 수 있는가). 실패한 실행의 뒷정리는
+    // 이 test가 아니라 아래 afterAll이 책임진다 — serial 모드는 앞 test가 깨지면 여기까지
+    // 오지 못한다.
     page.once('dialog', (d) => d.accept());
     await page.getByRole('button', { name: T.deleteAssignment }).click();
     await page.waitForURL('**/teacher/dashboard', { timeout: 30_000 });
     await waitForRenderSettled(page);
     await expect(page.locator('a').filter({ hasText: TITLE }), '삭제한 과제가 목록에 남아 있다').toHaveCount(0);
+  });
+
+  // 뒷정리는 test가 아니라 afterAll에서 한다.
+  //
+  // serial 모드는 앞 test가 실패하면 뒤 test를 **건너뛴다.** 삭제를 마지막 test 안에만 두면
+  // 실패한 실행마다 과제와 응답이 DB에 그대로 남는다. "제목에 타임스탬프가 있어 다음 실행과
+  // 충돌하지 않는다"는 것은 맞지만, 충돌하지 않는 것과 오염되지 않는 것은 다른 문제였다:
+  // 2026-08-26 실측으로 실패분 13개 실행이 남긴 응답 36건(전부 오답)이 학생 통계에 그대로
+  // 누적돼 있었고, 학습 컨설턴트가 본 이 계정의 '미분류' 오답 39건은 **전부** 이 잔여물이었다.
+  //
+  // 이번 실행 것만 지우지 않고 남아 있는 `[E2E]` 과제를 전부 지운다(과거 실패분 자가치유).
+  // 응답·과제문제·대상은 FK ON DELETE CASCADE로 따라 지워진다
+  // (supabase/migrations/20260328000000_add_roles_classes_assignments.sql).
+  test.afterAll(async ({ browser }) => {
+    if (!password) return;
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      await login(page, accounts.teacher);
+      await page.goto('/teacher/dashboard');
+      await waitForRenderSettled(page);
+
+      // 대시보드 목록은 최근 것만 보여줄 수 있다 — 한 번에 다 못 지워도 남은 건 다음 실행이 마저 지운다.
+      const leftovers = () =>
+        page
+          .locator('a[href^="/teacher/assignments/"]')
+          .filter({ hasText: '[E2E]' })
+          .filter({ hasNotText: 'create' });
+
+      for (let i = 0; i < 20; i += 1) {
+        if ((await leftovers().count()) === 0) break;
+        await leftovers().first().click();
+        await waitForRenderSettled(page);
+        page.once('dialog', (d) => d.accept());
+        await page.getByRole('button', { name: T.deleteAssignment }).click();
+        await page.waitForURL('**/teacher/dashboard', { timeout: 30_000 });
+        await waitForRenderSettled(page);
+      }
+    } catch (e) {
+      // 정리 실패로 테스트 결과를 뒤집지 않는다. 대신 잔여물이 남았다는 사실을 남긴다.
+      console.warn('[e2e] [E2E] 과제 정리 실패 — DB에 잔여물이 남았을 수 있다:', e);
+    } finally {
+      await context.close();
+    }
   });
 });
