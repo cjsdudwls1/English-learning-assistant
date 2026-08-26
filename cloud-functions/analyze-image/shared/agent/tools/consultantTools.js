@@ -30,6 +30,13 @@ function splitPath(nodePath) {
     .filter(Boolean);
 }
 
+/** 조회 결과를 배열로 펴되 에러는 반드시 던진다 — 빈 배열로 삼키면 "표본 없음"과 구분이 안 된다. */
+async function rows(query) {
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
 async function memo(ctx, key, factory) {
   if (!ctx.cache) return factory();
   if (!ctx.cache.has(key)) ctx.cache.set(key, factory());
@@ -188,6 +195,19 @@ async function loadUniverse(ctx) {
 
 const pct = (correct, total) => (total > 0 ? Math.round((correct / total) * 100) : null);
 
+/**
+ * 선택지를 프롬프트에 넣을 길이로 자른다.
+ * 등록 문제(problems.content.choices)는 문자열이거나 {text|label} 객체이고,
+ * 생성 문제(generated_problems.choices)는 문자열 배열이다 — 한 헬퍼로 흡수한다.
+ */
+function clipChoices(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw
+    .map((c) => String(typeof c === 'string' ? c : (c?.text ?? c?.label ?? '')).slice(0, 60))
+    .filter(Boolean);
+  return out.length ? out : undefined;
+}
+
 // ── 도구 ────────────────────────────────────────────────────────────
 
 export const drilldownTool = defineTool({
@@ -261,55 +281,89 @@ export const wrongSamplesTool = defineTool({
     },
   },
   handler: async ({ nodePath, limit }, ctx) => {
-    const alias = await aliasMap(ctx);
+    const [alias, universe] = await Promise.all([aliasMap(ctx), loadUniverse(ctx)]);
     const segments = splitPath(nodePath);
     if (segments.length === 0) return { error: 'nodePath가 비어 있습니다' };
 
-    const db = ctx.db;
-    const { data: sessions, error: sErr } = await db
-      .from('sessions').select('id, created_at').eq('user_id', ctx.userId);
-    if (sErr) throw sErr;
-    const sessionIds = (sessions || []).map((s) => s.id);
-    if (sessionIds.length === 0) return { nodePath: segments.join(' > '), samples: [], note: '분석된 시험지가 없습니다' };
+    // 표본 선정을 drilldown과 **같은 universe**에서 한다. 예전엔 여기서만 등록 문제(labels)를
+    // 따로 뒤져서, 생성 문제로만 이뤄진 노드는 drilldown이 "오답 33건"이라 세어 놓고
+    // 표본은 0개인 상태가 됐다(실측: 이 계정의 '미분류' 33건이 전부 생성 문제였다).
+    // 두 도구의 모집단이 갈리면 모델은 근거 없이 숫자만 들고 결론을 쓴다.
+    const wrong = universe
+      .filter((r) => !r.isCorrect && matchesPath(alias, r.classification, segments))
+      .sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? ''))) // 최근 오답부터
+      .slice(0, limit);
 
-    const problems = [];
-    for (let i = 0; i < sessionIds.length; i += ID_CHUNK) {
-      const { data, error } = await db
-        .from('problems').select('id, content, problem_metadata').in('session_id', sessionIds.slice(i, i + ID_CHUNK));
-      if (error) throw error;
-      problems.push(...(data || []));
+    if (wrong.length === 0) {
+      return {
+        nodePath: segments.join(' > '),
+        returned: 0,
+        samples: [],
+        note: '이 노드에는 오답 표본이 없습니다. 다른 노드를 보거나 결론으로 넘어가세요.',
+      };
     }
+
+    const db = ctx.db;
+    const regIds = wrong.filter((r) => r.source === 'registered').map((r) => r.problemId);
+    const genIds = wrong.filter((r) => r.source === 'generated').map((r) => r.problemId);
+
+    // 원문은 고른 것(최대 15개)만 가져온다. universe 캐시에 본문까지 얹으면 모든 도구가 그 비용을 문다.
+    const [problems, labels, generated, responses] = await Promise.all([
+      regIds.length
+        ? rows(db.from('problems').select('id, content, problem_metadata').in('id', regIds))
+        : [],
+      regIds.length
+        ? rows(db.from('labels').select('problem_id, correct_answer, user_answer').in('problem_id', regIds))
+        : [],
+      genIds.length
+        ? rows(db.from('generated_problems')
+          .select('id, stem, choices, correct_answer, correct_answer_index, problem_type, explanation')
+          .in('id', genIds))
+        : [],
+      // 학생 답은 과제 응답에만 있다. problem_solving_sessions에는 정오만 있고 답 컬럼이 없다 → null.
+      genIds.length
+        ? rows(db.from('assignment_responses').select('problem_id, answer')
+          .eq('student_id', ctx.userId).in('problem_id', genIds))
+        : [],
+    ]);
+
     const problemMap = new Map(problems.map((p) => [p.id, p]));
-    const problemIds = [...problemMap.keys()];
+    const labelMap = new Map(labels.map((l) => [l.problem_id, l]));
+    const genMap = new Map(generated.map((g) => [g.id, g]));
+    const answerMap = new Map(responses.map((a) => [a.problem_id, a.answer]));
 
     const samples = [];
-    for (let i = 0; i < problemIds.length && samples.length < limit; i += ID_CHUNK) {
-      const { data, error } = await db
-        .from('labels')
-        .select('problem_id, classification, correct_answer, user_answer, is_correct')
-        .in('problem_id', problemIds.slice(i, i + ID_CHUNK))
-        .eq('is_correct', false);
-      if (error) throw error;
-
-      for (const row of data || []) {
-        if (samples.length >= limit) break;
-        if (!matchesPath(alias, row.classification, segments)) continue;
-        const problem = problemMap.get(row.problem_id);
-        const content = problem?.content || {};
-        const meta = problem?.problem_metadata || {};
-        const choices = Array.isArray(content.choices)
-          ? content.choices.map((c) => String(typeof c === 'string' ? c : (c?.text ?? c?.label ?? '')).slice(0, 60)).filter(Boolean)
-          : undefined;
+    for (const row of wrong) {
+      if (row.source === 'registered') {
+        const content = problemMap.get(row.problemId)?.content || {};
+        const meta = problemMap.get(row.problemId)?.problem_metadata || {};
+        const label = labelMap.get(row.problemId) || {};
         samples.push({
+          source: 'registered',
           stem: content.stem ? String(content.stem).slice(0, 220) : undefined,
-          choices,
-          user_answer: row.user_answer ?? null,
-          correct_answer: row.correct_answer ?? null,
+          choices: clipChoices(content.choices),
+          user_answer: label.user_answer ?? null,
+          correct_answer: label.correct_answer ?? null,
           problem_type: meta.problem_type ?? undefined,
           difficulty: meta.difficulty ?? undefined,
           analysis: meta.analysis ? String(meta.analysis).slice(0, 220) : undefined,
         });
+        continue;
       }
+      const g = genMap.get(row.problemId);
+      if (!g) continue;
+      const choices = clipChoices(g.choices);
+      const correct = g.correct_answer
+        ?? (Number.isInteger(g.correct_answer_index) ? choices?.[g.correct_answer_index] ?? null : null);
+      samples.push({
+        source: 'generated',
+        stem: g.stem ? String(g.stem).slice(0, 220) : undefined,
+        choices,
+        user_answer: answerMap.get(row.problemId) ?? null,
+        correct_answer: correct,
+        problem_type: g.problem_type ?? undefined,
+        analysis: g.explanation ? String(g.explanation).slice(0, 220) : undefined,
+      });
     }
 
     return {

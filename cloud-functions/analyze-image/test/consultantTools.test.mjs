@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { drilldownTool } from '../shared/agent/tools/consultantTools.js';
+import { drilldownTool, wrongSamplesTool } from '../shared/agent/tools/consultantTools.js';
 
 /** select/eq/in/not을 전부 흘려보내고 테이블 고정 데이터를 돌려주는 thenable 스텁. */
 function mockDb(tables) {
@@ -42,9 +42,9 @@ const FIXTURE = {
     { id: 'p3', session_id: 's1' },
   ],
   labels: [
-    { problem_id: 'p1', classification: {}, is_correct: false },
-    { problem_id: 'p2', classification: null, is_correct: false },
-    { problem_id: 'p3', classification: { depth1: '문법', depth2: '시제' }, is_correct: true },
+    { problem_id: 'p1', classification: {}, is_correct: false, user_answer: '②', correct_answer: '④' },
+    { problem_id: 'p2', classification: null, is_correct: false, user_answer: '①', correct_answer: '③' },
+    { problem_id: 'p3', classification: { depth1: '문법', depth2: '시제' }, is_correct: true, user_answer: '②', correct_answer: '②' },
   ],
   assignment_responses: [],
   problem_solving_sessions: [],
@@ -83,4 +83,69 @@ test("'미분류 > 무언가'는 가상 카테고리로 치지 않는다", async
   // 0건이 나오는 게 맞다 — 없는 노드를 있는 척하면 그게 다시 환각의 재료가 된다.
   const out = await drilldownTool.handler({ nodePath: '미분류 > 시제' }, ctx());
   assert.equal(out.total, 0);
+});
+
+test('samples.wrong은 등록 문제 오답의 원문을 돌려준다', async () => {
+  const out = await wrongSamplesTool.handler({ nodePath: '미분류', limit: 8 }, ctx());
+
+  assert.equal(out.returned, 2);
+  assert.ok(out.samples.every((s) => s.source === 'registered'));
+  assert.equal(out.samples[0].user_answer, '②');
+  assert.equal(out.samples[0].correct_answer, '④');
+});
+
+/**
+ * 두 번째 결함: 표본 도구만 모집단이 좁았다.
+ * drilldown/timeseries는 등록+생성을 합산하는데 samples.wrong은 labels만 뒤졌다.
+ * 그래서 **생성 문제로만 이뤄진 노드**는 "오답 33건"이라 세어 놓고 표본은 0개가 나왔다
+ * (실측: 이 계정의 '미분류' 33건이 전부 생성 문제였다). 숫자와 근거가 갈리는 상태다.
+ */
+const GEN_FIXTURE = {
+  taxonomy: [],
+  sessions: [],
+  problems: [],
+  labels: [],
+  assignment_responses: [
+    { problem_id: 'g1', student_id: 'u1', is_correct: false, submitted_at: '2026-08-10T00:00:00Z', answer: '②' },
+  ],
+  problem_solving_sessions: [
+    { problem_id: 'g2', user_id: 'u1', is_correct: false, completed_at: '2026-08-11T00:00:00Z' },
+  ],
+  generated_problems: [
+    {
+      id: 'g1', classification: {}, stem: 'Choose the correct form.', choices: ['have', 'has', 'had', 'having'],
+      correct_answer: null, correct_answer_index: 2, problem_type: '객관식', explanation: '과거완료 시제',
+    },
+    {
+      id: 'g2', classification: null, stem: 'Fill in the blank.', choices: ['in', 'on', 'at'],
+      correct_answer: 'on', correct_answer_index: null, problem_type: '객관식', explanation: '전치사',
+    },
+  ],
+};
+
+const genCtx = () => ({ db: mockDb(GEN_FIXTURE), userId: 'u1', cache: new Map() });
+
+test('samples.wrong이 생성 문제 오답까지 표본으로 가져온다', async () => {
+  const out = await wrongSamplesTool.handler({ nodePath: '미분류', limit: 8 }, genCtx());
+
+  assert.equal(out.returned, 2, '등록 문제가 하나도 없어도 표본이 나와야 한다');
+  assert.ok(out.samples.every((s) => s.source === 'generated'));
+
+  // 최근 오답부터. g2(08-11)가 g1(08-10)보다 앞선다.
+  assert.equal(out.samples[0].stem, 'Fill in the blank.');
+  assert.equal(out.samples[0].correct_answer, 'on');
+  // problem_solving_sessions에는 학생 답 컬럼이 없다 — 없는 걸 지어내지 않는다.
+  assert.equal(out.samples[0].user_answer, null);
+
+  const g1 = out.samples.find((s) => s.stem === 'Choose the correct form.');
+  assert.equal(g1.user_answer, '②', '과제 응답의 답을 붙여야 한다');
+  assert.equal(g1.correct_answer, 'had', 'correct_answer가 비면 인덱스로 선택지를 짚는다');
+});
+
+test('drilldown이 센 오답 수와 samples.wrong의 모집단이 같다', async () => {
+  const drill = await drilldownTool.handler({ nodePath: '미분류' }, genCtx());
+  const samples = await wrongSamplesTool.handler({ nodePath: '미분류', limit: 15 }, genCtx());
+
+  assert.equal(drill.incorrect, 2);
+  assert.equal(samples.returned, drill.incorrect, '숫자만 있고 근거가 없는 상태가 다시 생기면 안 된다');
 });
