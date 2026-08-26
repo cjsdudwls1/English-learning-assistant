@@ -32,6 +32,9 @@ import { dedupeProblemItems } from './shared/dedupe.js';
 // BYOK(사용자 키): 활성 anthropic/openai 키가 있으면 해당 provider 어댑터로 분석.
 import { buildUserKeyClient } from './shared/providerClientsNode.js';
 import { getActiveUserKey } from './shared/userApiKeysNode.js';
+// 에이전트 루프: Edge Function 60초로는 다단계 추론이 불가능해 이 함수(600초)에 얹는다.
+import { createRun, finishRun } from './shared/agent/trace.js';
+import { runConsultantAgent } from './shared/agent/agents/consultant.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -237,6 +240,92 @@ async function handleGenerateAll(req, res) {
     });
 }
 
+// ─── 에이전트 실행 ──────────────────────────────────────────
+// 왜 여기인가: Edge Function은 60초 상한이라 "모델이 도구를 고르고 → 실행하고 → 결과를 보고
+// 다시 고르는" 루프가 애초에 안 들어간다. 이 함수는 600초라 들어간다. JWT 검증·userId 가드·
+// BYOK 키 조회·백그라운드 응답 패턴이 이미 있어 그대로 재사용한다.
+const AGENT_HANDLERS = {
+  consultant: runConsultantAgent,
+};
+
+async function handleAgentRun(req, res) {
+  if (!SUPABASE_ANON_KEY) {
+    res.status(500).json({ error: 'SUPABASE_ANON_KEY 환경변수가 없습니다' });
+    return;
+  }
+
+  const authHeader = req.get('authorization');
+  const jwtResult = await verifySupabaseJWT(authHeader, SUPABASE_URL, SUPABASE_ANON_KEY);
+  if (!jwtResult.valid) {
+    console.warn('[agent] JWT 검증 실패:', jwtResult.error);
+    res.status(401).json({ error: 'Unauthorized: ' + jwtResult.error });
+    return;
+  }
+
+  const body = req.body || {};
+  const { agentType, input } = body;
+  const userId = jwtResult.userId;
+
+  if (body.userId && body.userId !== userId) {
+    console.warn(`[agent] userId 불일치: body=${body.userId}, jwt=${userId}`);
+    res.status(403).json({ error: 'Forbidden: userId does not match token' });
+    return;
+  }
+
+  const runAgentHandler = AGENT_HANDLERS[agentType];
+  if (!runAgentHandler) {
+    res.status(400).json({ error: `지원하지 않는 agentType: ${agentType}` });
+    return;
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    res.status(400).json({ error: 'input 객체가 필요합니다' });
+    return;
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  // 도구가 보는 DB는 **호출자 권한**이다. 에이전트가 "이 학생을 볼 수 있는가"를 코드로 판정하지
+  // 않고 RLS에 맡긴다 — 도구가 늘어날수록 코드 가드는 반드시 빠지는 곳이 생기지만 RLS는 안 빠진다.
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const userKey = await getActiveUserKey(supabase, userId);
+  const ai = buildAIClient(userKey);
+
+  let runId;
+  try {
+    runId = await createRun(supabase, { userId, agentType, input });
+  } catch (e) {
+    console.error('[agent] 실행 기록 생성 실패:', e?.message);
+    res.status(500).json({ error: '에이전트 실행을 시작하지 못했습니다' });
+    return;
+  }
+
+  // fire-and-forget: 프론트는 runId로 agent_steps INSERT를 실시간 구독한다(generate-all과 동일 패턴).
+  res.status(200).json({ success: true, runId, agentType });
+
+  runAgentHandler({ ai, supabase, userClient, runId, userId, input })
+    .then((outcome) => finishRun(supabase, runId, {
+      status: 'completed',
+      stopReason: outcome.stopReason,
+      result: outcome.result,
+      totalTokens: outcome.totalTokens,
+      modelCalls: outcome.modelCalls,
+    }))
+    .catch((err) => {
+      console.error('[agent] 백그라운드 오류:', err?.message, { runId, agentType, userId });
+      return finishRun(supabase, runId, {
+        status: 'failed',
+        stopReason: err?.stopReason ?? null,
+        error: err?.message ?? String(err),
+        totalTokens: err?.totalTokens ?? 0,
+        modelCalls: err?.modelCalls ?? 0,
+      });
+    });
+}
+
 // ─── Vertex AI 인증 사전 검증 ───────────────────────────────
 // 원본: sessionManager.ts#validateVertexAuth
 
@@ -421,6 +510,11 @@ functions.http('analyzeImage', async (req, res) => {
 
   if (req.body?.mode === 'generate-all') {
     await handleGenerateAll(req, res);
+    return;
+  }
+
+  if (req.body?.mode === 'agent') {
+    await handleAgentRun(req, res);
     return;
   }
 

@@ -14,6 +14,7 @@ import { ConsultingReportModal } from '../components/ConsultingReportModal';
 import { ConsultingHistoryModal } from '../components/ConsultingHistoryModal';
 import { StatsGeneratedProblems } from '../components/StatsGeneratedProblems';
 import { SolvingStatsCard } from '../components/stats/SolvingStatsCard';
+import { AgentTrace } from '../components/agent/AgentTrace';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getTranslation } from '../utils/translations';
@@ -317,6 +318,20 @@ export const StatsPage: React.FC = () => {
             onGenerateSimilarProblems={problemGen.handleGenerateSimilarProblems}
           />
         </div>
+
+        {/* 컨설팅 에이전트 진행 상황 — 수십 초가 걸리므로 무엇을 조회 중인지 보여준다 */}
+        <AgentTrace
+          language={language}
+          steps={consulting.agentSteps}
+          state={consulting.agentState}
+          stopReason={consulting.agentStopReason}
+          error={consulting.agentError}
+        />
+        {consulting.usedFallback && (
+          <p className="mb-4 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
+            {t.stats.agentFallbackNotice}
+          </p>
+        )}
 
         {/* 문제 생성 UI */}
         {problemGen.showProblemGenerator && (

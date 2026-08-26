@@ -17,18 +17,22 @@ export async function saveConsultingReport(input: {
   language: 'ko' | 'en';
   report: string;
   stats: { total: number; correct: number; incorrect: number };
+  /** 에이전트로 만든 보고서면 그 실행 id — 나중에 근거(스텝)를 되짚을 수 있다. */
+  agentRunId?: string | null;
 }): Promise<void> {
   const userId = await getCurrentUserId();
 
-  const { error } = await supabase
-    .from('consulting_reports')
-    .insert({
-      user_id: userId,
-      scope_label: input.scopeLabel,
-      language: input.language,
-      report: input.report,
-      stats: input.stats,
-    });
+  // agent_run_id는 있을 때만 넣는다. 폴백(단발 Edge) 경로가 컬럼 존재 여부에 묶이면 안 된다.
+  const row: Record<string, unknown> = {
+    user_id: userId,
+    scope_label: input.scopeLabel,
+    language: input.language,
+    report: input.report,
+    stats: input.stats,
+  };
+  if (input.agentRunId) row.agent_run_id = input.agentRunId;
+
+  const { error } = await supabase.from('consulting_reports').insert(row);
 
   if (error) throw error;
 }
