@@ -34,7 +34,11 @@ const DEFAULT_TOOL_TIMEOUT_MS = 15_000;
 const FINAL_RESERVE_MS = 45_000;        // 강제 final 한 번 더 부를 여유
 const MAX_CONSECUTIVE_TOOL_ERRORS = 3;
 const MAX_REPEATS = 2;
-const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+// Gemini 2.5의 thinking 토큰은 이 예산을 출력과 **나눠 쓴다**. 8192로는 실측에서 3355자짜리
+// 한국어 보고서가 잘려 나갔다(프로덕션 실행 d2951b3a, stop_reason=max_steps).
+// 잘린 JSON은 그냥 깨진 JSON이라 파서가 "구문 오류"로 되먹였고, 모델은 같은 길이를 다시 써
+// 과금 호출 하나를 통째로 버렸다. 여유를 두되 무제한은 아니다 — 관측은 매 턴 재전송된다.
+const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
 const OBSERVATION_CHAR_LIMIT = 6000;    // 되먹이는 관측 크기 상한(스텝마다 재전송되므로 곧 비용)
 
 export const STOP_REASONS = {
@@ -108,6 +112,23 @@ export function parseEnvelope(text) {
   }
 
   return { ok: false, error: '"action":{"tool":...,"args":{...}} 또는 "final":{...} 중 하나가 있어야 합니다.' };
+}
+
+/**
+ * 잘린 응답인가. Gemini는 출력 상한에 걸려도 200 + finishReason=MAX_TOKENS로 준다.
+ * 텍스트만 보면 그냥 깨진 JSON이라 파서는 "구문 오류"라고 답하고, 모델은 문법을 고치려 들며
+ * 같은 길이를 다시 쓴다. 사유를 정확히 되먹여야 **짧게 다시 쓴다**.
+ * BYOK 어댑터는 이 필드를 안 줄 수 있다 → false로 떨어져 기존 동작 그대로다.
+ */
+export function isTruncatedResponse(response) {
+  const reason = response?.candidates?.[0]?.finishReason
+    ?? response?.response?.candidates?.[0]?.finishReason;
+  return String(reason ?? '').toUpperCase() === 'MAX_TOKENS';
+}
+
+function truncationError(limit) {
+  return `출력이 최대 길이(${limit} 토큰)에서 잘렸습니다. 문법 문제가 아닙니다 — `
+    + '같은 내용을 더 짧게(특히 긴 문자열 필드를 줄여) JSON 객체 하나로 다시 출력하세요.';
 }
 
 function clip(value) {
@@ -219,7 +240,16 @@ export async function runAgent({
     });
     modelCalls += 1;
     totalTokens += Number(usageMetadata?.totalTokenCount ?? 0) || 0;
-    return extractTextFromResponse(response, model);
+
+    const truncated = isTruncatedResponse(response);
+    try {
+      return { text: extractTextFromResponse(response, model), truncated };
+    } catch (e) {
+      // thinking이 예산을 통째로 먹어 출력 파트가 비는 경우가 있다. 그때도 사유는 MAX_TOKENS다 —
+      // 호출 실패로 처리해 런을 죽이지 말고, 잘림 관측으로 되먹여 짧게 다시 쓰게 한다.
+      if (!truncated) throw e;
+      return { text: '', truncated };
+    }
   };
 
   const recordStep = async (row) => {
@@ -241,8 +271,9 @@ export async function runAgent({
     if (now() - startedAt > budgetMs - FINAL_RESERVE_MS) { stopReason = STOP_REASONS.BUDGET; break; }
 
     let raw;
+    let truncated = false;
     try {
-      raw = await callModel();
+      ({ text: raw, truncated } = await callModel());
     } catch (e) {
       // 모델 호출 자체가 죽으면 되먹일 것이 없다. 관측이 하나라도 있으면 강제 final로 살려본다.
       const message = String(e?.message ?? e).slice(0, 300);
@@ -255,9 +286,10 @@ export async function runAgent({
     const envelope = parseEnvelope(raw);
 
     if (!envelope.ok) {
+      const error = truncated ? truncationError(maxOutputTokens) : envelope.error;
       consecutiveToolErrors += 1;
-      await recordStep({ thought: null, tool: null, args: null, observation: { error: envelope.error }, ok: false });
-      pushObservation(raw, { error: envelope.error });
+      await recordStep({ thought: null, tool: null, args: null, observation: { error, truncated }, ok: false });
+      pushObservation(raw, { error });
       if (consecutiveToolErrors >= MAX_CONSECUTIVE_TOOL_ERRORS) { stopReason = STOP_REASONS.TOOL_ERRORS; break; }
       continue;
     }
@@ -340,12 +372,13 @@ export async function runAgent({
   ].join(' ');
 
   try {
-    const raw = await callModel(note);
+    const { text: raw, truncated } = await callModel(note);
     const envelope = parseEnvelope(raw);
     if (envelope.ok && envelope.final !== undefined) {
       await recordStep({ thought: envelope.thought, tool: null, args: null, observation: { final: true, forced: true, stopReason }, ok: true });
       return { result: envelope.final, stopReason, steps, totalTokens, modelCalls };
     }
+    if (!envelope.ok && truncated) throw new Error(truncationError(maxOutputTokens));
     throw new Error(envelope.ok ? '강제 final 요청에 도구 호출로 응답했습니다' : envelope.error);
   } catch (e) {
     const message = String(e?.message ?? e).slice(0, 300);

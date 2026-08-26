@@ -73,10 +73,22 @@ function depthsOf(classification) {
   return [c.depth1, c.depth2, c.depth3, c.depth4];
 }
 
+/**
+ * 프론트(useConsulting.buildScope)는 depth1이 없는 행을 '미분류'/'Unclassified'라는
+ * **가상 카테고리**로 묶어 input에 넣는다. 그 이름이 그대로 nodePath로 되돌아오는데
+ * taxonomy에는 그런 노드가 없다 — 예전엔 전부 0건이었고, 모델은 근거 없이
+ * "미분류에서 정답률 0%"를 보고서 첫 문단에 썼다(실측 런 d2951b3a).
+ * 프론트의 판정(useConsulting.runFallback)과 같은 규약으로 여기서도 되돌려 준다.
+ */
+const UNCLASSIFIED = new Set(['미분류', 'unclassified']);
+const isUnclassifiedPath = (segments) => segments.length === 1 && UNCLASSIFIED.has(norm(segments[0]));
+
 /** 라벨/생성문제 행이 nodePath 하위인가. 빈 경로는 전체 일치. */
 function matchesPath(alias, classification, segments) {
   if (segments.length === 0) return true;
   const depths = depthsOf(classification);
+  // 별칭표를 태우기 전에 가른다 — 정규형이 아니라 "depth1이 없다"가 매칭 조건이다.
+  if (isUnclassifiedPath(segments)) return !depths[0] || UNCLASSIFIED.has(norm(depths[0]));
   if (segments.length > depths.length) return false;
   for (let i = 0; i < segments.length; i += 1) {
     if (!depths[i]) return false;

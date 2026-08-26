@@ -225,3 +225,62 @@ test('스텝은 발생 즉시 기록된다 (실시간 UI 채널)', async () => {
   assert.equal(supabase.rows[0].run_id, 'run-test');
   assert.equal(supabase.rows[0].tool, 'stats.drilldown');
 });
+
+/**
+ * 원본 응답 필드(finishReason)가 필요한 테스트용. mockAi는 {text}만 만들어서 잘림을 못 흉내낸다.
+ */
+function mockRawAi(responses) {
+  const calls = [];
+  return {
+    calls,
+    models: {
+      generateContent: async (req) => {
+        calls.push(req);
+        return responses[Math.min(calls.length - 1, responses.length - 1)];
+      },
+    },
+  };
+}
+
+test('출력이 잘리면 "구문 오류"가 아니라 잘림으로 되먹인다', async () => {
+  // 실제로 겪은 사고: 보고서가 maxOutputTokens에서 잘려 나갔는데 파서는 문법 문제라고 답했고,
+  // 모델은 문법을 고치려 들며 같은 길이를 다시 썼다 — 과금 호출 하나를 통째로 버렸다.
+  const supabase = mockTraceClient();
+  const ai = mockRawAi([
+    { text: '{"thought":"t","final":{"report":"아주 긴 보고서', candidates: [{ finishReason: 'MAX_TOKENS' }] },
+    { text: JSON.stringify(final({ report: '짧게 다시 씀' })) },
+  ]);
+
+  const outcome = await runAgent(base({
+    ai, supabase, tools: [makeTool('stats.drilldown')], toolCtx: { db: {}, userId: 'u1' },
+  }));
+
+  assert.equal(outcome.stopReason, STOP_REASONS.FINAL);
+
+  const failed = outcome.steps.find((s) => s.ok === false);
+  assert.ok(failed, '잘린 턴이 실패 스텝으로 남아야 한다');
+  assert.equal(failed.observation.truncated, true);
+  assert.match(failed.observation.error, /잘렸습니다/);
+  assert.doesNotMatch(failed.observation.error, /구문 오류/, '문법 탓으로 오진하면 안 된다');
+
+  // 되먹임 확인: 다음 호출 대화에 "더 짧게"가 들어가야 모델이 길이를 줄인다
+  assert.match(JSON.stringify(ai.calls[1].contents), /더 짧게/);
+});
+
+test('thinking이 예산을 다 먹어 출력이 비어도 런을 죽이지 않는다', async () => {
+  // finishReason=MAX_TOKENS인데 텍스트 파트가 통째로 없는 경우. extractTextFromResponse가
+  // 던지는 자리라, 그대로 두면 관측을 다 모으고도 모델 호출 실패로 런이 끝난다.
+  const supabase = mockTraceClient();
+  const ai = mockRawAi([
+    { candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }] },
+    { text: JSON.stringify(final({ report: '복구됨' })) },
+  ]);
+
+  const outcome = await runAgent(base({
+    ai, supabase, tools: [makeTool('stats.drilldown')], toolCtx: { db: {}, userId: 'u1' },
+  }));
+
+  assert.equal(outcome.stopReason, STOP_REASONS.FINAL);
+  assert.deepEqual(outcome.result, { report: '복구됨' });
+  assert.match(outcome.steps.find((s) => s.ok === false).observation.error, /잘렸습니다/);
+});

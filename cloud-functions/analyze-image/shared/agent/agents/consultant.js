@@ -20,7 +20,10 @@ import { runAgent } from '../runtime.js';
 import { consultantTools } from '../tools/consultantTools.js';
 
 export const CONSULTANT_MODEL = 'gemini-2.5-flash';
-export const CONSULTANT_MAX_STEPS = 6;
+// 6은 프롬프트가 시키는 조사(약점 1~3곳 드릴다운 → 표적 오답 → 추세 → profile)와 정확히
+// 같은 수라 final 몫이 남지 않았다. 실측 런은 조사 5회 후 final을 6번째에 쓰다가 밀렸다.
+// 8은 계획서가 허용한 4~8의 상한이고, 예산(240s)·강제 final 여유(45s) 안에 들어간다.
+export const CONSULTANT_MAX_STEPS = 8;
 
 function buildSystemPrompt({ language }) {
   const isEnglish = language === 'en';
@@ -39,6 +42,9 @@ Your job is to find out WHY the weak categories are weak.
 4. Use stats.timeseries when it matters whether a weakness is getting worse or already improving.
 5. Call profile.get once to match the routine and tone to the student's grade.
 Node paths use the same labels shown in the input categories, joined with '>' (e.g. "Grammar > Tense").
+"Unclassified" is not a skill area — it is the bucket of items that have no taxonomy label yet. Tools can query it,
+but telling the student "you are weak at Unclassified" means nothing. Read that bucket with samples.wrong,
+find the actual grammatical/structural pattern, and report **that pattern by name**; never put "Unclassified" in a weakNodes path.
 
 [Final output]
 {"thought":"...","final":{"report":"<the full markdown report>","weakNodes":[{"path":"...","accuracy":<number|null>,"evidence":"one sentence naming the concrete error pattern"}]}}
@@ -77,6 +83,9 @@ A concrete, actionable plan: prioritized focus areas, a specific study method pe
 4. 악화 중인지 개선 중인지가 처방을 바꾸는 경우에만 stats.timeseries를 씁니다.
 5. profile.get은 한 번 불러 학년에 맞는 루틴과 어투를 맞춥니다.
 노드 경로는 입력의 카테고리 라벨을 '>'로 이은 형태입니다(예: "문법 > 시제").
+'미분류'는 학습 영역이 아니라 **분류 라벨이 아직 안 붙은 문항 묶음**입니다. 도구로 조회는 되지만,
+"미분류가 취약하다"는 진단은 학생에게 아무 의미가 없습니다. 이 묶음은 samples.wrong으로 원문을 읽어
+**실제 문법·구조 패턴을 찾아 그 패턴 이름으로** 보고하고, weakNodes의 path에 '미분류'를 쓰지 마세요.
 
 [최종 출력]
 {"thought":"...","final":{"report":"<마크다운 보고서 전문>","weakNodes":[{"path":"...","accuracy":<숫자|null>,"evidence":"구체적 오류 패턴을 명명한 한 문장"}]}}
