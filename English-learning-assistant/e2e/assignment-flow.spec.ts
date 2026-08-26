@@ -256,11 +256,11 @@ test.describe('과제 라이프사이클 (교사 생성 → 학생 제출 → �
       await waitForRenderSettled(page);
 
       // 대시보드 목록은 최근 것만 보여줄 수 있다 — 한 번에 다 못 지워도 남은 건 다음 실행이 마저 지운다.
+      // `:not([href$="/create"])`는 '과제 만들기' 링크를 뺀다 — 첫 test가 쓰는 선택자와 같다.
       const leftovers = () =>
         page
-          .locator('a[href^="/teacher/assignments/"]')
-          .filter({ hasText: '[E2E]' })
-          .filter({ hasNotText: 'create' });
+          .locator('a[href^="/teacher/assignments/"]:not([href$="/create"])')
+          .filter({ hasText: '[E2E]' });
 
       for (let i = 0; i < 20; i += 1) {
         if ((await leftovers().count()) === 0) break;
