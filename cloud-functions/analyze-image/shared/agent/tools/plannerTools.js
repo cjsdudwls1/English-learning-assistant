@@ -29,11 +29,29 @@ export const PLANNER_MAX_GENERATE_CALLS = 3;
 /** 한 번의 생성 호출로 만들 수 있는 문제 수. generate-all의 항목당 상한(50)보다 훨씬 보수적이다. */
 export const PLANNER_MAX_PER_CALL = 10;
 
+/**
+ * 생성 도구만의 실행 상한. 런타임 기본값(15초, 조회 기준)으로는 **정상 생성도 100% 타임아웃**한다 —
+ * 그 아래 generateSingleType은 호출당 90초(API_TIMEOUT_MS.default)에 재시도·모델 페일오버까지 붙는다.
+ *
+ * 120초가 최악을 덮지는 못한다(3모델 × 3시도 = 이론상 810초). 덮으려는 게 아니라 **자르려는** 것이다:
+ * 한 번의 생성이 요청 예산을 통째로 먹으면 계획을 못 쓰고 끝난다. 런타임이 이 값을 다시 남은
+ * 예산으로 조이므로 실제 상한은 이보다 짧을 수 있다.
+ */
+export const PLANNER_GENERATE_TIMEOUT_MS = 120_000;
+
 const STEM_CLIP = 120;
 const COVERAGE_MAX_IDS = 60;
 /** 조회 풀. 별칭 접기와 풀이 이력 제외를 JS에서 하므로 넉넉히 받아 두고 자른다. */
 const POOL_MULTIPLIER = 5;
 const POOL_CAP = 200;
+
+/**
+ * generated_problems.id는 uuid다. 모델이 지어낸 비-uuid 문자열을 `.in('id', …)`에 그대로 실으면
+ * PostgREST가 22P02로 **400을 던져 도구가 통째로 죽는다** — 지어낸 id를 골라내는 게 이 도구의
+ * 일인데, 바로 그것 때문에 도구가 실패하면 안 된다. 형식 위반은 그냥 '없는 id'로 취급한다.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isUuid = (v) => typeof v === 'string' && UUID_RE.test(v);
 
 const clip = (s, n = STEM_CLIP) => {
   const t = String(s ?? '').trim();
@@ -75,6 +93,10 @@ async function findByPath(ctx, { segments, problemType, limit }) {
   // depth1만 SQL로 좁힌다. PostgREST 필터는 대소문자·ko/en 접기를 못 하므로 원문 후보를 나열하고,
   // depth2 이하는 별칭표를 태워 JS에서 맞춘다.
   if (variants[0]?.length) query = query.in('classification->>depth1', variants[0]);
+  // depth2도 후보가 잡히면 함께 좁힌다. 없으면 '문법 > 시제'를 물어도 SQL은 '문법' 전체에서
+  // 최신 200개만 떠 오고, 시제 문항이 그 창 밖에 있으면 JS 필터를 통과할 후보가 0건이 된다
+  // — "기존 문제 없음"으로 보여 모델이 있는 문제를 다시 만든다(=돈).
+  if (segments.length > 1 && variants[1]?.length) query = query.in('classification->>depth2', variants[1]);
 
   const pool = await rows(
     query.order('created_at', { ascending: false }).limit(Math.min(limit * POOL_MULTIPLIER, POOL_CAP)),
@@ -121,6 +143,7 @@ export const generateTool = defineTool({
     + `런 전체 상한은 ${PLANNER_MAX_PROBLEMS}문항·생성 호출 ${PLANNER_MAX_GENERATE_CALLS}회이고, 넘으면 남은 만큼만 만들어진다. `
     + 'nodePath는 실제 분류 체계에 있는 경로여야 한다(없으면 만들지 않고 오류를 돌려준다).',
   readOnly: false,
+  timeoutMs: PLANNER_GENERATE_TIMEOUT_MS,
   params: {
     nodePath: { type: 'string', required: true, description: "분류 경로. 예: '문법 > 시제'" },
     problemType: { type: 'string', enum: [...PROBLEM_TYPES], default: 'multiple_choice', description: '문제 유형' },
@@ -148,22 +171,25 @@ export const generateTool = defineTool({
     }
     const requested = Math.min(count, remaining);
 
-    // 호출 카운터는 **await 전에** 올린다. 생성이 도중에 터져도 한 번 쓴 것으로 친다 —
-    // 실패를 공짜로 보면 모델이 같은 호출을 예산 없이 반복한다(그 사이 모델 호출은 이미 과금됐다).
+    // 호출 수와 문항 수를 **await 전에** 예약한다. 생성이 타임아웃·예외로 끝나도 그 아래 모델
+    // 호출은 이미 과금됐다 — 실패를 0건으로 처리하면 남은 예산이 그대로라 모델이 같은 요청을
+    // 무한히 다시 부른다. 실패한 예약은 회수하지 않는다: 쓴 돈은 쓴 돈이다.
     budget.calls += 1;
+    budget.generated += requested;
 
     const classification = pathToClassification(segments);
     const result = await ctx.generateProblems({ classification, problemType, count: requested });
-    const ids = Array.isArray(result?.problemIds) ? result.problemIds : [];
-    budget.generated += ids.length;
+    // 아래 생성은 부분 실패를 허용한다(generateAllProblemTypes가 Promise.allSettled).
+    // 성공한 경로에서만 실제 수로 정산한다 — 요청보다 적으면 그만큼 예산이 돌아온다.
+    const ids = (Array.isArray(result?.problemIds) ? result.problemIds : []).filter(isUuid);
+    budget.generated += ids.length - requested;
     for (const id of ids) budget.createdIds.add(id);
 
     return {
       nodePath,
       problemType,
       requested,
-      // 유형별 생성은 부분 실패를 허용한다(generateAllProblemTypes가 Promise.allSettled). 요청 수와
-      // 실제 수가 다를 수 있으므로 둘 다 돌려준다 — 모델이 계획에 넣을 수 있는 건 실제 id뿐이다.
+      // 요청 수와 실제 수가 다를 수 있으므로 둘 다 돌려준다 — 모델이 계획에 넣을 수 있는 건 실제 id뿐이다.
       generated: ids.length,
       problemIds: ids,
       remainingProblems: budget.maxProblems - budget.generated,
@@ -184,9 +210,14 @@ export const coverageCheckTool = defineTool({
     const ids = [...new Set(problemIds)].slice(0, COVERAGE_MAX_IDS);
     if (ids.length === 0) return { error: 'problemIds가 비어 있습니다' };
 
-    const found = await rows(
-      ctx.db.from('generated_problems').select('id, problem_type, classification').in('id', ids),
-    );
+    // uuid 모양만 DB에 물어본다. 나머지는 아래 missing으로 떨어진다 — 그게 정확히 이 도구가
+    // 알려줘야 하는 답이고, 그대로 실어 보내면 22P02(400)로 도구가 죽어 답을 못 준다.
+    const queryable = ids.filter(isUuid);
+    const found = queryable.length
+      ? await rows(
+        ctx.db.from('generated_problems').select('id, problem_type, classification').in('id', queryable),
+      )
+      : [];
     const foundIds = new Set(found.map((p) => p.id));
     const solved = await solvedIds(ctx);
 

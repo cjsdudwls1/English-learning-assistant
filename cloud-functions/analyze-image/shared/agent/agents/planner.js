@@ -26,7 +26,7 @@ import { runAgent } from '../runtime.js';
 import { drilldownTool, profileTool } from '../tools/consultantTools.js';
 import {
   PLANNER_MAX_GENERATE_CALLS, PLANNER_MAX_PROBLEMS,
-  plannerReadTools, plannerWriteTools,
+  isUuid, plannerReadTools, plannerWriteTools,
 } from '../tools/plannerTools.js';
 import { generateAllProblemTypes } from '../../generateProblems.js';
 
@@ -155,15 +155,22 @@ export async function runPlannerAgent({ ai, supabase, userClient, runId, userId,
     input: { ...input, days },
     model: PLANNER_MODEL,
     maxSteps: PLANNER_MAX_STEPS,
-    toolCtx: { db: userClient, userId, input, cache: new Map(), budget, generateProblems },
+    // 도구가 보는 input은 프롬프트가 보는 input과 **같아야 한다.** days를 여기서 빠뜨리면
+    // 프롬프트는 조인 값을, 도구는 조이기 전 원본을 보는 상태가 되고, 그 차이는 어디에도 안 찍힌다.
+    toolCtx: { db: userClient, userId, input: { ...input, days }, cache: new Map(), budget, generateProblems },
     // 이 에이전트만 쓰기를 연다. 런타임이 쓰기 도구와 이 플래그의 짝을 시작 시점에 검사한다.
     allowWrites: true,
   });
 
   const result = outcome.result ?? {};
   const weeklyPlan = normalizePlan(result.weeklyPlan, days);
+  const summary = typeof result.summary === 'string' ? result.summary.trim() : '';
+  const createdProblemIds = [...budget.createdIds];
 
-  if (weeklyPlan.length === 0) {
+  // 빈 계획이라고 무조건 던지면 **이미 돈을 쓴 런을 통째로 버린다.** 만들어 둔 문제는 DB에
+  // 남았는데 사용자는 실패 문구만 본다 — 그 문제들은 어느 화면에서도 다시 안 잡힌다.
+  // 실패로 확정하는 건 정말 아무것도 못 건졌을 때뿐이다.
+  if (weeklyPlan.length === 0 && createdProblemIds.length === 0 && !summary) {
     const err = new Error(language === 'en' ? 'The agent returned an empty plan.' : '에이전트가 빈 학습 계획을 반환했습니다.');
     err.stopReason = outcome.stopReason;
     err.totalTokens = outcome.totalTokens;
@@ -173,17 +180,20 @@ export async function runPlannerAgent({ ai, supabase, userClient, runId, userId,
 
   // 계획에 실제로 쓰인 id만 최종 목록으로 삼는다. 모델이 problemIds에 따로 적어 낸 값은
   // weeklyPlan과 어긋날 수 있고, 그 어긋남이 그대로 과제 배포로 이어진다.
+  // 계획이 비었어도 만들어 둔 문제가 있으면 그것만이라도 넘긴다 — 시험지로는 열 수 있다.
   const usedIds = [...new Set(weeklyPlan.flatMap((d) => d.problemIds))];
 
   return {
     ...outcome,
     result: {
-      summary: typeof result.summary === 'string' ? result.summary.trim() : '',
+      summary,
       weeklyPlan,
-      problemIds: usedIds,
-      generatedCount: budget.generated,
+      problemIds: usedIds.length > 0 ? usedIds : createdProblemIds,
+      // 실제로 만들어진 문항 수. budget.generated는 실패한 호출의 예약분을 그대로 안고 있어
+      // (예산 계산에는 그게 맞다) 사용자에게 보여줄 숫자로는 부풀려진다.
+      generatedCount: createdProblemIds.length,
       // 화면에서 "이번에 새로 만든 문제"를 구분해 보여주기 위한 값. 예산 카운터가 원본이다.
-      createdProblemIds: [...budget.createdIds],
+      createdProblemIds,
       assignmentDraft: normalizeDraft(result.assignmentDraft),
     },
   };
@@ -204,17 +214,24 @@ function pickAiOptions(input) {
   return out;
 }
 
-/** 모델 출력의 형태를 프론트가 믿을 수 있는 수준으로 고정한다. */
+/**
+ * 모델 출력의 형태를 프론트가 믿을 수 있는 수준으로 고정한다.
+ *
+ * day는 모델이 준 값을 **쓰지 않는다.** 배열 순서가 곧 계획 순서이고, 모델은 여기서 3일치를
+ * 전부 day:1로 주거나 day:9(기간 밖)를 주는 실수를 한다 — 화면은 그걸 그대로 "1일차"가 셋인
+ * 계획으로 그린다. 순번은 우리가 매기면 확실하고 잃을 정보도 없다.
+ *
+ * problemIds도 uuid 모양만 남긴다. 지어낸 id는 서버 밖으로 내보내지 않는다 — 나가면 프론트가
+ * 그걸로 조회하다 400을 맞고, 사용자에겐 "계획은 있는데 문제는 안 열리는" 상태로 보인다.
+ */
 function normalizePlan(raw, days) {
   if (!Array.isArray(raw)) return [];
   return raw.slice(0, days).map((entry, i) => ({
-    day: Number.isFinite(Number(entry?.day)) ? Math.trunc(Number(entry.day)) : i + 1,
+    day: i + 1,
     focus: String(entry?.focus ?? '').trim(),
     nodePath: String(entry?.nodePath ?? '').trim(),
     activity: String(entry?.activity ?? '').trim(),
-    problemIds: Array.isArray(entry?.problemIds)
-      ? [...new Set(entry.problemIds.filter((id) => typeof id === 'string' && id))]
-      : [],
+    problemIds: Array.isArray(entry?.problemIds) ? [...new Set(entry.problemIds.filter(isUuid))] : [],
   }));
 }
 

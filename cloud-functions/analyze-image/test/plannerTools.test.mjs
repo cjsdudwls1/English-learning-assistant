@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
+  PLANNER_GENERATE_TIMEOUT_MS,
   PLANNER_MAX_GENERATE_CALLS,
   PLANNER_MAX_PROBLEMS,
   coverageCheckTool,
@@ -68,6 +69,14 @@ function mockDb(tables) {
   };
 }
 
+/**
+ * 픽스처 id는 **uuid여야 한다.** generated_problems.id는 uuid 컬럼이라 'g1' 같은 값을
+ * `.in('id', …)`에 실으면 PostgREST가 22P02로 400을 낸다. 스텁 DB는 문자열 비교만 하므로
+ * 가짜 id로도 이 파일은 통과하고, 그 간극이 실서비스에서 도구 하나를 통째로 죽인다.
+ */
+const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const [G1, G2, G3] = [uuid(1), uuid(2), uuid(3)];
+
 const TAXONOMY = [
   { depth1: '문법', depth2: '시제', depth3: null, depth4: null, depth1_en: 'Grammar', depth2_en: 'Tense', depth3_en: null, depth4_en: null },
   { depth1: '독해', depth2: '추론', depth3: null, depth4: null, depth1_en: 'Reading', depth2_en: 'Inference', depth3_en: null, depth4_en: null },
@@ -76,14 +85,14 @@ const TAXONOMY = [
 const FIXTURE = {
   taxonomy: TAXONOMY,
   generated_problems: [
-    { id: 'g1', stem: '문제 1', problem_type: 'multiple_choice', classification: { depth1: '문법', depth2: '시제' }, created_at: '2026-08-01T00:00:00Z' },
-    { id: 'g2', stem: '문제 2', problem_type: 'multiple_choice', classification: { depth1: '문법', depth2: '시제' }, created_at: '2026-08-02T00:00:00Z' },
-    { id: 'g3', stem: '문제 3', problem_type: 'multiple_choice', classification: { depth1: '독해', depth2: '추론' }, created_at: '2026-08-03T00:00:00Z' },
+    { id: G1, stem: '문제 1', problem_type: 'multiple_choice', classification: { depth1: '문법', depth2: '시제' }, created_at: '2026-08-01T00:00:00Z' },
+    { id: G2, stem: '문제 2', problem_type: 'multiple_choice', classification: { depth1: '문법', depth2: '시제' }, created_at: '2026-08-02T00:00:00Z' },
+    { id: G3, stem: '문제 3', problem_type: 'multiple_choice', classification: { depth1: '독해', depth2: '추론' }, created_at: '2026-08-03T00:00:00Z' },
   ],
   // 필터를 실제로 적용하는 스텁이므로 사용자 식별 컬럼도 실제 스키마대로 채운다
   // (풀이 이력은 user_id, 과제 응답은 student_id — 컬럼명이 다르다).
-  problem_solving_sessions: [{ problem_id: 'g2', user_id: 'u1' }, { problem_id: 'g1', user_id: 'other' }],
-  assignment_responses: [{ problem_id: 'g3', student_id: 'u1' }],
+  problem_solving_sessions: [{ problem_id: G2, user_id: 'u1' }, { problem_id: G1, user_id: 'other' }],
+  assignment_responses: [{ problem_id: G3, student_id: 'u1' }],
 };
 
 /** 생성 호출을 실제로 하지 않고 기록만 하는 ctx. ids는 요청 수만큼 만들어 준다. */
@@ -103,7 +112,7 @@ function ctx({ tables = FIXTURE, generate } = {}) {
     budget,
     generateProblems: generate ?? (async ({ count }) => {
       calls.push(count);
-      return { count, problemIds: Array.from({ length: count }, (_, i) => `new-${calls.length}-${i}`) };
+      return { count, problemIds: Array.from({ length: count }, (_, i) => uuid(calls.length * 100 + i)) };
     }),
   };
   c.calls = calls;
@@ -164,7 +173,7 @@ test('생성이 도중에 터져도 호출 예산은 소모된 것으로 친다'
 
 test('부분 생성은 요청 수가 아니라 실제 id 수만 예산에 반영한다', async () => {
   // generateAllProblemTypes는 Promise.allSettled라 부분 실패가 정상 경로다.
-  const c = ctx({ generate: async () => ({ count: 2, problemIds: ['a', 'b'] }) });
+  const c = ctx({ generate: async () => ({ count: 2, problemIds: [uuid(901), uuid(902)] }) });
   const out = await generateTool.handler({ nodePath: '문법 > 시제', problemType: 'multiple_choice', count: 7 }, c);
 
   assert.equal(out.requested, 7);
@@ -213,7 +222,7 @@ test('findExisting은 풀이 이력·과제 응답이 있는 문제를 뺀다', 
     { nodePath: '문법', problemType: 'multiple_choice', limit: 10 }, ctx(),
   );
 
-  assert.deepEqual(out.problemIds, ['g1'], 'g2는 풀이 이력, g3는 다른 분류');
+  assert.deepEqual(out.problemIds, [G1], 'G2는 풀이 이력, G3는 다른 분류');
   assert.equal(out.found, 1);
 });
 
@@ -223,17 +232,17 @@ test('findExisting은 과제로 이미 답한 문제도 뺀다', async () => {
   const out = await findExistingTool.handler(
     { nodePath: '독해 > 추론', problemType: 'multiple_choice', limit: 10 }, ctx(),
   );
-  assert.deepEqual(out.problemIds, [], 'g3는 assignment_responses에 있다');
+  assert.deepEqual(out.problemIds, [], 'G3는 assignment_responses에 있다');
 });
 
 test('coverageCheck는 없는 id를 missing으로 돌려준다', async () => {
   const out = await coverageCheckTool.handler(
-    { problemIds: ['g1', 'g2', '지어낸-id'] }, ctx(),
+    { problemIds: [G1, G2, '지어낸-id'] }, ctx(),
   );
 
   assert.equal(out.checked, 3);
   assert.deepEqual(out.missing, ['지어낸-id']);
-  assert.deepEqual(out.alreadySolved, ['g2']);
+  assert.deepEqual(out.alreadySolved, [G2]);
   assert.deepEqual(out.byNode, [{ nodePath: '문법 > 시제', count: 2 }]);
 });
 
@@ -274,4 +283,80 @@ test('플래너 도구 파일은 service-role 클라이언트를 아예 모른�
   for (const forbidden of ['SERVICE_ROLE', 'createClient', 'ctx.supabase']) {
     assert.ok(!source.includes(forbidden), `plannerTools.js가 ${forbidden}을 참조하면 안 된다`);
   }
+});
+
+
+// ── 예산: 실패한 생성은 회수하지 않는다 ─────────────────────────────────
+
+test('터진 생성의 문항 예약분은 예산에 남는다 (쓴 돈은 쓴 돈이다)', async () => {
+  // 실패를 0건으로 되돌리면 남은 예산이 그대로라, 모델은 같은 요청을 상한까지 되풀이한다.
+  // 그 사이 아래 모델 호출은 전부 과금됐다.
+  const c = ctx({ generate: async () => { throw new Error('generation exploded'); } });
+
+  await assert.rejects(
+    generateTool.handler({ nodePath: '문법 > 시제', problemType: 'multiple_choice', count: 5 }, c),
+  );
+
+  assert.equal(c.budget.generated, 5, '요청한 만큼은 쓴 것으로 남아야 한다');
+  assert.equal(c.budget.createdIds.size, 0, '실제로 만들어진 문제는 없다');
+});
+
+test('생성 도구는 조회 기준 기본 타임아웃을 쓰지 않는다', () => {
+  // 런타임 기본값은 15초(조회 기준)다. 이 도구 아래에서는 모델이 돌아 정상 동작도 그걸 넘긴다
+  // — 선언이 사라지면 성공 경로가 매번 타임아웃한다.
+  assert.ok(generateTool.timeoutMs > 15_000, '생성 도구는 자기 상한을 선언해야 한다');
+  assert.equal(generateTool.timeoutMs, PLANNER_GENERATE_TIMEOUT_MS);
+  for (const t of plannerReadTools) {
+    assert.equal(t.timeoutMs, undefined, '조회 도구는 기본값이면 충분하다');
+  }
+});
+
+// ── 조회: depth2를 SQL로 좁히지 않으면 있는 문제를 못 찾는다 ─────────────
+
+test('findExisting은 depth2까지 SQL로 좁힌다', async () => {
+  // depth1만 좁히면 '문법' 전체에서 최신 N개만 떠 오고, 찾는 depth2가 그 창 밖이면 0건이 된다
+  // — 모델은 "기존 문제 없음"으로 읽고 이미 있는 문제를 다시 만든다(=돈).
+  const noise = Array.from({ length: 5 }, (_, i) => ({
+    id: uuid(50 + i),
+    stem: `어순 ${i}`,
+    problem_type: 'multiple_choice',
+    classification: { depth1: '문법', depth2: '어순' },
+    created_at: `2026-08-1${i}T00:00:00Z`,
+  }));
+  const target = {
+    id: uuid(70),
+    stem: '시제 문제',
+    problem_type: 'multiple_choice',
+    classification: { depth1: '문법', depth2: '시제' },
+    created_at: '2026-08-01T00:00:00Z', // 가장 오래됨 = 최신순 창 밖으로 밀린다
+  };
+
+  const out = await findExistingTool.handler(
+    { nodePath: '문법 > 시제', problemType: 'multiple_choice', limit: 1 },
+    ctx({ tables: { taxonomy: TAXONOMY, generated_problems: [...noise, target], problem_solving_sessions: [], assignment_responses: [] } }),
+  );
+
+  assert.deepEqual(out.problemIds, [uuid(70)], 'depth2를 SQL로 안 좁히면 최신 5개(어순)에 밀려 0건이 된다');
+});
+
+// ── coverageCheck: 지어낸 id 때문에 도구 자체가 죽으면 안 된다 ───────────
+
+test('uuid가 아닌 id는 DB에 묻지 않고 missing으로 돌려준다', async () => {
+  // generated_problems.id는 uuid 컬럼이다. 비-uuid를 .in()에 실으면 PostgREST가 22P02로
+  // 400을 내고 도구가 통째로 죽는다 — 정작 알려줘야 할 "지어낸 id"를 못 알려준다.
+  const out = await coverageCheckTool.handler(
+    { problemIds: ['problem-1', '문법-시제-3', G1] }, ctx(),
+  );
+
+  assert.equal(out.checked, 3);
+  assert.deepEqual(out.missing, ['problem-1', '문법-시제-3']);
+  assert.equal(out.ok, 1);
+});
+
+test('전부 지어낸 id여도 에러가 아니라 답을 돌려준다', async () => {
+  const out = await coverageCheckTool.handler({ problemIds: ['a', 'b'] }, ctx());
+
+  assert.ok(!out.error, '형식 위반은 도구 실패가 아니라 결과다');
+  assert.equal(out.ok, 0);
+  assert.deepEqual(out.missing, ['a', 'b']);
 });

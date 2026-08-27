@@ -284,3 +284,58 @@ test('thinking이 예산을 다 먹어 출력이 비어도 런을 죽이지 않�
   assert.deepEqual(outcome.result, { report: '복구됨' });
   assert.match(outcome.steps.find((s) => s.ok === false).observation.error, /잘렸습니다/);
 });
+
+
+// ── 도구별 타임아웃: 기본값(조회 기준)은 생성 도구를 못 담는다 ─────────────
+
+test('도구가 선언한 timeoutMs가 런타임 기본값을 이긴다', async () => {
+  // 기본 15초는 조회 기준이다. 그 아래에서 모델을 부르는 도구(problems.generate)는
+  // 정상 동작이 90초를 넘기므로, 기본값을 그대로 씌우면 **성공 경로가 100% 타임아웃**한다.
+  const slow = defineTool({
+    name: 'slow.generate',
+    description: '모델을 부르는 느린 도구',
+    timeoutMs: 5_000,
+    handler: async () => { await new Promise((r) => setTimeout(r, 120)); return { made: 3 }; },
+  });
+
+  const outcome = await runAgent(base({
+    ai: mockAi([action('slow.generate', {}), final({ report: 'ok' })]),
+    supabase: mockTraceClient(),
+    tools: [slow],
+    toolCtx: { db: {}, userId: 'u1' },
+    toolTimeoutMs: 20, // 기본값이 적용되면 반드시 터지는 값
+  }));
+
+  assert.equal(outcome.stopReason, STOP_REASONS.FINAL);
+  const step = outcome.steps.find((s) => s.tool === 'slow.generate');
+  assert.equal(step.ok, true, `선언한 상한이 무시되면 정상 생성이 매번 실패한다: ${JSON.stringify(step.observation)}`);
+  assert.deepEqual(step.observation, { made: 3 });
+});
+
+test('선언한 timeoutMs도 남은 예산을 넘지 못한다', async () => {
+  // 도구 하나가 예산을 통째로 먹으면 강제 final을 부를 여유가 사라진다 — 그러면 사용자는
+  // 돈만 쓰고 아무것도 못 받는다. 선언값이 아무리 커도 남은 시간으로 다시 조여야 한다.
+  const hog = defineTool({
+    name: 'slow.hog',
+    description: '예산을 통째로 먹으려는 도구',
+    timeoutMs: 60_000,
+    handler: async () => { await new Promise((r) => setTimeout(r, 4_000)); return { made: 3 }; },
+  });
+
+  const started = Date.now();
+  const outcome = await runAgent(base({
+    ai: mockAi([action('slow.hog', {}), final({ report: 'ok' })]),
+    supabase: mockTraceClient(),
+    tools: [hog],
+    toolCtx: { db: {}, userId: 'u1' },
+    // 예산은 FINAL_RESERVE(45s)를 뺀 나머지가 실제 여유다. 여기선 약 1.2초.
+    budgetMs: 45_000 + 1_200,
+  }));
+
+  const step = outcome.steps.find((s) => s.tool === 'slow.hog');
+  assert.equal(step.ok, false, '남은 예산을 넘긴 도구는 잘려야 한다');
+  assert.match(step.observation.error, /타임아웃/);
+  assert.ok(Date.now() - started < 3_000, '선언값(60초)이 아니라 남은 예산으로 잘려야 한다');
+  // 그래도 런은 답을 낸다 — 잘린 뒤 강제/정상 final로 이어진다.
+  assert.deepEqual(outcome.result, { report: 'ok' });
+});

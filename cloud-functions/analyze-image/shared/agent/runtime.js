@@ -265,6 +265,23 @@ export async function runAgent({
     history.push({ raw, observation: `[관측]\n${clip(payload)}` });
   };
 
+  /**
+   * 이 도구 한 번에 줄 실행 상한.
+   *
+   * 조회 도구는 기본값 15초면 충분하지만, **모델을 부르는 도구는 그렇지 않다** —
+   * problems.generate 아래의 generateSingleType은 호출당 90초(API_TIMEOUT_MS.default)에
+   * 재시도·모델 페일오버까지 붙는다. 기본값을 그대로 씌우면 정상 생성도 매번 타임아웃이고,
+   * abort는 supabase-js까지 전파되지 않으므로 **돈은 쓰고 결과만 버린다.**
+   *
+   * 그래서 도구가 자기 상한을 선언하게 하되, 남은 예산으로 여기서 다시 조인다.
+   * 도구 하나가 요청 전체를 300초 배포 타임아웃 밖으로 밀어내면 사용자는 아무것도 못 받는다.
+   */
+  const toolBudgetFor = (tool) => {
+    const declared = tool.timeoutMs ?? toolTimeoutMs;
+    const remaining = budgetMs - FINAL_RESERVE_MS - (now() - startedAt);
+    return Math.max(1000, Math.min(declared, remaining));
+  };
+
   let stopReason = null;
 
   for (let i = 0; i < maxSteps; i += 1) {
@@ -340,7 +357,7 @@ export async function runAgent({
     try {
       const controller = new AbortController();
       const execution = Promise.resolve().then(() => tool.handler(validated.args, { ...toolCtx, signal: controller.signal }));
-      observation = await withTimeout(execution, toolTimeoutMs, `도구 ${tool.name}`);
+      observation = await withTimeout(execution, toolBudgetFor(tool), `도구 ${tool.name}`);
       // supabase-js는 abortSignal을 옵션으로만 받으므로 타임아웃 후 정리는 best-effort다.
       controller.abort();
       consecutiveToolErrors = 0;

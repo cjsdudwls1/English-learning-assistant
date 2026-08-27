@@ -108,6 +108,14 @@ export const LearningPlanModal: React.FC<LearningPlanModalProps> = ({
                   )}
                 </div>
 
+                {/* 일정이 비어도 서버는 더 이상 실패로 처리하지 않는다 — 이미 만들어 둔 문제와
+                    요약은 살려 보낸다. 그때 여기가 아무것도 안 그리면 빈 화면으로 보인다. */}
+                {plan.weeklyPlan.length === 0 && (
+                  <p className="rounded border border-slate-200 px-3 py-2 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                    {t.stats.planScheduleEmpty}
+                  </p>
+                )}
+
                 <ol className="space-y-3">
                   {plan.weeklyPlan.map((day) => (
                     <li

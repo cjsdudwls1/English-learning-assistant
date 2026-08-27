@@ -211,14 +211,21 @@ export async function fetchExistingProblemsByClassificationPriority(
  *
  * 없는 id는 조용히 빠진다 — 계획이 참조하는 문제가 그 사이 지워졌을 수 있고, 그 한 건 때문에
  * 나머지를 못 풀게 만들 이유가 없다. 몇 개가 빠졌는지는 호출부가 길이 비교로 알 수 있다.
+ *
+ * uuid 모양이 아닌 값은 아예 안 물어본다. id는 uuid 컬럼이라 형식이 어긋나면 PostgREST가
+ * 22P02로 400을 내고, 그러면 **한 건 때문에 요청 전체가 죽어** 멀쩡한 문제까지 못 연다.
+ * 서버(planner)가 이미 걸러 보내지만, 이 함수는 그 경로만 쓰는 게 아니다.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function fetchGeneratedProblemsByIds(ids: string[]): Promise<GeneratedProblem[]> {
-  if (ids.length === 0) return [];
+  const queryable = ids.filter((id) => UUID_RE.test(id));
+  if (queryable.length === 0) return [];
 
   const { data, error } = await supabase
     .from('generated_problems')
     .select('*')
-    .in('id', ids);
+    .in('id', queryable);
 
   if (error) {
     console.error('Error fetching generated problems by ids:', error);
