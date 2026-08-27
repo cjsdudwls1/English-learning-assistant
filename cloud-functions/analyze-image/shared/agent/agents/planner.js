@@ -114,7 +114,13 @@ The input already contains the authoritative aggregate numbers and per-category 
  * @param {string} opts.userId     JWT에서 온 값. 모델 출력이 여기 닿지 않는다
  * @param {object} opts.input      { language, scopeLabel, stats, byCategory, weakNodes?, days? }
  */
-export async function runPlannerAgent({ ai, supabase, userClient, runId, userId, input }) {
+/**
+ * @param {Function} [opts.generateProblems]
+ *        문제 생성 통로를 갈아끼우는 훅. **테스트 전용**이며 프로덕션에선 넘기지 않는다
+ *        (runtime.js가 `now`를 주입받는 것과 같은 이유). 이 경로는 이 에이전트에서 돈이
+ *        나가는 유일한 지점이라, 실제 모델을 부르지 않고 계약을 고정할 수단이 필요하다.
+ */
+export async function runPlannerAgent({ ai, supabase, userClient, runId, userId, input, generateProblems: generateOverride }) {
   const language = input?.language === 'en' ? 'en' : 'ko';
   const days = clampDays(input?.days);
 
@@ -132,7 +138,7 @@ export async function runPlannerAgent({ ai, supabase, userClient, runId, userId,
    * 플래너가 도는 동안 프론트의 기존 "문제 생성 중" 표시(useProblemGeneration)가 함께 켜진다.
    * 실제로 생성 중이라 틀린 표시는 아니지만, 그 UI를 건드릴 때 여기가 호출원임을 알아야 한다.
    */
-  const generateProblems = async ({ classification, problemType, count }) => generateAllProblemTypes(
+  const generateProblems = generateOverride ?? (async ({ classification, problemType, count }) => generateAllProblemTypes(
     supabase,
     ai,
     {
@@ -143,7 +149,7 @@ export async function runPlannerAgent({ ai, supabase, userClient, runId, userId,
       ...pickAiOptions(input),
     },
     `agent-plan-${runId}`,
-  );
+  ));
 
   const outcome = await runAgent({
     ai,
@@ -178,17 +184,22 @@ export async function runPlannerAgent({ ai, supabase, userClient, runId, userId,
     throw err;
   }
 
-  // 계획에 실제로 쓰인 id만 최종 목록으로 삼는다. 모델이 problemIds에 따로 적어 낸 값은
-  // weeklyPlan과 어긋날 수 있고, 그 어긋남이 그대로 과제 배포로 이어진다.
-  // 계획이 비었어도 만들어 둔 문제가 있으면 그것만이라도 넘긴다 — 시험지로는 열 수 있다.
+  // 최종 목록 = 계획에 쓰인 id + 이번 런이 만든 id. **모델이 problemIds에 따로 적어 낸 값은
+  // 쓰지 않는다** — weeklyPlan과 어긋날 수 있고, 그 어긋남이 그대로 과제 배포로 이어진다.
+  //
+  // 만든 것을 합치는 이유: 10개를 만들어 놓고 5개만 배치하는 일이 실제로 일어난다. 그때
+  // 계획에 쓰인 것만 넘기면 generatedCount는 10인데 "전체 풀어보기"는 5 — 나머지 5개는
+  // 돈은 냈는데 어느 화면에서도 못 연다. 계획 순서가 곧 내용이므로 usedIds를 앞에 둔다
+  // (fetchGeneratedProblemsByIds가 요청 순서를 그대로 유지한다).
   const usedIds = [...new Set(weeklyPlan.flatMap((d) => d.problemIds))];
+  const allProblemIds = [...new Set([...usedIds, ...createdProblemIds])];
 
   return {
     ...outcome,
     result: {
       summary,
       weeklyPlan,
-      problemIds: usedIds.length > 0 ? usedIds : createdProblemIds,
+      problemIds: allProblemIds,
       // 실제로 만들어진 문항 수. budget.generated는 실패한 호출의 예약분을 그대로 안고 있어
       // (예산 계산에는 그게 맞다) 사용자에게 보여줄 숫자로는 부풀려진다.
       generatedCount: createdProblemIds.length,

@@ -18,7 +18,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_BUDGET_MS } from '../shared/agent/runtime.js';
+import {
+  DEFAULT_BUDGET_MS, FINAL_RESERVE_MS, MIN_MODEL_MS, MIN_TOOL_MS,
+  MODEL_ATTEMPTS, MODEL_BACKOFF_MS, modelAttemptMs, toolAttemptMs,
+} from '../shared/agent/runtime.js';
 import { parseAgentDisabled, isAgentEnabled } from '../shared/config.js';
 
 const deployScript = readFileSync(
@@ -122,4 +125,84 @@ test('킬 스위치는 createRun보다 먼저 본다', () => {
   assert.ok(guard > 0, 'handleAgentRun에 킬 스위치 가드가 없다');
   assert.ok(create > 0);
   assert.ok(guard < create, '킬 스위치가 createRun 뒤에 있다 — 막아도 런 행이 생긴다');
+});
+
+
+/* ── 예산이 실제로 강제되는가 ────────────────────────────────────────────
+ * 위 두 테스트는 "예산 숫자 < 타임아웃 숫자"만 본다. 그건 **예산이 지켜진다는 뜻이 아니다.**
+ * 실제로 한동안 안 지켜졌다: 도구만 벽시계로 조이고 모델 호출은 안 조여서, 시도당 90초
+ * (API_TIMEOUT_MS.default) × 2시도짜리 호출이 예산 위로 얼마든지 삐져나갔다.
+ * 여기서 고정하는 건 **최악 경로의 총합**이다. 산술이 느슨해지는 순간 깨진다. */
+
+const CEILING_MS = 90_000;                                  // API_TIMEOUT_MS.default
+const worstModelMs = (perAttempt) => perAttempt * MODEL_ATTEMPTS + MODEL_BACKOFF_MS;
+
+const MAX_STEPS = 8;                                        // 가장 큰 값(planner). 스텝 상한도 같이 센다.
+
+test('최악 경로의 총 소요가 배포 타임아웃 안에 들어간다', () => {
+  // 매 스텝 모델도 도구도 허용된 상한을 끝까지 쓰는, 있을 수 있는 가장 느린 런을 돌린다.
+  let elapsed = 0;
+  let stoppedByBudget = false;
+  for (let i = 0; i < MAX_STEPS; i += 1) {
+    const perAttempt = modelAttemptMs({
+      budgetMs: DEFAULT_BUDGET_MS, elapsedMs: elapsed, reserveMs: FINAL_RESERVE_MS, ceilingMs: CEILING_MS,
+    });
+    if (perAttempt < MIN_MODEL_MS) { stoppedByBudget = true; break; }
+    elapsed += worstModelMs(perAttempt);
+
+    const toolMs = toolAttemptMs({
+      declaredMs: 120_000,                                  // problems.generate만큼 무거운 도구
+      remainingMs: DEFAULT_BUDGET_MS - FINAL_RESERVE_MS - elapsed,
+      readOnly: true,
+    });
+    if (toolMs !== null) elapsed += toolMs;
+  }
+
+  // 최악 런을 멈춘 게 스텝 상한이면 이 테스트는 예산을 검증한 게 아니다.
+  // maxSteps를 올리는 순간 조용히 무의미해지므로 여기서 못을 박는다.
+  assert.ok(stoppedByBudget, '최악 경로가 예산이 아니라 스텝 상한에 걸려 끝났다 — 예산을 검증하지 못했다');
+
+  // 강제 final은 예산이 바닥나도 반드시 한 번 한다(안 하면 사용자가 아무것도 못 받는다).
+  const finalPerAttempt = Math.max(MIN_MODEL_MS, modelAttemptMs({
+    budgetMs: DEFAULT_BUDGET_MS, elapsedMs: elapsed, reserveMs: 0, ceilingMs: CEILING_MS,
+  }));
+  elapsed += worstModelMs(finalPerAttempt);
+
+  assert.ok(
+    elapsed < deployedTimeoutMs(),
+    `최악 경로 총 ${elapsed}ms가 요청 타임아웃(${deployedTimeoutMs()}ms) 이상이다. ` +
+    '요청이 잘려 사용자는 이미 과금된 런에서 아무것도 못 받는다.',
+  );
+});
+
+test('모델 기본 상한을 느슨하게 풀지 않는다', () => {
+  // 시간이 아무리 남아도 시도당 상한이 모델 기본값을 넘으면 안 된다 — 조이기 전용이다.
+  const perAttempt = modelAttemptMs({
+    budgetMs: 10_000_000, elapsedMs: 0, reserveMs: 0, ceilingMs: CEILING_MS,
+  });
+  assert.equal(perAttempt, CEILING_MS);
+});
+
+test('남은 시간이 없으면 모델 호출을 시작하지 않을 만큼 작은 값이 나온다', () => {
+  const perAttempt = modelAttemptMs({
+    budgetMs: DEFAULT_BUDGET_MS, elapsedMs: DEFAULT_BUDGET_MS, reserveMs: FINAL_RESERVE_MS, ceilingMs: CEILING_MS,
+  });
+  assert.ok(perAttempt < MIN_MODEL_MS, '예산을 다 썼는데도 모델을 부를 만한 값이 나온다');
+});
+
+/* ── 도구 상한: 없는 시간을 만들어 내지 않는다 ──────────────────────────── */
+
+test('쓰기 도구는 선언한 시간을 통째로 못 주면 아예 실행하지 않는다', () => {
+  // 과거엔 Math.max(1000, ...)이 무조건 1초를 만들어 냈다. 그 1초로 problems.generate를
+  // 부르면 모델은 호출되고 과금되고 결과만 버려진다 — abort가 Vertex까지 안 간다.
+  assert.equal(toolAttemptMs({ declaredMs: 120_000, remainingMs: 119_999, readOnly: false }), null);
+  assert.equal(toolAttemptMs({ declaredMs: 120_000, remainingMs: -50_000, readOnly: false }), null);
+  assert.equal(toolAttemptMs({ declaredMs: 120_000, remainingMs: 120_000, readOnly: false }), 120_000);
+});
+
+test('조회 도구는 남은 만큼으로 조이되, 바닥 밑이면 실행하지 않는다', () => {
+  assert.equal(toolAttemptMs({ declaredMs: 15_000, remainingMs: 6_000, readOnly: true }), 6_000);
+  assert.equal(toolAttemptMs({ declaredMs: 15_000, remainingMs: 50_000, readOnly: true }), 15_000);
+  assert.equal(toolAttemptMs({ declaredMs: 15_000, remainingMs: MIN_TOOL_MS - 1, readOnly: true }), null);
+  assert.equal(toolAttemptMs({ declaredMs: 15_000, remainingMs: -1, readOnly: true }), null);
 });

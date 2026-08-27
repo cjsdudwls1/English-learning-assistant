@@ -41,6 +41,11 @@ function mockTrace() {
   };
 }
 
+/** taxonomy 전량 조회에만 답하는 최소 조회 클라이언트. */
+function mockTaxonomy(rows) {
+  return { from: () => ({ select: async () => ({ data: rows, error: null }) }) };
+}
+
 /** 도구를 하나도 안 부르고 곧장 final을 내는 런. 조회 클라이언트는 손대지 않는다. */
 async function runWithFinal(finalPayload, input = {}) {
   return runPlannerAgent({
@@ -114,4 +119,51 @@ test('generatedCount는 실제로 만들어진 문항 수다', async () => {
 
   assert.equal(outcome.result.generatedCount, 0);
   assert.deepEqual(outcome.result.createdProblemIds, []);
+});
+
+
+// ── 만든 문제가 계획 밖에 남아도 사용자에게 도달한다 ────────────────────
+
+test('계획에 배치되지 않은 생성 문제도 최종 problemIds에 남는다', async () => {
+  // 실제로 일어나는 어긋남: 10개를 만들어 놓고 5개만 배치한다. 계획에 쓰인 것만 넘기면
+  // "새로 만든 문제 10개"라고 써 놓고 [전체 풀어보기]는 5개만 연다 — 나머지 5개는
+  // 돈은 냈는데 어느 화면에서도 못 여는 상태가 된다.
+  const made = [uuid(1), uuid(2), uuid(3), uuid(4)];
+
+  const outcome = await runPlannerAgent({
+    ai: mockAi([
+      JSON.stringify({ thought: 't', action: { tool: 'problems.generate', args: { nodePath: '문법 > 시제', problemType: 'multiple_choice', count: 4 } } }),
+      JSON.stringify({ thought: 't', final: {
+        summary: 's',
+        // 만든 4개 중 2개만 배치한다.
+        weeklyPlan: [day({ problemIds: [made[0], made[1]] })],
+      } }),
+    ]),
+    supabase: mockTrace(),
+    // problems.generate는 nodePath가 실제 분류 체계에 있는지 먼저 확인한다(taxonomy 전량 조회).
+    userClient: mockTaxonomy([
+      { depth1: '문법', depth2: '시제', depth3: null, depth4: null,
+        depth1_en: 'Grammar', depth2_en: 'Tense', depth3_en: null, depth4_en: null },
+    ]),
+    runId: '00000000-0000-4000-8000-0000000000fe',
+    userId: 'u1',
+    input: { language: 'ko' },
+    generateProblems: async () => ({ problemIds: made }),
+  });
+
+  assert.equal(outcome.result.generatedCount, 4);
+  // 계획 순서가 앞, 남은 생성분이 뒤 — fetchGeneratedProblemsByIds가 요청 순서를 유지한다.
+  assert.deepEqual(outcome.result.problemIds, [made[0], made[1], made[2], made[3]]);
+  assert.deepEqual(outcome.result.weeklyPlan[0].problemIds, [made[0], made[1]]);
+});
+
+test('생성이 없으면 최종 problemIds는 계획에 쓰인 것뿐이다', async () => {
+  // 합집합이 "기존 문제만 쓴 계획"에 군더더기를 붙이지 않는지 확인한다.
+  const outcome = await runWithFinal({
+    summary: 's',
+    weeklyPlan: [day({ problemIds: [uuid(7)] })],
+  });
+
+  assert.deepEqual(outcome.result.problemIds, [uuid(7)]);
+  assert.equal(outcome.result.generatedCount, 0);
 });
