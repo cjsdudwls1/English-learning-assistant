@@ -203,3 +203,29 @@ export async function fetchExistingProblemsByClassificationPriority(
   return problems.slice(0, limit);
 }
 
+/**
+ * id 목록으로 생성 문제를 읽는다. **요청한 순서를 그대로 유지한다.**
+ *
+ * 학습 계획은 "1일차 → 2일차" 순서 자체가 내용이다. DB가 돌려주는 순서를 그대로 쓰면
+ * 계획의 날짜 구분이 무너진 시험지가 나온다.
+ *
+ * 없는 id는 조용히 빠진다 — 계획이 참조하는 문제가 그 사이 지워졌을 수 있고, 그 한 건 때문에
+ * 나머지를 못 풀게 만들 이유가 없다. 몇 개가 빠졌는지는 호출부가 길이 비교로 알 수 있다.
+ */
+export async function fetchGeneratedProblemsByIds(ids: string[]): Promise<GeneratedProblem[]> {
+  if (ids.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('generated_problems')
+    .select('*')
+    .in('id', ids);
+
+  if (error) {
+    console.error('Error fetching generated problems by ids:', error);
+    throw error;
+  }
+
+  const byId = new Map((data || []).map((p) => [p.id as string, p as GeneratedProblem]));
+  return ids.map((id) => byId.get(id)).filter((p): p is GeneratedProblem => !!p);
+}
+

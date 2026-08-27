@@ -21,6 +21,7 @@ import { translateError } from '../utils/errorI18n';
 import type { StatsNode } from '../services/stats';
 import { useAgentRun, type AgentRunState } from './useAgentRun';
 import type { AgentStepRow, AgentStopReason } from '../services/db';
+import { buildAgentScope, nodeLabel, type AgentScope as Scope, type Totals } from './agentScope';
 
 /** Edge generate-consulting로 보낼 오답 표본(절삭본). 폴백 경로에서만 쓴다. */
 interface WrongSample {
@@ -38,17 +39,6 @@ interface WrongSample {
 interface ConsultantResult {
   report: string;
   weakNodes: Array<{ path?: string; accuracy?: number; evidence?: string }>;
-}
-
-interface CategoryRow { label: string; total: number; correct: number; incorrect: number }
-interface Totals { total: number; correct: number; incorrect: number }
-
-interface Scope {
-  scopeLabel: string;
-  stats: Totals;
-  byCategory: CategoryRow[];
-  /** 폴백이 오답을 다시 긁어야 할 때 필요한 노드들(전체 범위면 빈 배열). */
-  nodes: StatsNode[];
 }
 
 interface UseConsultingParams {
@@ -76,12 +66,7 @@ interface UseConsultingReturn {
   usedFallback: boolean;
 }
 
-const MAX_SAMPLES = 40;        // 폴백 전용: LLM 토큰·Edge 60s 제한 균형
-const MAX_SELECTED_NODES = 12; // 선택 노드 과다 시 fetch 호출 상한
-
-function nodeLabel(node: StatsNode): string {
-  return [node.depth1, node.depth2, node.depth3, node.depth4].filter(Boolean).join(' > ');
-}
+const MAX_SAMPLES = 40; // 폴백 전용: LLM 토큰·Edge 60s 제한 균형
 
 function trunc(s: unknown, n: number): string {
   const x = String(s ?? '').trim();
@@ -128,48 +113,10 @@ export function useConsulting({
   // 훅 반환 객체는 매 렌더 새로 만들어진다. 콜백 의존성엔 useCallback으로 고정된 함수만 넣는다.
   const { start: startAgent, reset: resetAgent } = agent;
 
-  /** 범위·통계 계산. 두 경로가 **같은 숫자**를 쓰게 하려고 공통으로 뽑는다. */
-  const buildScope = useCallback((): Scope => {
-    const allLeafNodes = getLeafNodes(hierarchicalData);
-    const selectedLeafNodes = selectedNodes.size > 0
-      ? allLeafNodes.filter((node) => selectedNodes.has(getNodeKey(node)))
-      : [];
-
-    if (selectedLeafNodes.length > 0) {
-      const nodes = selectedLeafNodes.slice(0, MAX_SELECTED_NODES);
-      const scopeLabel = nodes.map(nodeLabel).join(', ')
-        + (selectedLeafNodes.length > MAX_SELECTED_NODES ? ' …' : '');
-      const byCategory = nodes.map((n) => ({
-        label: nodeLabel(n),
-        total: n.total_count || 0,
-        correct: n.correct_count || 0,
-        incorrect: n.incorrect_count || 0,
-      }));
-      const stats = byCategory.reduce<Totals>(
-        (acc, r) => ({ total: acc.total + r.total, correct: acc.correct + r.correct, incorrect: acc.incorrect + r.incorrect }),
-        { total: 0, correct: 0, incorrect: 0 }
-      );
-      return { scopeLabel, stats, byCategory, nodes };
-    }
-
-    // 전체 범위: depth1 상위 카테고리 집계를 정답률 오름차순으로 — 에이전트가 팔 지점을 고르는 근거
-    const byCategory = hierarchicalData
-      .map((n) => ({
-        label: n.depth1 || (language === 'ko' ? '미분류' : 'Unclassified'),
-        total: n.total_count || 0,
-        correct: n.correct_count || 0,
-        incorrect: n.incorrect_count || 0,
-      }))
-      .filter((r) => r.total > 0)
-      .sort((a, b) => (a.correct / (a.total || 1)) - (b.correct / (b.total || 1)));
-
-    return {
-      scopeLabel: language === 'ko' ? '전체 카테고리' : 'All categories',
-      stats: { ...overallTotals },
-      byCategory,
-      nodes: [],
-    };
-  }, [hierarchicalData, selectedNodes, getLeafNodes, getNodeKey, overallTotals, language]);
+  /** 범위·통계 계산. 두 경로(에이전트/폴백)와 플래너가 **같은 숫자**를 쓰게 하려고 공용 모듈에 있다. */
+  const buildScope = useCallback((): Scope => buildAgentScope({
+    language, hierarchicalData, selectedNodes, getLeafNodes, getNodeKey, overallTotals,
+  }), [hierarchicalData, selectedNodes, getLeafNodes, getNodeKey, overallTotals, language]);
 
   /** 폴백: 기존 단발 Edge Function 경로 그대로. 오답 표본을 여기서만 긁는다. */
   const runFallback = useCallback(async (scope: Scope, userId: string): Promise<string> => {

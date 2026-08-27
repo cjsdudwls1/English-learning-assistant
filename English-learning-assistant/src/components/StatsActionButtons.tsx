@@ -6,10 +6,12 @@ interface StatsActionButtonsProps {
   isReclassifying: boolean;
   isGeneratingExamples: boolean;
   isConsulting: boolean;
+  isPlanning: boolean;
   selectedNodesCount: number;
   onReclassify: () => void;
   onGenerateExamples: () => void;
   onConsult: () => void;
+  onPlan: () => void;
   onShowHistory: () => void;
   onGenerateSimilarProblems: () => void;
 }
@@ -19,17 +21,21 @@ export const StatsActionButtons: React.FC<StatsActionButtonsProps> = ({
   isReclassifying,
   isGeneratingExamples,
   isConsulting,
+  isPlanning,
   selectedNodesCount,
   onReclassify,
   onGenerateExamples,
   onConsult,
+  onPlan,
   onShowHistory,
   onGenerateSimilarProblems,
 }) => {
   const t = getTranslation(language);
+  // 컨설턴트와 플래너는 둘 다 돈을 쓰는 에이전트다. 동시에 돌릴 이유가 없어 서로를 잠근다.
+  const agentBusy = isConsulting || isPlanning;
 
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       <button
         onClick={onReclassify}
         disabled={isReclassifying}
@@ -47,11 +53,19 @@ export const StatsActionButtons: React.FC<StatsActionButtonsProps> = ({
       </button>
       <button
         onClick={onConsult}
-        disabled={isConsulting}
+        disabled={agentBusy}
         className="px-4 py-2 bg-violet-600 dark:bg-violet-500 text-white rounded-lg hover:bg-violet-700 dark:hover:bg-violet-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         title={language === 'ko' ? '선택한 카테고리(미선택 시 전체)에 대한 맞춤형 학습 컨설팅 보고서를 생성합니다' : 'Generate a personalized learning consulting report for the selected category (or all if none selected)'}
       >
         {isConsulting ? t.stats.consulting : t.stats.learningConsultant}
+      </button>
+      <button
+        onClick={onPlan}
+        disabled={agentBusy}
+        className="px-4 py-2 bg-fuchsia-700 dark:bg-fuchsia-600 text-white rounded-lg hover:bg-fuchsia-800 dark:hover:bg-fuchsia-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+        title={t.stats.studyPlanHint}
+      >
+        {isPlanning ? t.stats.planning : t.stats.studyPlan}
       </button>
       <button
         onClick={onShowHistory}
