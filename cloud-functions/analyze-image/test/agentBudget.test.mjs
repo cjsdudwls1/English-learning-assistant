@@ -23,6 +23,7 @@ import {
   MODEL_ATTEMPTS, MODEL_BACKOFF_MS, modelAttemptMs, toolAttemptMs,
 } from '../shared/agent/runtime.js';
 import { parseAgentDisabled, isAgentEnabled } from '../shared/config.js';
+import { PLANNER_MAX_STEPS } from '../shared/agent/agents/planner.js';
 
 const deployScript = readFileSync(
   fileURLToPath(new URL('../deploy-image.ps1', import.meta.url)),
@@ -137,7 +138,9 @@ test('킬 스위치는 createRun보다 먼저 본다', () => {
 const CEILING_MS = 90_000;                                  // API_TIMEOUT_MS.default
 const worstModelMs = (perAttempt) => perAttempt * MODEL_ATTEMPTS + MODEL_BACKOFF_MS;
 
-const MAX_STEPS = 8;                                        // 가장 큰 값(planner). 스텝 상한도 같이 센다.
+// 가장 큰 값(planner). 스텝 상한도 같이 센다.
+// 하드코딩하면 상한을 올릴 때 최악 경로가 조용히 짧아져 예산 검증이 헐거워진다.
+const MAX_STEPS = PLANNER_MAX_STEPS;
 
 test('최악 경로의 총 소요가 배포 타임아웃 안에 들어간다', () => {
   // 매 스텝 모델도 도구도 허용된 상한을 끝까지 쓰는, 있을 수 있는 가장 느린 런을 돌린다.
