@@ -203,3 +203,36 @@ export async function fetchExistingProblemsByClassificationPriority(
   return problems.slice(0, limit);
 }
 
+/**
+ * id 목록으로 생성 문제를 읽는다. **요청한 순서를 그대로 유지한다.**
+ *
+ * 학습 계획은 "1일차 → 2일차" 순서 자체가 내용이다. DB가 돌려주는 순서를 그대로 쓰면
+ * 계획의 날짜 구분이 무너진 시험지가 나온다.
+ *
+ * 없는 id는 조용히 빠진다 — 계획이 참조하는 문제가 그 사이 지워졌을 수 있고, 그 한 건 때문에
+ * 나머지를 못 풀게 만들 이유가 없다. 몇 개가 빠졌는지는 호출부가 길이 비교로 알 수 있다.
+ *
+ * uuid 모양이 아닌 값은 아예 안 물어본다. id는 uuid 컬럼이라 형식이 어긋나면 PostgREST가
+ * 22P02로 400을 내고, 그러면 **한 건 때문에 요청 전체가 죽어** 멀쩡한 문제까지 못 연다.
+ * 서버(planner)가 이미 걸러 보내지만, 이 함수는 그 경로만 쓰는 게 아니다.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function fetchGeneratedProblemsByIds(ids: string[]): Promise<GeneratedProblem[]> {
+  const queryable = ids.filter((id) => UUID_RE.test(id));
+  if (queryable.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('generated_problems')
+    .select('*')
+    .in('id', queryable);
+
+  if (error) {
+    console.error('Error fetching generated problems by ids:', error);
+    throw error;
+  }
+
+  const byId = new Map((data || []).map((p) => [p.id as string, p as GeneratedProblem]));
+  return ids.map((id) => byId.get(id)).filter((p): p is GeneratedProblem => !!p);
+}
+

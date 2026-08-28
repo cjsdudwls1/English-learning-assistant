@@ -12,6 +12,7 @@ import { StatsActionButtons } from '../components/StatsActionButtons';
 import { StatsExampleModal } from '../components/StatsExampleModal';
 import { ConsultingReportModal } from '../components/ConsultingReportModal';
 import { ConsultingHistoryModal } from '../components/ConsultingHistoryModal';
+import { LearningPlanModal } from '../components/LearningPlanModal';
 import { StatsGeneratedProblems } from '../components/StatsGeneratedProblems';
 import { SolvingStatsCard } from '../components/stats/SolvingStatsCard';
 import { AgentTrace } from '../components/agent/AgentTrace';
@@ -29,6 +30,7 @@ import { useStatsNodes } from '../hooks/useStatsNodes';
 import { useProblemGenerationState } from '../hooks/useProblemGenerationState';
 import { useExampleGeneration } from '../hooks/useExampleGeneration';
 import { useConsulting } from '../hooks/useConsulting';
+import { usePlanner } from '../hooks/usePlanner';
 import { useReclassification } from '../hooks/useReclassification';
 import type { GeneratedProblemResult } from '../components/GeneratedProblemCard';
 
@@ -181,6 +183,22 @@ export const StatsPage: React.FC = () => {
     setError: statsData.setError,
   });
 
+  // 맞춤 학습플랜 (약점 → 문제 확보 → 일자별 계획). 컨설턴트와 같은 범위·통계를 쓴다.
+  const planner = usePlanner({
+    language,
+    hierarchicalData: statsData.hierarchicalData,
+    selectedNodes: nodes.selectedNodes,
+    getLeafNodes: nodes.getLeafNodes,
+    getNodeKey: nodes.getNodeKey,
+    overallTotals: totals,
+    setError: statsData.setError,
+    // 계획의 문제는 새 화면을 만들지 않고 기존 시험지 경로로 그대로 넘긴다.
+    onOpenProblems: (problems) => {
+      problemGen.setGeneratedProblems(problems);
+      problemGen.setShowTestSheet(true);
+    },
+  });
+
   const chartLabels = useMemo(
     () => ({
       overview: t.stats.chartOverview,
@@ -310,10 +328,12 @@ export const StatsPage: React.FC = () => {
             isReclassifying={reclassify.isReclassifying}
             isGeneratingExamples={exampleGen.isGeneratingExamples}
             isConsulting={consulting.isConsulting}
+            isPlanning={planner.isPlanning}
             selectedNodesCount={nodes.selectedNodes.size}
             onReclassify={reclassify.handleReclassifyAll}
             onGenerateExamples={handleGenerateExampleSentences}
             onConsult={consulting.handleGenerateConsulting}
+            onPlan={planner.handleGeneratePlan}
             onShowHistory={() => setShowConsultHistory(true)}
             onGenerateSimilarProblems={problemGen.handleGenerateSimilarProblems}
           />
@@ -332,6 +352,15 @@ export const StatsPage: React.FC = () => {
             {t.stats.agentFallbackNotice}
           </p>
         )}
+
+        {/* 학습플랜 에이전트 진행 상황 — 별도 런이라 트레이스도 별도다(state가 idle이면 안 그려진다) */}
+        <AgentTrace
+          language={language}
+          steps={planner.agentSteps}
+          state={planner.agentState}
+          stopReason={planner.agentStopReason}
+          error={planner.agentError}
+        />
 
         {/* 문제 생성 UI */}
         {problemGen.showProblemGenerator && (
@@ -475,6 +504,16 @@ export const StatsPage: React.FC = () => {
           report={consulting.reportText}
           isOpen={consulting.showConsultModal}
           onClose={() => consulting.setShowConsultModal(false)}
+        />
+
+        {/* 맞춤 학습플랜 모달 */}
+        <LearningPlanModal
+          language={language}
+          plan={planner.plan}
+          scopeLabel={planner.planScopeLabel}
+          isOpen={planner.showPlanModal}
+          onClose={() => planner.setShowPlanModal(false)}
+          onSolve={planner.openPlanProblems}
         />
 
         {/* 학습 컨설팅 기록 모달 */}

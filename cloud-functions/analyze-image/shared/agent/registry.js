@@ -18,12 +18,16 @@ const SUPPORTED_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'stri
  * @param {string}   spec.description  모델이 읽는 유일한 설명 — 여기가 부실하면 엉뚱한 도구를 부른다
  * @param {object}   [spec.params]     { argName: { type, required, description, enum, min, max, default } }
  * @param {boolean}  [spec.readOnly]   기본 true. false면 런타임이 명시 허용을 요구한다
+ * @param {number}   [spec.timeoutMs]  이 도구만의 실행 상한. 없으면 런타임 기본값(조회 기준)
  * @param {Function} spec.handler      async (args, ctx) => any. ctx = { db, userId, input, signal, log }
  */
-export function defineTool({ name, description, params = {}, readOnly = true, handler }) {
+export function defineTool({ name, description, params = {}, readOnly = true, timeoutMs, handler }) {
   if (!name || typeof name !== 'string') throw new Error('defineTool: name 필수');
   if (!description) throw new Error(`defineTool(${name}): description 필수 — 모델이 읽는 유일한 설명이다`);
   if (typeof handler !== 'function') throw new Error(`defineTool(${name}): handler 필수`);
+  if (timeoutMs !== undefined && !(Number.isFinite(timeoutMs) && timeoutMs > 0)) {
+    throw new Error(`defineTool(${name}): timeoutMs는 양수여야 합니다`);
+  }
 
   for (const [key, spec] of Object.entries(params)) {
     if (!SUPPORTED_TYPES.has(spec.type)) {
@@ -31,7 +35,7 @@ export function defineTool({ name, description, params = {}, readOnly = true, ha
     }
   }
 
-  return { name, description, params, readOnly, handler };
+  return { name, description, params, readOnly, timeoutMs, handler };
 }
 
 /** 도구 배열 → 이름으로 찾는 Map. 이름 중복은 조용히 덮어쓰지 말고 터뜨린다. */

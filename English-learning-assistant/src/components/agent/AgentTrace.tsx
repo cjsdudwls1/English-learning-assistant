@@ -33,6 +33,9 @@ function stepLabel(step: AgentStepRow, t: ReturnType<typeof getTranslation>): st
     case 'samples.wrong': return t.stats.agentToolWrongSamples;
     case 'stats.timeseries': return t.stats.agentToolTimeseries;
     case 'profile.get': return t.stats.agentToolProfile;
+    case 'problems.findExisting': return t.stats.agentToolFindExisting;
+    case 'problems.generate': return t.stats.agentToolGenerate;
+    case 'plan.coverageCheck': return t.stats.agentToolCoverage;
     case null: return step.ok ? t.stats.agentToolFinal : t.stats.agentStepRetryResponse;
     default: return step.tool;
   }
@@ -58,6 +61,23 @@ function summarize(observation: unknown, language: 'ko' | 'en'): string | null {
   }
   if (Array.isArray(o.series)) {
     parts.push(language === 'ko' ? `${o.series.length}개월` : `${o.series.length} months`);
+  }
+
+  // 플래너 도구. 생성은 **요청 수와 실제 수가 다를 수 있어**(유형별 부분 실패 허용) 둘 다 보여준다 —
+  // "10개 요청"만 보이면 8개만 만들어진 계획을 사용자가 알 방법이 없다.
+  if (typeof o.found === 'number') {
+    parts.push(language === 'ko' ? `기존 ${o.found}건` : `${o.found} existing`);
+  }
+  if (typeof o.generated === 'number') {
+    const req = typeof o.requested === 'number' && o.requested !== o.generated ? o.requested : null;
+    const n = req === null ? `${o.generated}` : `${o.generated}/${req}`;
+    parts.push(language === 'ko' ? `생성 ${n}건` : `${n} generated`);
+  }
+  if (typeof o.checked === 'number') {
+    const missing = Array.isArray(o.missing) ? o.missing.length : 0;
+    parts.push(language === 'ko'
+      ? `점검 ${o.checked}건${missing ? ` · 누락 ${missing}건` : ''}`
+      : `${o.checked} checked${missing ? ` · ${missing} missing` : ''}`);
   }
   if (typeof o.grade === 'string') parts.push(o.grade);
   if (typeof o.note === 'string') parts.push(o.note);

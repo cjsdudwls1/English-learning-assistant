@@ -22,7 +22,7 @@
  * 처리한다. 그때까지 모은 관측만으로 답을 쓰게 하는 편이, 사용자에게 아무것도 안 주는 것보다 낫다.
  */
 
-import { generateWithRetry, extractTextFromResponse } from '../aiClient.js';
+import { generateWithRetry, extractTextFromResponse, resolveTimeoutMs } from '../aiClient.js';
 import { appendStep } from './trace.js';
 import { buildRegistry, findTool, validateArgs, toolCatalogForPrompt, toolNames } from './registry.js';
 
@@ -31,9 +31,17 @@ const DEFAULT_MAX_STEPS = 6;
 // --timeout)이므로 예산은 그보다 작아야 한다. 두 값은 test/agentBudget.test.mjs가 같이 고정한다.
 export const DEFAULT_BUDGET_MS = 240_000;
 const DEFAULT_TOOL_TIMEOUT_MS = 15_000;
-const FINAL_RESERVE_MS = 45_000;        // 강제 final 한 번 더 부를 여유
+export const FINAL_RESERVE_MS = 45_000; // 강제 final 한 번 더 부를 여유
+// generateWithRetry의 maxRetries는 **총 시도 횟수**다(aiClient.js 주석). 최악 소요는
+// 시도수 × 시도당 타임아웃 + 백오프이므로, 남은 벽시계를 이 셋으로 쪼개야 예산이 예산 노릇을 한다.
+export const MODEL_ATTEMPTS = 2;
+export const MODEL_BACKOFF_MS = 1_500;
+// 시도당 이만큼도 못 줄 상황이면 모델을 부르지 않는다. 어차피 타임아웃될 호출도 과금된다.
+export const MIN_MODEL_MS = 15_000;
+export const MIN_TOOL_MS = 2_000;
 const MAX_CONSECUTIVE_TOOL_ERRORS = 3;
 const MAX_REPEATS = 2;
+const MAX_BUDGET_SKIPS = 2;
 // Gemini 2.5의 thinking 토큰은 이 예산을 출력과 **나눠 쓴다**. 8192로는 실측에서 3355자짜리
 // 한국어 보고서가 잘려 나갔다(프로덕션 실행 d2951b3a, stop_reason=max_steps).
 // 잘린 JSON은 그냥 깨진 JSON이라 파서가 "구문 오류"로 되먹였고, 모델은 같은 길이를 다시 써
@@ -139,6 +147,33 @@ function clip(value) {
     : text;
 }
 
+/**
+ * 모델 호출 한 번에 줄 **시도당** 상한.
+ *
+ * generateWithRetry의 maxRetries는 총 시도 횟수라(aiClient.js 주석) 최악 소요는
+ * `시도수 × 시도당 상한 + 백오프`다. 남은 벽시계를 그 최악값 기준으로 쪼개야 예산이
+ * 예산 노릇을 한다. ceilingMs(모델 기본값)는 **조이기만 하고 절대 느슨하게 풀지 않는다.**
+ *
+ * 남은 시간이 모자라면 음수·0이 나온다 — 그게 "부르지 말라"는 신호다.
+ */
+export function modelAttemptMs({ budgetMs, elapsedMs, reserveMs, ceilingMs }) {
+  const remaining = budgetMs - reserveMs - elapsedMs;
+  return Math.min(ceilingMs, Math.floor((remaining - MODEL_BACKOFF_MS) / MODEL_ATTEMPTS));
+}
+
+/**
+ * 도구 한 번에 줄 실행 상한. **줄 수 없으면 null** — 호출부가 실행 자체를 건너뛴다.
+ *
+ * 쓰기 도구는 잘라 주지 않는다. problems.generate에 남은 3초를 주면 모델은 그대로 호출되고
+ * 과금되고, abort는 supabase-js/Vertex까지 전파되지 않아 결과만 버려진다. 심지어 그 사이
+ * insert가 끝나면 DB엔 행이 남고 budget.createdIds엔 안 잡혀 **돈은 냈는데 어느 화면에서도
+ * 안 잡히는 문제**가 된다. 통째로 못 줄 바엔 시작하지 않는 편이 싸다.
+ */
+export function toolAttemptMs({ declaredMs, remainingMs, readOnly }) {
+  if (!readOnly) return remainingMs >= declaredMs ? declaredMs : null;
+  return remainingMs >= MIN_TOOL_MS ? Math.min(declaredMs, remainingMs) : null;
+}
+
 async function withTimeout(promise, ms, label) {
   let handle;
   try {
@@ -208,6 +243,9 @@ export async function runAgent({
   let modelCalls = 0;
   let consecutiveToolErrors = 0;
   let repeats = 0;
+  // 예산이 모자라 도구를 건너뛴 횟수. 한 번은 봐준다 — 모델이 더 싼 도구로 갈아탈 수 있다.
+  // 두 번이면 적응하지 못한 것이므로 BUDGET으로 끝낸다(이유를 TOOL_ERRORS로 뭉개지 않는다).
+  let budgetSkips = 0;
   let seq = 0;
 
   const buildContents = (forcedFinalNote) => {
@@ -222,13 +260,16 @@ export async function runAgent({
     return contents;
   };
 
-  const callModel = async (forcedFinalNote) => {
+  const callModel = async (forcedFinalNote, timeoutMs) => {
     const { response, usageMetadata } = await generateWithRetry({
       ai,
       model,
       contents: buildContents(forcedFinalNote),
       sessionId: runId,
-      maxRetries: 2,
+      maxRetries: MODEL_ATTEMPTS,
+      // 남은 벽시계로 조인 시도당 상한. 안 넘기면 aiClient 기본값(90초)이 붙고,
+      // 그러면 **예산을 넘겨도 아무도 안 멈춘다** — 도구만 조여 봐야 소용없다.
+      timeoutMs,
       baseDelayMs: 1500,
       temperature: 0.2,
       maxOutputTokens,
@@ -265,15 +306,51 @@ export async function runAgent({
     history.push({ raw, observation: `[관측]\n${clip(payload)}` });
   };
 
+  /** 지금 남은 벽시계. reserve만큼은 없는 셈 친다. **음수일 수 있다** — 그게 정보다. */
+  const remainingMs = (reserve) => budgetMs - reserve - (now() - startedAt);
+
+  /**
+   * 모델 호출 한 번에 줄 **시도당** 상한.
+   *
+   * 기본값(90초)을 느슨하게 푸는 데는 쓰지 않는다 — 조이기만 한다. 남은 시간이 모자라면
+   * 음수·0이 나오고, 호출부가 그걸 보고 아예 안 부른다.
+   */
+  const modelBudgetFor = (reserve) => modelAttemptMs({
+    budgetMs,
+    elapsedMs: now() - startedAt,
+    reserveMs: reserve,
+    ceilingMs: resolveTimeoutMs(model, false),
+  });
+
+  /**
+   * 이 도구 한 번에 줄 실행 상한. 줄 수 없으면 null — 호출부가 실행을 건너뛴다.
+   *
+   * 조회 도구는 기본값 15초면 충분하지만, **모델을 부르는 도구는 그렇지 않다** —
+   * problems.generate 아래의 generateSingleType은 호출당 90초(API_TIMEOUT_MS.default)에
+   * 재시도·모델 페일오버까지 붙는다. 기본값을 그대로 씌우면 정상 생성도 매번 타임아웃이고,
+   * abort는 supabase-js까지 전파되지 않으므로 **돈은 쓰고 결과만 버린다.**
+   *
+   * 그래서 도구가 자기 상한을 선언하게 하되, 남은 예산으로 여기서 다시 조인다.
+   * 도구 하나가 요청 전체를 300초 배포 타임아웃 밖으로 밀어내면 사용자는 아무것도 못 받는다.
+   */
+  const toolBudgetFor = (tool) => toolAttemptMs({
+    declaredMs: tool.timeoutMs ?? toolTimeoutMs,
+    remainingMs: remainingMs(FINAL_RESERVE_MS),
+    readOnly: tool.readOnly,
+  });
+
   let stopReason = null;
 
   for (let i = 0; i < maxSteps; i += 1) {
-    if (now() - startedAt > budgetMs - FINAL_RESERVE_MS) { stopReason = STOP_REASONS.BUDGET; break; }
+    // 예산 판정을 "지금 시각"이 아니라 "다음 모델 호출이 예산 안에 들어가는가"로 한다.
+    // 전자는 가드를 통과한 직후의 모델 호출이 예산을 얼마든지 넘길 수 있었다.
+    const stepModelMs = modelBudgetFor(FINAL_RESERVE_MS);
+    if (stepModelMs < MIN_MODEL_MS) { stopReason = STOP_REASONS.BUDGET; break; }
 
     let raw;
     let truncated = false;
     try {
-      ({ text: raw, truncated } = await callModel());
+      ({ text: raw, truncated } = await callModel(undefined, stepModelMs));
     } catch (e) {
       // 모델 호출 자체가 죽으면 되먹일 것이 없다. 관측이 하나라도 있으면 강제 final로 살려본다.
       const message = String(e?.message ?? e).slice(0, 300);
@@ -322,7 +399,23 @@ export async function runAgent({
       continue;
     }
 
-    // ③ 동일 (도구, 인자) 반복 → 실행하지 않고 되돌린다. 두 번 반복하면 루프로 보고 종료.
+    // ③ 남은 시간이 이 도구를 감당 못 하면 실행하지 않는다. 런을 끊지는 않는다 —
+    //    모델이 지금까지의 관측으로 답을 쓰거나 더 싼 도구를 고르게 관측으로 되돌린다.
+    //
+    //    반복 검사(④)보다 **먼저** 본다. 뒤에 두면 건너뛴 호출이 signature를 먼저 먹어,
+    //    모델이 같은 도구를 다시 고를 때 "결과는 위 관측에 있습니다"라는 거짓 안내를 받고
+    //    (없는 결과다) 종료 사유도 BUDGET이 아니라 LOOP로 남는다 — 운영이 원인을 잘못 읽는다.
+    const toolMs = toolBudgetFor(tool);
+    if (toolMs === null) {
+      budgetSkips += 1;
+      const error = `남은 시간이 부족해 ${tool.name}을(를) 실행하지 않았습니다. 지금까지의 관측으로 final을 내세요.`;
+      await recordStep({ thought: envelope.thought, tool: tool.name, args: validated.args, observation: { error, budgetExhausted: true }, ok: false });
+      pushObservation(raw, { error });
+      if (budgetSkips >= MAX_BUDGET_SKIPS) { stopReason = STOP_REASONS.BUDGET; break; }
+      continue;
+    }
+
+    // ④ 동일 (도구, 인자) 반복 → 실행하지 않고 되돌린다. 두 번 반복하면 루프로 보고 종료.
     const signature = `${tool.name}:${stableStringify(validated.args)}`;
     if (seenSignatures.has(signature)) {
       repeats += 1;
@@ -334,13 +427,13 @@ export async function runAgent({
     }
     seenSignatures.add(signature);
 
-    // ④ 실제 실행. 도구 실패는 예외로 터뜨리지 않고 관측으로 내려준다.
+    // ⑤ 실제 실행. 도구 실패는 예외로 터뜨리지 않고 관측으로 내려준다.
     let observation;
     let ok = true;
     try {
       const controller = new AbortController();
       const execution = Promise.resolve().then(() => tool.handler(validated.args, { ...toolCtx, signal: controller.signal }));
-      observation = await withTimeout(execution, toolTimeoutMs, `도구 ${tool.name}`);
+      observation = await withTimeout(execution, toolMs, `도구 ${tool.name}`);
       // supabase-js는 abortSignal을 옵션으로만 받으므로 타임아웃 후 정리는 best-effort다.
       controller.abort();
       consecutiveToolErrors = 0;
@@ -371,8 +464,13 @@ export async function runAgent({
     '관측이 부족한 항목은 지어내지 말고 생략하세요.',
   ].join(' ');
 
+  // 예약해 둔 FINAL_RESERVE_MS를 여기서 쓴다. 이 호출만은 예산이 바닥나도 **반드시** 한다 —
+  // 안 하면 사용자는 이미 과금된 런에서 아무것도 못 받는다. 대신 상한을 둬서 초과폭을 유한하게
+  // 만든다(최악 MIN_MODEL_MS × MODEL_ATTEMPTS + 백오프 ≈ 31.5초). 배포 타임아웃 300초 안이다.
+  const finalModelMs = Math.max(MIN_MODEL_MS, modelBudgetFor(0));
+
   try {
-    const { text: raw, truncated } = await callModel(note);
+    const { text: raw, truncated } = await callModel(note, finalModelMs);
     const envelope = parseEnvelope(raw);
     if (envelope.ok && envelope.final !== undefined) {
       await recordStep({ thought: envelope.thought, tool: null, args: null, observation: { final: true, forced: true, stopReason }, ok: true });

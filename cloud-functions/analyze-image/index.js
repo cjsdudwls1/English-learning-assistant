@@ -41,6 +41,7 @@ import { getActiveUserKey } from './shared/userApiKeysNode.js';
 // 에이전트 루프: Edge Function 60초로는 다단계 추론이 불가능해 여기 얹는다(handleAgentRun 참조).
 import { createRun, finishRun } from './shared/agent/trace.js';
 import { runConsultantAgent } from './shared/agent/agents/consultant.js';
+import { runPlannerAgent } from './shared/agent/agents/planner.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -268,6 +269,7 @@ async function handleGenerateAll(req, res) {
 // runId를 프론트가 만들어 보내는 이유는 trace.js createRun 주석 참고.
 const AGENT_HANDLERS = {
   consultant: runConsultantAgent,
+  planner: runPlannerAgent,
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

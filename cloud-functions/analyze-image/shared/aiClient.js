@@ -20,7 +20,9 @@ function computeBackoffDelayMs(baseDelay, attempt) {
   return Math.round(rawDelay * jitter);
 }
 
-function resolveTimeoutMs(model, hasTools) {
+/** 이 모델 한 번의 호출에 기본으로 주는 **시도당** 상한. 에이전트 런타임이 남은
+ *  벽시계로 이 값을 더 조일 때 기준으로 쓴다(느슨하게 푸는 데는 쓰지 않는다). */
+export function resolveTimeoutMs(model, hasTools) {
   if (hasTools) return API_TIMEOUT_MS.withTools;
   if (model.includes('gemini-3')) return API_TIMEOUT_MS.gemini3;
   return API_TIMEOUT_MS.default;
