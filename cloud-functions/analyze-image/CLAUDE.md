@@ -7,7 +7,7 @@ Pub/Sub worker)로 구성된다.
 ## 주요 파일
 
 - `index.js` — 엔트리포인트 (publisher + worker 둘 다 이 파일에서 export)
-- `shared/splitPipeline.js` — **현행 프로덕션 경로** (SPLIT_PIPELINE, 3-호출: 구조 → 학생답 ∥ 정답)
+- `shared/splitPipeline.js` — **현행 프로덕션 경로** (SPLIT_PIPELINE, 3-호출 병렬: 구조 ∥ 학생답 ∥ 정답 — 서로의 출력을 보지 않는다)
 - `shared/simplePipeline.js` — 2스텝 경로 (SIMPLE_PIPELINE, 추출 → 채점). normalizeItem·dedupeByNumber는
   splitPipeline도 여기서 가져다 쓰므로 SPLIT 경로에서도 살아있는 코드다
 - `shared/processPage.js`, `shared/pass0.js`/`passA.js`/`passB.js`/`passC.js` — 기존 다단계 Pass 경로 (롤백용 보존)
@@ -18,7 +18,7 @@ Pub/Sub worker)로 구성된다.
 
 ## 파이프라인 선택
 
-- `SPLIT_PIPELINE` (**기본 ON, 프로덕션 가동 중**): 역할분리 3-호출(구조 → 학생답 ∥ 정답).
+- `SPLIT_PIPELINE` (**기본 ON, 프로덕션 가동 중**): 역할분리 3-호출 병렬(구조 ∥ 학생답 ∥ 정답).
   SIMPLE_PIPELINE보다 우선한다. 이미지 입력 비용 3배. 끄려면 `SPLIT_PIPELINE=0`.
 - `SIMPLE_PIPELINE` (기본 ON, SPLIT가 켜져 있으면 도달 안 함): 2스텝 단순 파이프라인
 - `SIMPLE_PIPELINE=0` + `SPLIT_PIPELINE=0`: 기존 다단계 Pass 경로로 롤백

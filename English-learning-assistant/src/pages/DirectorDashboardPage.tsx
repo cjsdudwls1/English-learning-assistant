@@ -12,6 +12,7 @@ import { useUserRole } from '../contexts/UserRoleContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
+import { withAuthLockRetry } from '../utils/authLockRetry';
 import type { AcademyHierarchy, ClassInfo, ClassMember, MonthlyStats } from '../types';
 
 export const DirectorDashboardPage: React.FC = () => {
@@ -42,16 +43,16 @@ export const DirectorDashboardPage: React.FC = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const allClasses = await fetchAllClasses();
+        const allClasses = await withAuthLockRetry(() => fetchAllClasses());
         const filteredClasses = activeAcademyId
           ? allClasses.filter(c => c.academy_id === activeAcademyId)
           : allClasses;
         // tp로 명명: t로 받으면 번역 사전 t를 섀도잉해 아래 catch의 translateError가 오동작
-        const [o, tp, h] = await Promise.all([
+        const [o, tp, h] = await withAuthLockRetry(() => Promise.all([
           fetchDirectorOverview(activeAcademyId),
           fetchTeacherPerformances(activeAcademyId),
           activeAcademyId ? fetchAcademyHierarchy(activeAcademyId) : Promise.resolve(null),
-        ]);
+        ]));
         setOverview(o);
         setClasses(filteredClasses);
         setTeachers(tp);

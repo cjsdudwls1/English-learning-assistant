@@ -21,7 +21,8 @@ export const TeacherPerformanceCard: React.FC<Props> = ({ teachers }) => {
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">{t.director.teacherPerformance}</h2>
+      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">{t.director.teacherPerformance}</h2>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">{t.director.teacherPerformanceHint}</p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

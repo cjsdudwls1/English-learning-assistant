@@ -4,10 +4,16 @@
  * 전체 이미지 분석 파이프라인을 서버에서 수행:
  * Extract → Crop → Detect → Classify → DB 저장
  *
- * 타임아웃: 600초 (10분), 런타임: Node.js 22 (ESM)
+ * 런타임: Node.js 22 (ESM)
  *
- * 요청 후 즉시 sessionId를 반환하고,
- * 나머지 처리는 백그라운드에서 계속 실행됨.
+ * ── 이 파일은 서비스 두 개를 export한다. 설정이 서로 다르다 ──────────────
+ *   analyzeImage (publisher, deploy-image.ps1)  : timeout 300s, cpu 1, **cpu-throttling ON**
+ *   analyzeWorker(worker,    deploy-worker.ps1) : timeout 540s, cpu 2, cpu-throttling OFF(+boost)
+ *
+ * 이 구분이 중요한 이유: publisher는 스로틀 상태라 **응답을 flush한 뒤의 백그라운드 작업에
+ * CPU가 할당되지 않는다.** 오래 걸리는 일은 Pub/Sub로 worker에 넘기거나(분석 파이프라인),
+ * 요청 안에서 끝내야 한다(에이전트 루프 — handleAgentRun 주석 참조).
+ * "이 함수는 600초"라고 적혀 있던 옛 주석이 정확히 이 함정이었다.
  *
  * 원본: index.ts (Edge Function b6fd71be)
  */
@@ -17,7 +23,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 import { StageError, markSessionFailed, parseModelError } from './shared/errors.js';
-import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE, SPLIT_PIPELINE } from './shared/config.js';
+import { VERTEX_PROJECT_ID, VERTEX_LOCATION, CORRECT_SOURCE, SIMPLE_PIPELINE, SPLIT_PIPELINE, isAgentEnabled } from './shared/config.js';
 import { loadTaxonomyData, buildTaxonomyLookupMaps } from './shared/taxonomy.js';
 import { preprocessImage } from './shared/imagePreprocessor.js';
 import { processPage } from './shared/processPage.js';
@@ -32,6 +38,9 @@ import { dedupeProblemItems } from './shared/dedupe.js';
 // BYOK(사용자 키): 활성 anthropic/openai 키가 있으면 해당 provider 어댑터로 분석.
 import { buildUserKeyClient } from './shared/providerClientsNode.js';
 import { getActiveUserKey } from './shared/userApiKeysNode.js';
+// 에이전트 루프: Edge Function 60초로는 다단계 추론이 불가능해 여기 얹는다(handleAgentRun 참조).
+import { createRun, finishRun } from './shared/agent/trace.js';
+import { runConsultantAgent } from './shared/agent/agents/consultant.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -237,6 +246,139 @@ async function handleGenerateAll(req, res) {
     });
 }
 
+// ─── 에이전트 실행 ──────────────────────────────────────────
+// 왜 여기인가: Edge Function은 60초 상한이라 "모델이 도구를 고르고 → 실행하고 → 결과를 보고
+// 다시 고르는" 루프가 애초에 안 들어간다. 이 함수엔 JWT 검증·userId 가드·BYOK 키 조회가
+// 이미 있어 그대로 재사용한다.
+//
+// ── 왜 fire-and-forget이 아닌가 (건드리기 전에 읽을 것) ──────────────
+// 이 서비스(publisher)는 cpu-throttling=true다 — functions deploy 기본값이고 실측도 그렇다.
+// 스로틀 상태에서는 **응답을 flush한 뒤의 백그라운드 작업에 CPU가 할당되지 않는다.** 즉
+// `res.json(...)` 뒤에 이어붙인 await 체인은 다음 요청이 같은 인스턴스에 들어올 때까지 멈춘다.
+// 그래서 루프는 요청 안에서 끝까지 돈다(요청 처리 중엔 CPU 100% 할당).
+//
+// 대신 deploy-image.ps1의 --timeout을 300s로 잡았다. timeout은 요청이 실제로 떠 있는 동안만
+// 과금돼 유휴 비용이 0이다. --no-cpu-throttling으로 푸는 쪽은 4분 워밍업 핑이 인스턴스를 상시
+// 살려두어 1vCPU 24/7 과금이 되므로 쓰지 않는다.
+//
+// 참고: 이 파일의 generate-all은 여전히 fire-and-forget인데, 그건 **검증된 패턴이라서가 아니라
+// 아직 이 문제를 안 본 코드**다. 실제 트래픽이 도는 direct-upload 경로는 Pub/Sub로 넘겨
+// analyze-worker(스로틀 해제)가 처리한다.
+//
+// runId를 프론트가 만들어 보내는 이유는 trace.js createRun 주석 참고.
+const AGENT_HANDLERS = {
+  consultant: runConsultantAgent,
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function handleAgentRun(req, res) {
+  if (!SUPABASE_ANON_KEY) {
+    res.status(500).json({ error: 'SUPABASE_ANON_KEY 환경변수가 없습니다' });
+    return;
+  }
+
+  const authHeader = req.get('authorization');
+  const jwtResult = await verifySupabaseJWT(authHeader, SUPABASE_URL, SUPABASE_ANON_KEY);
+  if (!jwtResult.valid) {
+    console.warn('[agent] JWT 검증 실패:', jwtResult.error);
+    res.status(401).json({ error: 'Unauthorized: ' + jwtResult.error });
+    return;
+  }
+
+  const body = req.body || {};
+  const { agentType, input, runId: requestedRunId } = body;
+  const userId = jwtResult.userId;
+
+  if (body.userId && body.userId !== userId) {
+    console.warn(`[agent] userId 불일치: body=${body.userId}, jwt=${userId}`);
+    res.status(403).json({ error: 'Forbidden: userId does not match token' });
+    return;
+  }
+
+  const runAgentHandler = AGENT_HANDLERS[agentType];
+  if (!runAgentHandler) {
+    res.status(400).json({ error: `지원하지 않는 agentType: ${agentType}` });
+    return;
+  }
+  // 킬 스위치. **createRun보다 먼저** 본다 — 여기서 막아야 빈 런 행도, 모델 호출도 안 생긴다.
+  // 프론트는 이 실패를 확정 실패로 보고 단발 Edge Function 경로로 떨어진다(useConsulting).
+  if (!isAgentEnabled(agentType)) {
+    console.warn(`[agent] 비활성화된 agentType 요청: ${agentType} (AGENT_DISABLED)`);
+    res.status(503).json({ error: `에이전트가 비활성화되어 있습니다: ${agentType}`, agentDisabled: true });
+    return;
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    res.status(400).json({ error: 'input 객체가 필요합니다' });
+    return;
+  }
+  // 프론트가 만든 id. UUID 형태만 받는다(임의 문자열을 그대로 PK로 밀어넣지 않는다).
+  // 남의 런 id를 찍어 보내도 unique 위반으로 409일 뿐이고, SELECT는 RLS가 user_id로 막는다.
+  if (typeof requestedRunId !== 'string' || !UUID_RE.test(requestedRunId)) {
+    res.status(400).json({ error: 'runId(UUID)가 필요합니다' });
+    return;
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  // 도구가 보는 DB는 **호출자 권한**이다. 에이전트가 "이 학생을 볼 수 있는가"를 코드로 판정하지
+  // 않고 RLS에 맡긴다 — 도구가 늘어날수록 코드 가드는 반드시 빠지는 곳이 생기지만 RLS는 안 빠진다.
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const userKey = await getActiveUserKey(supabase, userId);
+  const ai = buildAIClient(userKey);
+
+  const runId = requestedRunId;
+  try {
+    await createRun(supabase, { id: runId, userId, agentType, input });
+  } catch (e) {
+    if (e?.duplicate) {
+      // 같은 runId 재전송 = 이미 도는 런이다. 모델을 두 번 부르지 않는다(그대로 과금이다).
+      console.warn('[agent] 중복 runId 요청 무시:', { runId, agentType, userId });
+      res.status(409).json({ error: '이미 진행 중인 실행입니다', runId });
+      return;
+    }
+    console.error('[agent] 실행 기록 생성 실패:', e?.message);
+    res.status(500).json({ error: '에이전트 실행을 시작하지 못했습니다' });
+    return;
+  }
+
+  console.log(`[agent] 시작: runId=${runId}, agentType=${agentType}, userId=${userId}`);
+
+  // 루프를 요청 안에서 끝낸다(위 cpu-throttling 주석 참고).
+  // finishRun을 응답보다 **먼저** 끝내는 게 중요하다 — 프론트의 1차 완료 신호는 HTTP 응답이
+  // 아니라 agent_runs UPDATE의 Realtime이고, fetch가 끊긴 경우엔 그게 유일한 신호다.
+  let outcome;
+  try {
+    outcome = await runAgentHandler({ ai, supabase, userClient, runId, userId, input });
+  } catch (err) {
+    console.error('[agent] 실행 오류:', err?.message, { runId, agentType, userId });
+    await finishRun(supabase, runId, {
+      status: 'failed',
+      stopReason: err?.stopReason ?? null,
+      error: err?.message ?? String(err),
+      totalTokens: err?.totalTokens ?? 0,
+      modelCalls: err?.modelCalls ?? 0,
+    });
+    res.status(500).json({ error: err?.message ?? '에이전트 실행에 실패했습니다', runId });
+    return;
+  }
+
+  await finishRun(supabase, runId, {
+    status: 'completed',
+    stopReason: outcome.stopReason,
+    result: outcome.result,
+    totalTokens: outcome.totalTokens,
+    modelCalls: outcome.modelCalls,
+  });
+
+  console.log(`[agent] 완료: runId=${runId}, stopReason=${outcome.stopReason}, tokens=${outcome.totalTokens}, calls=${outcome.modelCalls}`);
+  res.status(200).json({ success: true, runId, agentType, stopReason: outcome.stopReason });
+}
+
 // ─── Vertex AI 인증 사전 검증 ───────────────────────────────
 // 원본: sessionManager.ts#validateVertexAuth
 
@@ -296,7 +438,7 @@ async function runAnalysisPipeline(supabase, ai, sessionId, images, userLanguage
   if (SPLIT_PIPELINE || SIMPLE_PIPELINE) {
     // 크롭 없는 통짜 이미지 경로. 페이지 분리/크롭 없이 모델이 전체를 보고 처리하므로
     // 여러 페이지에 걸친 지문도 자연히 병합된다. 두 변형이 있다:
-    //  - SPLIT_PIPELINE=1: 역할분리 3-호출(구조 → 학생답 ∥ 정답). 이미지 입력 3배.
+    //  - SPLIT_PIPELINE=1: 역할분리 3-호출 병렬(구조 ∥ 학생답 ∥ 정답). 이미지 입력 3배.
     //  - 기본(SIMPLE_PIPELINE): 2-스텝(이미지 1회 자유추출 → 텍스트 구조화).
     // env SIMPLE_PIPELINE=0 이고 SPLIT_PIPELINE도 아니면 아래 4-Pass 경로.
     // 서버 측 전처리(긴 변 2048px + JPEG 92%, EXIF 정립)를 모든 이미지에 적용.
@@ -421,6 +563,11 @@ functions.http('analyzeImage', async (req, res) => {
 
   if (req.body?.mode === 'generate-all') {
     await handleGenerateAll(req, res);
+    return;
+  }
+
+  if (req.body?.mode === 'agent') {
+    await handleAgentRun(req, res);
     return;
   }
 

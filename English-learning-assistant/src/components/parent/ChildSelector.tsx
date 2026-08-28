@@ -36,6 +36,7 @@ export const ChildSelector: React.FC<Props> = ({ children, selectedId, onSelect,
   };
 
   const handleUnlink = async (childId: string) => {
+    if (!window.confirm(language === 'ko' ? '이 자녀 연결을 해제할까요?' : 'Unlink this child?')) return;
     setError(null);
     try {
       await unlinkChild(childId);

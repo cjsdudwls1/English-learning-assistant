@@ -130,3 +130,16 @@ export {
   deleteConsultingReport,
   type ConsultingReportRow,
 } from './db/consulting';
+
+// Agent runs
+export {
+  fetchAgentRun,
+  fetchAgentSteps,
+  startAgentRun,
+  AgentRequestError,
+  type AgentType,
+  type AgentRunStatus,
+  type AgentStopReason,
+  type AgentRunRow,
+  type AgentStepRow,
+} from './db/agentRuns';

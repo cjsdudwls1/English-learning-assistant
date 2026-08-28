@@ -3,31 +3,8 @@ import { fetchMonthlySolvingStats, fetchDailySolvingStats } from '../services/db
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
+import { withAuthLockRetry, isAuthLockError } from '../utils/authLockRetry';
 import type { MonthlyStats, DailyStats } from '../types';
-
-function isAuthLockError(e: unknown): boolean {
-  const msg = e instanceof Error
-    ? e.message
-    : (e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e));
-  return msg.includes('Lock broken') || msg.includes('steal');
-}
-
-async function withAuthLockRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 200): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastErr = e;
-      if (isAuthLockError(e) && i < attempts - 1) {
-        await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw lastErr;
-}
 
 export function useSolvingStats() {
   const { language } = useLanguage();
