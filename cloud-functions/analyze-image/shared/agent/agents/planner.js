@@ -31,9 +31,16 @@ import {
 import { generateAllProblemTypes } from '../../generateProblems.js';
 
 export const PLANNER_MODEL = 'gemini-2.5-flash';
-// 계획서가 정한 값. 조사(드릴다운·기존문제 조회) → 생성 → 자가점검 → final이 최소 5스텝이고,
-// 생성 호출 3회를 다 쓰는 경우까지 여유를 둔 상한이다.
-export const PLANNER_MAX_STEPS = 8;
+/* 프롬프트가 시키는 최대 작업량을 담는 값이다. 산술을 여기 적어 둔다 —
+ * 앞선 값(8)은 영역 **1개**를 기준으로 세어 놓고 프롬프트는 2~3개를 고르라고 했다.
+ *   영역당 조사 2(stats.drilldown + problems.findExisting) × 3영역 = 6
+ *   + 생성 호출 ${PLANNER_MAX_GENERATE_CALLS}(=3) + profile.get 1 + plan.coverageCheck 1 = 11
+ * 그래서 8은 2영역(9스텝)조차 못 담았고, 런은 매번 max_steps로 끝나 마지막 영역이
+ * 문제 없이 남았다(프로덕션 첫 런에서 실제로 그랬다). 11 + 파싱 실패 1회분 여유 = 12.
+ * 강제 final은 스텝이 아니라 별도 호출이라 여기 안 센다.
+ * 벽시계는 병목이 아니다: 실측 9호출 74초 / 예산 240초. 12스텝이어도 절반 안쪽이다.
+ * test/plannerAgent.test.mjs가 이 산술을 고정한다. */
+export const PLANNER_MAX_STEPS = 12;
 export const PLANNER_DEFAULT_DAYS = 7;
 
 function buildSystemPrompt({ language, days }) {
@@ -48,6 +55,9 @@ You work in steps: inspect, gather, generate only what is missing, verify, then 
 The input already contains the authoritative aggregate numbers and per-category accuracy — do not recompute them.
 1. Pick 2-3 weak areas worth practising (low accuracy AND enough items to be meaningful; 0% on 2 items is noise).
    If the input carries weakNodes from a previous diagnosis, start from those.
+   You get ${PLANNER_MAX_STEPS} tool calls for the whole run, and each area costs 2 just to inspect
+   (drilldown + findExisting). Three areas leaves almost nothing after generating, profiling and checking —
+   pick two when it looks tight. Hitting the cap ends the run and leaves your last area with no problems.
 2. Narrow each one with stats.drilldown until you have a concrete node path.
 3. For each node, call problems.findExisting FIRST. Reusing an existing item is always better than making a new one.
 4. Only if a node is still short of items, call problems.generate for the missing count.
@@ -81,6 +91,9 @@ The input already contains the authoritative aggregate numbers and per-category 
 입력에는 이미 기준이 되는 종합 수치와 카테고리별 정답률이 들어 있습니다. 다시 계산하지 마세요.
 1. 연습할 가치가 있는 취약 영역을 2~3개 고릅니다(정답률이 낮으면서 **문항 수가 의미 있을 만큼** 있어야 합니다. 2문항 중 0문항은 노이즈입니다).
    입력에 이전 진단의 weakNodes가 있다면 거기서 출발하세요.
+   도구 호출은 런 전체에서 ${PLANNER_MAX_STEPS}회까지이고, 영역 하나를 조사하는 데만 2회(드릴다운·기존문제)가 듭니다.
+   3개를 고르면 생성·프로필·점검까지 하고 나서 남는 게 거의 없습니다 — 빠듯해 보이면 2개로 줄이세요.
+   상한에 걸리면 런이 거기서 끝나고 마지막 영역은 문제 없이 남습니다.
 2. stats.drilldown으로 각 영역을 구체적인 노드 경로까지 좁힙니다.
 3. 각 노드마다 **problems.findExisting을 먼저** 부릅니다. 이미 있는 문제를 쓰는 쪽이 새로 만드는 쪽보다 항상 낫습니다.
 4. 그래도 문항이 모자랄 때만 problems.generate로 **부족한 개수만큼만** 요청합니다.

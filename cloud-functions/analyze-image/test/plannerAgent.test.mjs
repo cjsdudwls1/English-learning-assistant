@@ -12,7 +12,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runPlannerAgent, PLANNER_DEFAULT_DAYS } from '../shared/agent/agents/planner.js';
+import { runPlannerAgent, PLANNER_DEFAULT_DAYS, PLANNER_MAX_STEPS } from '../shared/agent/agents/planner.js';
+import { PLANNER_MAX_GENERATE_CALLS } from '../shared/agent/tools/plannerTools.js';
 
 const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
@@ -166,4 +167,49 @@ test('생성이 없으면 최종 problemIds는 계획에 쓰인 것뿐이다', a
 
   assert.deepEqual(outcome.result.problemIds, [uuid(7)]);
   assert.equal(outcome.result.generatedCount, 0);
+});
+
+
+/* ── 스텝 상한이 프롬프트가 시키는 일을 감당하는가 ──────────────────────────
+ * 위 테스트들은 "런이 끝난 뒤 출력이 온전한가"를 본다. 여기서 보는 건 **런이 끝까지 갈 수
+ * 있는가**다. 이 둘은 별개이고, 어긋났을 때 증상이 없다는 점이 이 계약의 이유다.
+ *
+ * 프롬프트는 취약 영역을 2~3개 고르라 하고, 영역마다 드릴다운·기존문제 조회를 시킨다.
+ * 그 산술이 상한을 넘으면 런은 매번 max_steps로 끝나고 마지막 영역은 문제 없이 남는다.
+ * 실제로 그랬다 — 상한이 8이던 시절 프로덕션 첫 런이 정확히 그 모양이었다
+ * (stopReason=max_steps, 9호출, 3영역 중 2영역만 문제 확보, 3일차 "배정된 문제 없음").
+ * 에러가 아니라 **강제 final로 조용히 반쪽짜리 계획이 나가는** 것이라 로그도 초록이다.
+ * 프롬프트를 늘리거나 상한을 내리면 여기서 잡는다. */
+test('스텝 상한이 프롬프트가 시키는 최대 작업량을 감당한다', () => {
+  const MAX_AREAS = 3;                     // 프롬프트: "취약 영역을 2~3개 고릅니다"
+  const INSPECT_PER_AREA = 2;              // stats.drilldown + problems.findExisting
+  const ONE_OFF = 2;                       // profile.get + plan.coverageCheck
+  // 강제 final은 스텝 루프 밖의 별도 호출이라 세지 않는다.
+  const needed = MAX_AREAS * INSPECT_PER_AREA + PLANNER_MAX_GENERATE_CALLS + ONE_OFF;
+
+  assert.ok(
+    PLANNER_MAX_STEPS >= needed,
+    `스텝 상한 ${PLANNER_MAX_STEPS}이 프롬프트가 시키는 ${needed}스텝을 못 담는다 — `
+    + '런이 max_steps로 끊겨 마지막 영역은 문제 없이 남는다(에러는 안 난다).',
+  );
+});
+
+test('프롬프트가 모델에게 스텝 예산을 알려준다', async () => {
+  // 런타임은 "남은 스텝"을 관측에 실어 주지 않는다(runtime.js pushObservation).
+  // 그래서 상한을 아는 통로는 프롬프트뿐이고, 모르면 모델은 영역 수를 조절할 수 없다.
+  const ai = mockAi([{ thought: 't', final: { summary: 's', weeklyPlan: [] } }]);
+  await runPlannerAgent({
+    ai,
+    supabase: mockTrace(),
+    userClient: mockTaxonomy([]),
+    runId: uuid(900),
+    userId: uuid(901),
+    input: { language: 'ko', stats: {}, byCategory: [] },
+  });
+
+  const prompt = JSON.stringify(ai.calls[0]);
+  assert.ok(
+    prompt.includes(String(PLANNER_MAX_STEPS)),
+    '시스템 프롬프트에 스텝 상한이 없다 — 모델이 예산을 모른 채 영역을 고르게 된다',
+  );
 });
