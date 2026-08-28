@@ -397,6 +397,48 @@ test('남은 시간이 선언값에 못 미치면 쓰기 도구를 실행하지 
   assert.deepEqual(outcome.result, { summary: 's' });
 });
 
+test('예산으로 건너뛴 도구는 반복 호출로 오인되지 않는다', async () => {
+  // 건너뛰기를 반복 검사 뒤에 두면, 건너뛴 호출이 signature를 먼저 먹는다. 그러면 모델이
+  // 같은 도구를 다시 골랐을 때 "결과는 위 관측에 있습니다"라는 **거짓 안내**를 받고(그런
+  // 결과는 없다), 종료 사유도 BUDGET이 아니라 LOOP로 남아 운영이 원인을 잘못 읽는다.
+  let called = 0;
+  const generate = defineTool({
+    name: 'problems.generate',
+    description: '모델을 불러 문제를 만든다(돈이 든다)',
+    readOnly: false,
+    timeoutMs: 120_000,
+    handler: async () => { called += 1; return { generated: 10 }; },
+  });
+
+  const clock = fakeClock();
+  const outcome = await runAgent(base({
+    // 같은 도구를 같은 인자로 두 번 고른다. 둘 다 예산 때문에 못 돈다.
+    ai: mockAi([action('problems.generate', {}), action('problems.generate', {}), final({ summary: 's' })], (n) => {
+      if (n === 1) clock.advance(100_000);
+    }),
+    supabase: mockTraceClient(),
+    tools: [generate],
+    allowWrites: true,
+    toolCtx: { db: {}, userId: 'u1' },
+    budgetMs: 45_000 + 195_000,
+    now: clock.now,
+  }));
+
+  assert.equal(called, 0);
+
+  const skips = outcome.steps.filter((s) => s.observation?.budgetExhausted === true);
+  assert.equal(skips.length, 2, '두 번째 호출이 예산이 아니라 반복으로 처리됐다');
+  for (const s of skips) {
+    assert.match(s.observation.error, /남은 시간이 부족해/);
+    assert.doesNotMatch(s.observation.error, /결과는 위 관측에 있습니다/);
+  }
+
+  // 왜 멈췄는지가 stop_reason에 정직하게 남아야 한다 — 루프가 아니라 예산이다.
+  assert.equal(outcome.stopReason, STOP_REASONS.BUDGET);
+  // 그래도 이미 과금된 런이 빈손으로 끝나지는 않는다.
+  assert.deepEqual(outcome.result, { summary: 's' });
+});
+
 test('다음 모델 호출이 예산에 안 들어가면 루프를 시작하지 않고 강제 final로 간다', async () => {
   // 예전 가드는 "지금 시각"만 봤다. 통과 직후의 모델 호출이 시도당 90초 × 2시도로
   // 예산을 얼마든지 넘겼고, 그 초과분은 배포 타임아웃(300초)을 밀어냈다.

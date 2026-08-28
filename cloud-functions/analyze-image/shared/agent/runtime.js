@@ -41,6 +41,7 @@ export const MIN_MODEL_MS = 15_000;
 export const MIN_TOOL_MS = 2_000;
 const MAX_CONSECUTIVE_TOOL_ERRORS = 3;
 const MAX_REPEATS = 2;
+const MAX_BUDGET_SKIPS = 2;
 // Gemini 2.5의 thinking 토큰은 이 예산을 출력과 **나눠 쓴다**. 8192로는 실측에서 3355자짜리
 // 한국어 보고서가 잘려 나갔다(프로덕션 실행 d2951b3a, stop_reason=max_steps).
 // 잘린 JSON은 그냥 깨진 JSON이라 파서가 "구문 오류"로 되먹였고, 모델은 같은 길이를 다시 써
@@ -242,6 +243,9 @@ export async function runAgent({
   let modelCalls = 0;
   let consecutiveToolErrors = 0;
   let repeats = 0;
+  // 예산이 모자라 도구를 건너뛴 횟수. 한 번은 봐준다 — 모델이 더 싼 도구로 갈아탈 수 있다.
+  // 두 번이면 적응하지 못한 것이므로 BUDGET으로 끝낸다(이유를 TOOL_ERRORS로 뭉개지 않는다).
+  let budgetSkips = 0;
   let seq = 0;
 
   const buildContents = (forcedFinalNote) => {
@@ -395,7 +399,23 @@ export async function runAgent({
       continue;
     }
 
-    // ③ 동일 (도구, 인자) 반복 → 실행하지 않고 되돌린다. 두 번 반복하면 루프로 보고 종료.
+    // ③ 남은 시간이 이 도구를 감당 못 하면 실행하지 않는다. 런을 끊지는 않는다 —
+    //    모델이 지금까지의 관측으로 답을 쓰거나 더 싼 도구를 고르게 관측으로 되돌린다.
+    //
+    //    반복 검사(④)보다 **먼저** 본다. 뒤에 두면 건너뛴 호출이 signature를 먼저 먹어,
+    //    모델이 같은 도구를 다시 고를 때 "결과는 위 관측에 있습니다"라는 거짓 안내를 받고
+    //    (없는 결과다) 종료 사유도 BUDGET이 아니라 LOOP로 남는다 — 운영이 원인을 잘못 읽는다.
+    const toolMs = toolBudgetFor(tool);
+    if (toolMs === null) {
+      budgetSkips += 1;
+      const error = `남은 시간이 부족해 ${tool.name}을(를) 실행하지 않았습니다. 지금까지의 관측으로 final을 내세요.`;
+      await recordStep({ thought: envelope.thought, tool: tool.name, args: validated.args, observation: { error, budgetExhausted: true }, ok: false });
+      pushObservation(raw, { error });
+      if (budgetSkips >= MAX_BUDGET_SKIPS) { stopReason = STOP_REASONS.BUDGET; break; }
+      continue;
+    }
+
+    // ④ 동일 (도구, 인자) 반복 → 실행하지 않고 되돌린다. 두 번 반복하면 루프로 보고 종료.
     const signature = `${tool.name}:${stableStringify(validated.args)}`;
     if (seenSignatures.has(signature)) {
       repeats += 1;
@@ -406,18 +426,6 @@ export async function runAgent({
       continue;
     }
     seenSignatures.add(signature);
-
-    // ④ 남은 시간이 이 도구를 감당 못 하면 실행하지 않는다. 런을 끊지는 않는다 —
-    //    모델이 지금까지의 관측으로 답을 쓰거나 더 싼 도구를 고르게 관측으로 되돌린다.
-    const toolMs = toolBudgetFor(tool);
-    if (toolMs === null) {
-      consecutiveToolErrors += 1;
-      const error = `남은 시간이 부족해 ${tool.name}을(를) 실행하지 않았습니다. 지금까지의 관측으로 final을 내세요.`;
-      await recordStep({ thought: envelope.thought, tool: tool.name, args: validated.args, observation: { error, budgetExhausted: true }, ok: false });
-      pushObservation(raw, { error });
-      if (consecutiveToolErrors >= MAX_CONSECUTIVE_TOOL_ERRORS) { stopReason = STOP_REASONS.TOOL_ERRORS; break; }
-      continue;
-    }
 
     // ⑤ 실제 실행. 도구 실패는 예외로 터뜨리지 않고 관측으로 내려준다.
     let observation;
