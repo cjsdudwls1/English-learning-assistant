@@ -532,6 +532,7 @@ const ko = {
 
   // 교사 (teacher)
   teacher: {
+    role: '역할',
     statsLoadFailed: '통계를 불러오는 데 실패했습니다.',
     loadingStudentStats: '학생 통계를 불러오는 중...',
     student: '학생',
@@ -1332,6 +1333,7 @@ const en: Translations = {
     unnamedClass: '(Unnamed)',
   },
   teacher: {
+    role: 'Role',
     statsLoadFailed: "Couldn't load statistics.",
     loadingStudentStats: 'Loading student statistics...',
     student: 'Student',

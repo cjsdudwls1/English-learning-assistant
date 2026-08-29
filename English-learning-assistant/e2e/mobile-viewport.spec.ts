@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { accounts, auditPages, login, password, waitForRenderSettled, type Role } from './helpers';
+import { accounts, auditRoutes, login, password, resolveAuditPath, waitForRenderSettled, type AuditRoute, type Role } from './helpers';
 
 // 모바일 뷰포트 레이아웃 점검 — 가로 오버플로(콘텐츠 잘림/가로 스크롤) 검출.
 // global.css가 768px 이하에서 body{overflow-x:hidden}을 걸어 페이지 레벨 스크롤은
@@ -13,6 +13,11 @@ const VIEWPORTS = [
 
 // 뷰포트 가로 범위를 벗어난 가시 요소를 찾는다.
 // overflow-x가 visible이 아닌 조상(스크롤 컨테이너/클리핑) 안에 있으면 의도된 패턴으로 허용.
+//
+// ※ 이 면제가 만든 사각지대가 실제로 사고를 냈다: overflow-hidden 카드 안에서 긴 '-----'가
+//    잘려 나가도 페이지는 가로 스크롤되지 않으므로 이 검사는 초록이었다(2026-08-30, 사용자가
+//    폰에서 먼저 발견). 그 케이스는 mobile-ergonomics.spec.ts의 [클리핑] 검출기가 잡는다 —
+//    조상을 면제하는 대신 클리핑 컨테이너 자체의 scrollWidth를 잰다. 여기 로직은 그대로 둔다.
 async function findOverflows(page: Page, path: string) {
   await page.goto(path);
   await waitForRenderSettled(page);
@@ -57,14 +62,16 @@ for (const viewport of VIEWPORTS) {
       expect(offenders, offenders.join('\n')).toEqual([]);
     });
 
-    for (const [role, pages] of Object.entries(auditPages) as Array<[Role, readonly string[]]>) {
+    for (const [role, routes] of Object.entries(auditRoutes) as Array<[Role, readonly AuditRoute[]]>) {
       test.describe(role, () => {
         test.skip(!password, 'E2E_PASSWORD 환경변수가 필요합니다 (QA 시드 계정 비밀번호)');
 
-        for (const path of pages) {
-          test(`${role}: ${path}`, async ({ page }) => {
+        for (const route of routes) {
+          test(`${role}: ${route.label}`, async ({ page }) => {
             await login(page, accounts[role]);
-            const offenders = await findOverflows(page, path);
+            const path = await resolveAuditPath(page, route);
+            test.skip(!path, `시드에 데이터가 없어 ${route.label}을(를) 열 수 없습니다`);
+            const offenders = await findOverflows(page, path!);
             expect(offenders, offenders.join('\n')).toEqual([]);
           });
         }

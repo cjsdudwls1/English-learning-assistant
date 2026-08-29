@@ -178,9 +178,13 @@ export const AssignmentSolvePage: React.FC = () => {
               </button>
             </div>
           )}
+          {/* 이전/다음은 화면 좌우 끝에 붙는다. 탭 타깃 확대에 쓰던 `-mx-2 px-2`는
+              여기선 쓸 수 없다 — .page-body가 overflow-x:hidden이라 넘친 8px이
+              그대로 잘려 나가고(오른쪽), 왼쪽은 아예 눌리지 않았다.
+              세로(-my-2.5 py-2.5)만 남겨 40px 높이는 그대로 확보한다. */}
           <div className="flex justify-between">
-            <button onClick={() => { setCurrentIdx((i) => Math.max(0, i - 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === 0} className="-mx-2 -my-2.5 inline-flex items-center px-2 py-2.5 text-sm text-slate-500 hover:underline disabled:opacity-30">&larr; {t.assignments.previous}</button>
-            <button onClick={() => { setCurrentIdx((i) => Math.min(problems.length - 1, i + 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === problems.length - 1} className="-mx-2 -my-2.5 inline-flex items-center px-2 py-2.5 text-sm text-slate-500 hover:underline disabled:opacity-30">{t.assignments.next} &rarr;</button>
+            <button onClick={() => { setCurrentIdx((i) => Math.max(0, i - 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === 0} className="-my-2.5 inline-flex items-center py-2.5 text-sm text-slate-500 hover:underline disabled:opacity-30">&larr; {t.assignments.previous}</button>
+            <button onClick={() => { setCurrentIdx((i) => Math.min(problems.length - 1, i + 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === problems.length - 1} className="-my-2.5 inline-flex items-center py-2.5 text-sm text-slate-500 hover:underline disabled:opacity-30">{t.assignments.next} &rarr;</button>
           </div>
         </>
       ) : null}

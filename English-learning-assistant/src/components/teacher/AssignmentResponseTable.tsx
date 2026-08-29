@@ -147,7 +147,7 @@ export const AssignmentResponseTable: React.FC<Props> = ({ problems, responses, 
                                 )}
                               </div>
                               {ai.suggestion.feedback && (
-                                <p className="mt-1 whitespace-pre-wrap">{ai.suggestion.feedback}</p>
+                                <p className="mt-1 whitespace-pre-wrap break-words">{ai.suggestion.feedback}</p>
                               )}
                             </div>
                           )}
