@@ -248,6 +248,7 @@ const ko = {
     saved: '프로필이 성공적으로 저장되었습니다.',
     loadError: '프로필을 불러오는데 실패했습니다.',
     saveError: '프로필 저장 중 오류가 발생했습니다.',
+    roleAdminOnly: '선생님·학원장 권한은 스스로 지정할 수 없습니다. 관리자에게 요청하세요.',
     // 학년 표시 라벨 (값은 DB와 결합되어 한글 유지 — 표시만 번역)
     gradeElementary1: '초등학교 1학년',
     gradeElementary2: '초등학교 2학년',
@@ -1084,6 +1085,7 @@ const en: Translations = {
     saved: 'Profile saved.',
     loadError: "Couldn't load your profile.",
     saveError: "Couldn't save your profile.",
+    roleAdminOnly: "Teacher and Director roles cannot be self-assigned. Please ask an administrator.",
     gradeElementary1: 'Elementary Grade 1',
     gradeElementary2: 'Elementary Grade 2',
     gradeElementary3: 'Elementary Grade 3',
