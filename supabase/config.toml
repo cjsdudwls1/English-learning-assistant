@@ -30,7 +30,12 @@ port = 54322
 # Port used by db diff command to initialize the shadow database.
 shadow_port = 54320
 # Maximum amount of time to wait for health check when starting the local database.
-health_timeout = "2m"
+# 주석 처리 이유: package-lock 이 고정한 CLI v2.67.1 은 이 키를 모른다
+#   → `failed to parse config: 'db' has invalid keys: health_timeout` 으로
+#   supabase 명령이 **전부** 막힌다(migration list / db push 포함).
+# 이 값은 `supabase start` 로컬 DB 헬스체크 대기시간일 뿐이라 원격 작업과 무관하고,
+# 빼도 기본값으로 동작한다. 최신 CLI 로 올리면 그때 되살리면 된다.
+# health_timeout = "2m"
 # The database major version to use. This has to be the same as your remote database's. Run `SHOW
 # server_version;` on the remote database to check.
 major_version = 17
