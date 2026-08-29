@@ -27,6 +27,18 @@ export const ProfilePage: React.FC = () => {
   const [grade, setGrade] = useState<string>('');
   const [profileLanguage, setProfileLanguage] = useState<string>('');
   const [country, setCountry] = useState<string>('');
+  // 저장돼 있는 역할과 프로필 행 존재 여부. 역할 버튼의 활성 여부를 DB 트리거
+  // trg_profiles_guard_role_escalation(20260829020000)과 정확히 일치시키기 위한 것이다.
+  // 이 둘이 어긋나면 "눌리는데 저장하면 반드시 실패하는 버튼"이 남는다.
+  const [savedRole, setSavedRole] = useState<string>('');
+  const [hasProfile, setHasProfile] = useState(false);
+
+  // 트리거 규칙 그대로:
+  //  - UPDATE 는 역할이 그대로이거나 student/parent 로 가는 경우만 통과 → 이미 그 역할일 때만 켠다.
+  //  - INSERT(프로필 행이 아직 없는 계정)는 director 만 막고 teacher 는 통과시킨다.
+  //    가입 화면이 '선생님'을 제공하므로(LoginButton) 그 경로를 여기서 더 좁히지 않는다.
+  const canPickTeacher = savedRole === 'teacher' || !hasProfile;
+  const canPickDirector = savedRole === 'director';
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -46,6 +58,8 @@ export const ProfilePage: React.FC = () => {
         }
 
         if (profileData) {
+          setHasProfile(true);
+          setSavedRole(profileData.role || '');
           setName(profileData.name || '');
           setEmail(profileData.email || '');
           setRole(profileData.role || 'student');
@@ -248,9 +262,12 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setRole('teacher')}
+              disabled={!canPickTeacher}
               className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${role === 'teacher'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  : canPickTeacher
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                 }`}
             >
               {language === 'ko' ? '선생님' : 'Teacher'}
@@ -258,14 +275,22 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setRole('director')}
+              disabled={!canPickDirector}
               className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${role === 'director'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                  : canPickDirector
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                 }`}
             >
               {language === 'ko' ? '학원장' : 'Director'}
             </button>
           </div>
+          {(!canPickTeacher || !canPickDirector) && (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {t.profile.roleAdminOnly}
+            </p>
+          )}
         </div>
 
         <div>
