@@ -117,6 +117,14 @@ export function usePlanner({
         days: PLAN_DAYS,
       });
 
+      // 컨설턴트와 달리 플래너엔 단발 폴백이 없다. 그러니 모양이 깨졌으면 빈 모달을 띄우는 대신
+      // 실패로 확정해 사용자에게 보여 준다. 조용한 빈 화면이 최악이다(useConsulting 주석 참고).
+      if (!outcome.result?.weeklyPlan?.length) {
+        throw new Error(language === 'ko'
+          ? '에이전트가 학습 플랜 없이 끝났습니다.'
+          : 'The agent finished without a study plan.');
+      }
+
       setPlan(outcome.result);
       setShowPlanModal(true);
     } catch (e) {
