@@ -354,7 +354,7 @@ const App: React.FC = () => {
           문구는 t.common.loading('불러오는 중...'/'Loading...')을 그대로 쓴다 —
           e2e의 waitForRenderSettled가 이 문자열을 로딩 신호로 보고 대기하므로,
           다른 문구를 쓰면 청크 수신 중을 '렌더 완료'로 오독한다. */}
-      <Suspense fallback={<div className="py-16 text-center text-slate-500 dark:text-slate-400">{t.common.loading}</div>}>
+      <Suspense fallback={<div className="py-6 sm:py-16 text-center text-slate-500 dark:text-slate-400">{t.common.loading}</div>}>
       <Routes>
         <Route path="/" element={mainPageElement} />
         <Route path="/upload" element={mainPageElement} />
@@ -391,7 +391,7 @@ const App: React.FC = () => {
         <Route path="*" element={
           <AuthGate>
             <PageLayout>
-              <div className="text-center py-10">
+              <div className="text-center py-6 sm:py-10">
                 <a href="/upload" className="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-800 dark:hover:text-indigo-300">
                   {t.errors.goToUpload}
                 </a>

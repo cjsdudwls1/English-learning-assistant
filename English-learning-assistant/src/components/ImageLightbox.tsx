@@ -43,12 +43,13 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ imageUrl, alt = ''
         &times;
       </button>
 
-      {/* 이미지 */}
+      {/* 높이는 .lightbox-image(app.css)가 잡는다 — 모바일 80svh / 데스크톱 90svh.
+          인라인 style로는 미디어쿼리를 쓸 수 없어 CSS로 옮겼다. 근거는 그쪽 주석 참조. */}
       <img
         src={imageUrl}
         alt={alt}
         onClick={(e) => e.stopPropagation()}
-        className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+        className="lightbox-image max-w-[94vw] sm:max-w-[90vw] object-contain rounded-lg shadow-2xl"
         style={{ userSelect: 'none' }}
       />
     </div>

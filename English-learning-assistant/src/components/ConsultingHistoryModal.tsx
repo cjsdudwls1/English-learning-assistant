@@ -70,29 +70,29 @@ export const ConsultingHistoryModal: React.FC<ConsultingHistoryModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col">
-          <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700">
-            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-none sm:rounded-lg shadow-xl max-w-2xl w-full h-full sm:h-auto max-h-[100dvh] sm:max-h-[85vh] flex flex-col">
+          <div className="shrink-0 flex items-center justify-between gap-2 p-3 sm:p-5 border-b border-slate-200 dark:border-slate-700">
+            <h3 className="min-w-0 break-words text-base sm:text-xl font-bold text-slate-800 dark:text-slate-200">
               {t.stats.consultingHistoryTitle}
             </h3>
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-sm bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+              className="relative shrink-0 px-3 py-1.5 text-sm bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors before:absolute before:content-[''] before:-inset-x-1 before:-inset-y-1"
             >
               {t.common.close}
             </button>
           </div>
 
-          <div className="p-5 overflow-y-auto space-y-2">
+          <div className="flex-1 p-3 sm:p-5 overflow-y-auto space-y-2">
             {loading && (
-              <p className="text-center text-slate-500 dark:text-slate-400 py-6">{t.stats.consultingHistoryLoading}</p>
+              <p className="text-center text-slate-500 dark:text-slate-400 py-4 sm:py-6">{t.stats.consultingHistoryLoading}</p>
             )}
             {!loading && error && (
-              <p className="text-center text-red-600 dark:text-red-400 py-6">{error}</p>
+              <p className="text-center text-red-600 dark:text-red-400 py-4 sm:py-6">{error}</p>
             )}
             {!loading && !error && reports.length === 0 && (
-              <p className="text-center text-slate-500 dark:text-slate-400 py-6">{t.stats.consultingHistoryEmpty}</p>
+              <p className="text-center text-slate-500 dark:text-slate-400 py-4 sm:py-6">{t.stats.consultingHistoryEmpty}</p>
             )}
             {!loading && !error && reports.map((r) => {
               const total = r.stats?.total ?? 0;
@@ -104,7 +104,7 @@ export const ConsultingHistoryModal: React.FC<ConsultingHistoryModalProps> = ({
                   key={r.id}
                   className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-2 sm:gap-3">
                     <button
                       onClick={() => setSelected(r)}
                       className="flex-1 text-left min-w-0"
@@ -128,13 +128,13 @@ export const ConsultingHistoryModal: React.FC<ConsultingHistoryModalProps> = ({
                           <button
                             onClick={() => handleDelete(r.id)}
                             disabled={deletingId === r.id}
-                            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 transition-colors"
+                            className="relative px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 transition-colors before:absolute before:content-[''] before:inset-x-0 before:-inset-y-2"
                           >
                             {t.common.confirm}
                           </button>
                           <button
                             onClick={() => setConfirmDeleteId(null)}
-                            className="px-2 py-1 text-xs bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors"
+                            className="relative px-2 py-1 text-xs bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors before:absolute before:content-[''] before:inset-x-0 before:-inset-y-2"
                           >
                             {t.common.cancel}
                           </button>
@@ -143,7 +143,7 @@ export const ConsultingHistoryModal: React.FC<ConsultingHistoryModalProps> = ({
                         <button
                           onClick={() => setConfirmDeleteId(r.id)}
                           title={t.common.delete}
-                          className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                          className="flex items-center justify-center p-2.5 -m-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                         >
                           🗑️
                         </button>

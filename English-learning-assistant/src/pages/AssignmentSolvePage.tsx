@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { fetchAssignmentProblems, submitAssignmentResponse, fetchAssignmentResponses, fetchAssignmentById } from '../services/db';
+import { fetchAssignmentProblems, submitAssignmentResponse, fetchMyAssignmentResponses, fetchAssignmentById } from '../services/db';
 import { AnswerInput, checkAnswer } from '../components/assignment/AnswerInput';
 import { AssignmentReviewItem } from '../components/assignment/AssignmentReviewItem';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -34,7 +34,7 @@ export const AssignmentSolvePage: React.FC = () => {
     const load = async () => {
       const [probs, resps, asgn] = await Promise.all([
         fetchAssignmentProblems(assignmentId),
-        fetchAssignmentResponses(assignmentId),
+        fetchMyAssignmentResponses(assignmentId),
         fetchAssignmentById(assignmentId),
       ]);
       setProblems(probs);
@@ -79,32 +79,34 @@ export const AssignmentSolvePage: React.FC = () => {
         student_id: '', answer: selectedAnswer, is_correct: isCorrect,
         time_spent_seconds: timeSpent, submitted_at: new Date().toISOString(),
       }]);
-      setCurrentIdx((i) => Math.min(i + 1, problems.length));
+      setCurrentIdx((i) => Math.min(i + 1, problems.length - 1));
       setSelectedAnswer('');
       setStartTime(Date.now());
-    } catch {
-      alert(t.assignments.submitFailed);
+    } catch (e) {
+      // 에러 객체를 통째로 버리면(예전 `catch {}`) 학생도 개발자도 실패 원인을 알 수 없었다
+      console.error('Failed to submit assignment response:', e);
+      alert(translateError(e, language, t, t.assignments.submitFailed));
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+  if (loading) return <div className="text-center py-6 sm:py-20 text-slate-500">{t.common.loading}</div>;
   if (loadError) {
     return (
-      <div className="max-w-3xl mx-auto text-center py-20 space-y-4">
+      <div className="max-w-3xl mx-auto text-center py-6 sm:py-20 space-y-4">
         <p className="text-red-600 dark:text-red-400">{loadError}</p>
         <Link to="/assignments" className="inline-block px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">{t.assignments.backToList}</Link>
       </div>
     );
   }
-  if (problems.length === 0) return <div className="text-center py-20 text-slate-400">{t.assignments.noProblems}</div>;
+  if (problems.length === 0) return <div className="text-center py-6 sm:py-20 text-slate-400">{t.assignments.noProblems}</div>;
 
   const allDone = problems.every((p) => isAnswered(p.problem_id));
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
+    <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
+      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
         <Link to="/assignments" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">&larr; {t.assignments.assignmentList}</Link>
         <span className="text-sm text-slate-500">{Math.min(currentIdx + 1, problems.length)} / {problems.length}</span>
         {assignment?.due_date && (
@@ -121,7 +123,7 @@ export const AssignmentSolvePage: React.FC = () => {
 
       {allDone ? (
         <div className="space-y-6">
-          <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+          <div className="text-center py-6 px-4 sm:py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
             <p className="text-2xl font-bold text-green-600 mb-2">{t.assignments.allSolved}</p>
             <p className="text-slate-500">{t.assignments.correctCount.replace('{correct}', String(responses.filter((r) => r.is_correct === true).length)).replace('{total}', String(problems.length))}</p>
             {responses.some((r) => r.is_correct === null) && (
@@ -153,14 +155,15 @@ export const AssignmentSolvePage: React.FC = () => {
               response={responses.find((r) => r.problem_id === currentProblem.id)}
             />
           ) : (
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
-              <p className="text-lg font-medium text-slate-800 dark:text-slate-200">{currentProblem.stem}</p>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3 sm:p-6 sm:space-y-4">
+              <p className="text-lg font-medium text-slate-800 dark:text-slate-200 break-words text-pretty">{currentProblem.stem}</p>
               {currentProblem.passage && (
-                <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
-                  <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+                <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
+                  <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 sm:mb-2 uppercase tracking-wide">
                     {t.assignments.passage}
                   </div>
-                  <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                  {/* 영어 지문: lang="en"이 있어야 hyphens-auto가 실제로 동작한다(문서 기본 lang은 ko) */}
+                  <p lang="en" className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words hyphens-auto max-w-none">
                     {currentProblem.passage}
                   </p>
                 </div>
@@ -176,8 +179,8 @@ export const AssignmentSolvePage: React.FC = () => {
             </div>
           )}
           <div className="flex justify-between">
-            <button onClick={() => { setCurrentIdx((i) => Math.max(0, i - 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === 0} className="text-sm text-slate-500 hover:underline disabled:opacity-30">&larr; {t.assignments.previous}</button>
-            <button onClick={() => { setCurrentIdx((i) => Math.min(problems.length - 1, i + 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === problems.length - 1} className="text-sm text-slate-500 hover:underline disabled:opacity-30">{t.assignments.next} &rarr;</button>
+            <button onClick={() => { setCurrentIdx((i) => Math.max(0, i - 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === 0} className="-mx-2 -my-2.5 inline-flex items-center px-2 py-2.5 text-sm text-slate-500 hover:underline disabled:opacity-30">&larr; {t.assignments.previous}</button>
+            <button onClick={() => { setCurrentIdx((i) => Math.min(problems.length - 1, i + 1)); setSelectedAnswer(''); setStartTime(Date.now()); }} disabled={currentIdx === problems.length - 1} className="-mx-2 -my-2.5 inline-flex items-center px-2 py-2.5 text-sm text-slate-500 hover:underline disabled:opacity-30">{t.assignments.next} &rarr;</button>
           </div>
         </>
       ) : null}

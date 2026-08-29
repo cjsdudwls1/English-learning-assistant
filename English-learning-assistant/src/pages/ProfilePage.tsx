@@ -121,16 +121,16 @@ export const ProfilePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
-        <div className="text-center text-slate-600 dark:text-slate-400 py-10">{t.common.loading}</div>
+      <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+        <div className="text-center text-slate-600 dark:text-slate-400 py-6 sm:py-10">{t.common.loading}</div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.profile.myProfile}</h2>
+    <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.profile.myProfile}</h2>
         <button
           onClick={() => navigate('/upload')}
           className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline"
@@ -140,25 +140,25 @@ export const ProfilePage: React.FC = () => {
       </div>
 
       {/* 탭 */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200 dark:border-slate-700">
+      <div className="flex gap-1 mb-4 sm:mb-6 border-b border-slate-200 dark:border-slate-700">
         <button
           type="button"
           onClick={() => setActiveTab('profile')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'profile' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors sm:px-4 sm:py-2 ${activeTab === 'profile' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
         >
           {language === 'ko' ? '프로필' : 'Profile'}
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('academy')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'academy' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors sm:px-4 sm:py-2 ${activeTab === 'academy' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
         >
           {language === 'ko' ? '학원' : 'Academy'}
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('apikey')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'apikey' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors sm:px-4 sm:py-2 ${activeTab === 'apikey' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
         >
           {language === 'ko' ? 'AI 설정' : 'AI Settings'}
         </button>
@@ -169,7 +169,7 @@ export const ProfilePage: React.FC = () => {
 
       {/* 학원 탭 */}
       {activeTab === 'academy' && (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           <div>
             <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-3">{language === 'ko' ? '내 학원' : 'My Academies'}</h3>
             {availableAcademies.length === 0 ? (
@@ -196,7 +196,7 @@ export const ProfilePage: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'profile' && <form onSubmit={handleSubmit} className="space-y-6">
+      {activeTab === 'profile' && <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.profile.name}</label>
           <input
@@ -224,11 +224,11 @@ export const ProfilePage: React.FC = () => {
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             {language === 'ko' ? '권한' : 'Role'}
           </label>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex">
             <button
               type="button"
               onClick={() => setRole('student')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${role === 'student'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${role === 'student'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -238,7 +238,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setRole('parent')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${role === 'parent'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${role === 'parent'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -248,7 +248,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setRole('teacher')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${role === 'teacher'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${role === 'teacher'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -258,7 +258,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setRole('director')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${role === 'director'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${role === 'director'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -270,11 +270,11 @@ export const ProfilePage: React.FC = () => {
 
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.profile.gender}</label>
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setGender('male')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${gender === 'male'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${gender === 'male'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -284,7 +284,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setGender('female')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${gender === 'female'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${gender === 'female'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -333,11 +333,11 @@ export const ProfilePage: React.FC = () => {
 
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.profile.language}</label>
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setProfileLanguage('en')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${profileLanguage === 'en'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${profileLanguage === 'en'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -347,7 +347,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setProfileLanguage('ko')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${profileLanguage === 'ko'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${profileLanguage === 'ko'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -365,7 +365,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCountry('SG')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${country === 'SG'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${country === 'SG'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -375,7 +375,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCountry('KR')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${country === 'KR'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${country === 'KR'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -385,7 +385,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCountry('CN')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${country === 'CN'
+              className={`flex-1 px-2 py-3 text-sm rounded-lg font-medium transition-colors sm:px-4 sm:text-base ${country === 'CN'
                   ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                 }`}
@@ -395,18 +395,18 @@ export const ProfilePage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => navigate('/upload')}
-            className="flex-1 px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            className="flex-1 px-3 py-2.5 sm:px-6 sm:py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
           >
             {t.profile.cancel}
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="flex-1 px-6 py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 px-3 py-2.5 sm:px-6 sm:py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
           >
             {saving ? t.profile.saving : t.profile.save}
           </button>

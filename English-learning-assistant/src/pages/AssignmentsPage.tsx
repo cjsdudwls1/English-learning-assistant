@@ -21,26 +21,29 @@ export const AssignmentsPage: React.FC = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+  if (loading) return <div className="text-center py-6 sm:py-20 text-slate-500">{t.common.loading}</div>;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.assignments.title}</h1>
+    <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.assignments.title}</h1>
       {error && <p className="text-red-500 text-sm">{error}</p>}
       {assignments.length === 0 ? (
-        <div className="text-center py-16 text-slate-400">
+        <div className="text-center py-6 sm:py-16 text-slate-400">
           <p className="text-lg">{t.assignments.emptyTitle}</p>
           <p className="text-sm mt-1">{t.assignments.emptySubtitle}</p>
         </div>
       ) : (
         <div className="space-y-3">
           {assignments.map((a) => {
-            const isComplete = (a.completed_count ?? 0) >= (a.problem_count ?? 1);
+            // 문제가 0개(또는 미상)인 과제는 '완료'가 아니다 —
+            // `?? 1` 폴백은 problem_count가 실제 0일 때 발동하지 않아 0 >= 0으로 완료 처리됐다.
+            const problemCount = a.problem_count ?? 0;
+            const isComplete = problemCount > 0 && (a.completed_count ?? 0) >= problemCount;
             const overdueIncomplete = !isComplete && isOverdue(a.due_date);
             return (
-              <Link key={a.id} to={`/assignments/${a.id}`} className={`block bg-white dark:bg-slate-800 rounded-2xl border p-5 transition-colors ${overdueIncomplete ? 'border-red-300 dark:border-red-800 hover:border-red-400' : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'}`}>
-                <div className="flex items-center justify-between">
-                  <div>
+              <Link key={a.id} to={`/assignments/${a.id}`} className={`block bg-white dark:bg-slate-800 rounded-2xl border p-3 sm:p-5 transition-colors ${overdueIncomplete ? 'border-red-300 dark:border-red-800 hover:border-red-400' : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
                     <p className="font-semibold text-slate-800 dark:text-slate-200">
                       {a.title}
                       {overdueIncomplete && (
@@ -56,7 +59,7 @@ export const AssignmentsPage: React.FC = () => {
                       {a.due_date && ` · ${t.assignments.dueLabel.replace('{date}', new Date(a.due_date).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US'))}`}
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     {isComplete ? (
                       <span className="px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">{t.assignments.completed}</span>
                     ) : (

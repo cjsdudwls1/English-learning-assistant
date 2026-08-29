@@ -67,13 +67,13 @@ export const ClassDetailPage: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+  if (loading) return <div className="text-center py-6 sm:py-20 text-slate-500">{t.common.loading}</div>;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
         <Link to="/teacher/dashboard" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">&larr; {t.teacher.dashboard}</Link>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.teacher.classDetail}</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.teacher.classDetail}</h1>
       </div>
       {error && <p className="text-red-500 text-sm">{error}</p>}
       <MemberList
@@ -96,10 +96,10 @@ export const ClassDetailPage: React.FC = () => {
       <ClassStatsCard monthlyStats={stats} year={year} onYearChange={setYear} />
 
       {/* 학급 전체 택사노미별 통계 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-3 sm:space-y-4">
         <button
           onClick={handleToggleClassTaxonomy}
-          className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+          className="flex -my-2.5 items-center gap-2 py-2.5 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
         >
           <span>{showClassTaxonomy ? '\u25BC' : '\u25B6'}</span>
           {t.teacher.classStatsByProblemType}

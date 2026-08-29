@@ -259,11 +259,11 @@ export const StatsPage: React.FC = () => {
     }
   }, [language, t, statsData]);
 
-  if (statsData.loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-10">{t.common.loading}</div>;
-  if (statsData.error) return <div className="text-center text-red-700 dark:text-red-400 py-10">{typeof statsData.error === 'string' ? statsData.error : JSON.stringify(statsData.error)}</div>;
+  if (statsData.loading) return <div className="text-center text-slate-600 dark:text-slate-400 py-6 sm:py-10">{t.common.loading}</div>;
+  if (statsData.error) return <div className="text-center text-red-700 dark:text-red-400 py-6 sm:py-10">{typeof statsData.error === 'string' ? statsData.error : JSON.stringify(statsData.error)}</div>;
 
   return (
-    <div className="mx-auto space-y-6 w-full max-w-full px-2 sm:px-4 md:px-6 lg:max-w-5xl overflow-x-hidden">
+    <div className="mx-auto space-y-3 sm:space-y-6 w-full max-w-full px-2 sm:px-4 md:px-6 lg:max-w-5xl overflow-x-hidden">
       {/* 분석 중 UI - 최상단 */}
       {statsData.analyzingSessions.map((session) => (
         <AnalyzingCard
@@ -297,8 +297,8 @@ export const StatsPage: React.FC = () => {
 
       <SolvingStatsCard />
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 w-full max-w-full min-w-0">
-        <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-200">{t.stats.statsByType}</h2>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700 w-full max-w-full min-w-0">
+        <h2 className="text-lg sm:text-2xl font-bold mb-3 sm:mb-4 text-slate-800 dark:text-slate-200">{t.stats.statsByType}</h2>
 
         {/* 기간 설정 UI */}
         <StatsDateFilter
@@ -312,11 +312,11 @@ export const StatsPage: React.FC = () => {
           onThisYearClick={handleThisYearClick}
         />
 
-        <div className="mb-4 flex items-center justify-between flex-wrap gap-3 w-full max-w-full min-w-0">
+        <div className="mb-3 sm:mb-4 flex items-start sm:items-center justify-between flex-wrap gap-2 sm:gap-3 w-full max-w-full min-w-0">
           <div className="min-w-0">
-            <div className="text-slate-700 dark:text-slate-300 text-sm sm:text-base break-words">{t.stats.total}: {statsData.summary.total} / {t.stats.correct}: {statsData.summary.correct} / {t.stats.incorrect}: {statsData.summary.incorrect} / {language === 'ko' ? '미채점' : 'Ungraded'}: {statsData.summary.ungraded}</div>
+            <div className="text-slate-700 dark:text-slate-300 text-xs sm:text-base break-words">{t.stats.total}: {statsData.summary.total} / {t.stats.correct}: {statsData.summary.correct} / {t.stats.incorrect}: {statsData.summary.incorrect} / {language === 'ko' ? '미채점' : 'Ungraded'}: {statsData.summary.ungraded}</div>
             {statsData.summary.total > 0 && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 break-words">
+              <p className="mt-1 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 break-words">
                 {language === 'ko'
                   ? `등록 문제 ${statsData.summary.registered} (채점완료 ${statsData.summary.regCorrect + statsData.summary.regIncorrect} / 미채점 ${statsData.summary.regUngraded}) + 과제·생성 풀이 ${statsData.summary.gen} · '문제관리'와 동일 기준`
                   : `${statsData.summary.registered} registered (${statsData.summary.regCorrect + statsData.summary.regIncorrect} graded / ${statsData.summary.regUngraded} ungraded) + ${statsData.summary.gen} assignment/generated solves · same basis as "Problems"`}
@@ -348,7 +348,7 @@ export const StatsPage: React.FC = () => {
           error={consulting.agentError}
         />
         {consulting.usedFallback && (
-          <p className="mb-4 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
+          <p className="mb-3 sm:mb-4 rounded border border-slate-200 bg-slate-50 px-2.5 sm:px-3 py-2 text-[11px] sm:text-xs text-slate-600 break-words dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
             {t.stats.agentFallbackNotice}
           </p>
         )}
@@ -386,9 +386,9 @@ export const StatsPage: React.FC = () => {
 
         {/* 생성된 시험지 표시 */}
         {problemGen.showTestSheet && problemGen.generatedProblems.length > 0 && (
-          <div className="mt-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+          <div className="mt-4 sm:mt-6">
+            <div className="mb-3 sm:mb-4 flex items-center justify-between gap-2">
+              <h2 className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-200 min-w-0 break-words">
                 {language === 'ko' ? '생성된 시험지' : 'Generated Test Sheet'}
               </h2>
               <button
@@ -397,7 +397,7 @@ export const StatsPage: React.FC = () => {
                   problemGen.setGeneratedProblems([]);
                   problemGen.setShowProblemGenerator(true);
                 }}
-                className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+                className="min-h-[40px] sm:min-h-0 shrink-0 px-3 sm:px-4 py-2 text-sm sm:text-base bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
               >
                 {language === 'ko' ? '새로 생성' : 'Generate New'}
               </button>
@@ -409,8 +409,8 @@ export const StatsPage: React.FC = () => {
           </div>
         )}
 
-        <div className="mt-6">
-          <h3 className="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4">
+        <div className="mt-4 sm:mt-6">
+          <h3 className="text-base sm:text-xl font-semibold text-slate-800 dark:text-slate-200 mb-3 sm:mb-4">
             {chartLabels.overview}
           </h3>
           <StatsOverviewCharts
@@ -422,8 +422,8 @@ export const StatsPage: React.FC = () => {
         </div>
 
         {reclassify.reclassificationStatus && (
-          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <p className="text-sm text-blue-800 dark:text-blue-200">{reclassify.reclassificationStatus}</p>
+          <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-200 break-words">{reclassify.reclassificationStatus}</p>
           </div>
         )}
 
@@ -479,8 +479,8 @@ export const StatsPage: React.FC = () => {
         {/* 메타데이터 로딩 표시 */}
         {isLoadingMetadata && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-slate-800 rounded-lg p-6">
-              <div className="text-center text-slate-700 dark:text-slate-300">
+            <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 mx-4">
+              <div className="text-center text-sm sm:text-base text-slate-700 dark:text-slate-300">
                 {language === 'ko' ? '분석 정보를 불러오는 중...' : 'Loading analysis information...'}
               </div>
             </div>

@@ -7,9 +7,9 @@ interface PageLayoutProps {
 
 export const PageLayout: React.FC<PageLayoutProps> = ({ children }) => {
   return (
-    <div className="page-shell" style={{ paddingTop: '1rem', overflowX: 'hidden', width: '100%', maxWidth: '100%' }}>
+    <div className="page-shell page-shell--app">
       <TopBar />
-      <div style={{ marginTop: '1rem', width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
+      <div className="page-body">
         {children}
       </div>
     </div>

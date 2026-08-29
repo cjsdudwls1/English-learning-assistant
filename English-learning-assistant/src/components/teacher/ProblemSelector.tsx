@@ -96,17 +96,17 @@ export const ProblemSelector: React.FC<Props> = ({ selectedIds, onSelect }) => {
   if (loading) return <div className="text-center py-4 text-slate-500 text-sm">{t.assignments.loadingProblems}</div>;
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.assignments.selectProblemsRatio.replace('{selected}', String(selectedIds.length)).replace('{total}', String(problems.length))}</h3>
-        <div className="flex items-center gap-3">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-2 sm:space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{t.assignments.selectProblemsRatio.replace('{selected}', String(selectedIds.length)).replace('{total}', String(problems.length))}</h3>
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => { setShowGenerator((v) => !v); setGenerationError(null); }}
-            className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="relative text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors before:absolute before:content-[''] before:inset-x-0 before:-inset-y-1.5"
           >
             {showGenerator ? t.common.close : t.assignments.generateNewProblems}
           </button>
-          <button onClick={selectAll} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+          <button onClick={selectAll} className="inline-flex min-h-[40px] sm:min-h-0 items-center p-2.5 -m-2.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
             {selectedIds.length === problems.length ? t.teacher.deselectAll : t.teacher.selectAll}
           </button>
         </div>
@@ -129,9 +129,9 @@ export const ProblemSelector: React.FC<Props> = ({ selectedIds, onSelect }) => {
       {problems.length === 0 ? (
         <p className="text-slate-400 text-sm py-4 text-center">{t.assignments.noGeneratedProblems}</p>
       ) : (
-        <div className="max-h-60 overflow-y-auto space-y-1">
+        <div className="max-h-none overflow-y-auto space-y-1 sm:max-h-60">
           {problems.map((p) => (
-            <label key={p.id} className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-colors ${selectedIds.includes(p.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+            <label key={p.id} className={`flex min-h-[40px] sm:min-h-0 items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl cursor-pointer transition-colors ${selectedIds.includes(p.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
               <input type="checkbox" checked={selectedIds.includes(p.id)} onChange={() => toggle(p.id)} className="mt-1 rounded border-slate-300" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-slate-800 dark:text-slate-200 line-clamp-2">{p.stem}</p>

@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { getCurrentUserId } from './db';
 import { buildTaxonomyMaps, validateAndTranslateDepths } from '../utils/taxonomyMapping';
+import { fetchAllPages, fetchByIdChunksPaged } from './db/queryPage';
 
 // labels 쿼리 결과 행의 로컬 타입 (problems 관계 포함)
 interface LabelRowWithProblems {
@@ -16,57 +17,90 @@ interface LabelRowWithProblems {
 
 const ID_CHUNK = 500;
 
+/**
+ * 기간 조회 한 건(사용자 1명)의 세션 — **끝 경계는 그 날 23:59:59.999(하루 포함)**.
+ * 사용자가 고른 날짜 범위("6월 1일 ~ 6월 30일")를 그대로 쓰는 화면용 계약이다.
+ * ISO 시각으로 반열린 구간이 필요하면 fetchSessionsForUserInRange를 쓸 것.
+ */
 export async function fetchSessionsForUser(
   userId: string,
   startDate?: Date,
   endDate?: Date,
 ): Promise<Array<{ id: string; created_at: string }>> {
-  let q = supabase.from('sessions').select('id, created_at').eq('user_id', userId);
-  if (startDate) q = q.gte('created_at', startDate.toISOString());
+  let endIso: string | undefined;
   if (endDate) {
     const e = new Date(endDate);
     e.setHours(23, 59, 59, 999);
-    q = q.lte('created_at', e.toISOString());
+    endIso = e.toISOString();
   }
-  const { data, error } = await q;
-  if (error) throw error;
-  return data || [];
+  return fetchAllPages<{ id: string; created_at: string }>((from, to) => {
+    let q = supabase.from('sessions').select('id, created_at').eq('user_id', userId);
+    if (startDate) q = q.gte('created_at', startDate.toISOString());
+    if (endIso) q = q.lte('created_at', endIso);
+    return q.order('id').range(from, to);
+  });
 }
 
+/**
+ * 사용자 1명의 세션을 **반열린 구간 [start, end)** 로 조회한다.
+ *
+ * 주 단위 집계처럼 구간을 이어 붙이는 쪽은 끝을 포함하면 안 된다 — 지난주의 끝과 이번 주의
+ * 시작이 같은 월요일 00:00이면 그 순간의 행이 양쪽에 다 잡힌다.
+ * fetchSessionsForUser는 '하루 포함' 계약이라 여기에 쓸 수 없어 함수를 나눴다.
+ */
+export async function fetchSessionsForUserInRange(
+  userId: string,
+  startIso?: string,
+  endIsoExclusive?: string,
+): Promise<Array<{ id: string; created_at: string }>> {
+  return fetchAllPages<{ id: string; created_at: string }>((from, to) => {
+    let q = supabase.from('sessions').select('id, created_at').eq('user_id', userId);
+    if (startIso) q = q.gte('created_at', startIso);
+    if (endIsoExclusive) q = q.lt('created_at', endIsoExclusive);
+    return q.order('id').range(from, to);
+  });
+}
+
+/**
+ * 여러 사용자의 세션 — 구간은 **[start, end)** 반열린이다(끝 미포함).
+ * 학급 월별 집계가 달 경계에서 겹치지 않게 하려는 것으로, 호출부는 '다음 달 1일 00:00'을 넘긴다.
+ */
 export async function fetchSessionsForUsers(
   userIds: string[],
   startDateIso?: string,
-  endDateIso?: string,
+  endDateIsoExclusive?: string,
 ): Promise<Array<{ id: string; user_id: string; created_at: string }>> {
-  if (userIds.length === 0) return [];
-  const out: Array<{ id: string; user_id: string; created_at: string }> = [];
-  for (let i = 0; i < userIds.length; i += ID_CHUNK) {
-    const chunk = userIds.slice(i, i + ID_CHUNK);
-    let q = supabase.from('sessions').select('id, user_id, created_at').in('user_id', chunk);
-    if (startDateIso) q = q.gte('created_at', startDateIso);
-    if (endDateIso) q = q.lte('created_at', endDateIso);
-    const { data, error } = await q;
-    if (error) throw error;
-    out.push(...(data || []));
-  }
-  return out;
+  return fetchByIdChunksPaged<{ id: string; user_id: string; created_at: string }>(
+    userIds,
+    (chunk, from, to) => {
+      let q = supabase.from('sessions').select('id, user_id, created_at').in('user_id', chunk);
+      if (startDateIso) q = q.gte('created_at', startDateIso);
+      if (endDateIsoExclusive) q = q.lt('created_at', endDateIsoExclusive);
+      return q.order('id').range(from, to);
+    },
+    ID_CHUNK,
+  );
 }
 
+/**
+ * 세션들의 문제 전량.
+ *
+ * 여기가 max_rows 절단의 급소다: 세션 500개를 청크로 나눠 물어도 **돌아오는 행은 문제 수**라
+ * 한 청크가 수천 행이 된다. 청킹은 URL 길이(414)만 막을 뿐 1000행 절단은 못 막으므로
+ * 청크마다 .range()로 전량을 받아야 한다. 예전에는 여기서 조용히 잘린 만큼 통계가 줄었다.
+ */
 export async function fetchProblemsForSessions(
   sessionIds: string[],
 ): Promise<Array<{ id: string; session_id: string }>> {
-  if (sessionIds.length === 0) return [];
-  const out: Array<{ id: string; session_id: string }> = [];
-  for (let i = 0; i < sessionIds.length; i += ID_CHUNK) {
-    const chunk = sessionIds.slice(i, i + ID_CHUNK);
-    const { data, error } = await supabase
+  return fetchByIdChunksPaged<{ id: string; session_id: string }>(
+    sessionIds,
+    (chunk, from, to) => supabase
       .from('problems')
       .select('id, session_id')
-      .in('session_id', chunk);
-    if (error) throw error;
-    out.push(...(data || []));
-  }
-  return out;
+      .in('session_id', chunk)
+      .order('id').range(from, to),
+    ID_CHUNK,
+  );
 }
 
 export interface LabelRowFlat {

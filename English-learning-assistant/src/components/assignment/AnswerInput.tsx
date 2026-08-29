@@ -19,7 +19,7 @@ export const AnswerInput: React.FC<Props> = ({ problem, selectedAnswer, onSelect
       <div className="space-y-2">
         {problem.choices.map((c, i) => (
           <button key={i} onClick={() => onSelect(c.text)}
-            className={`w-full text-left p-3 rounded-xl border text-sm transition-colors ${selectedAnswer === c.text ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-600 hover:border-slate-400'}`}>
+            className={`w-full min-w-0 text-left px-3 py-2.5 sm:p-3 rounded-xl border text-sm leading-relaxed break-words transition-colors ${selectedAnswer === c.text ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-600 hover:border-slate-400'}`}>
             {i + 1}. {c.text}
           </button>
         ))}
@@ -29,10 +29,10 @@ export const AnswerInput: React.FC<Props> = ({ problem, selectedAnswer, onSelect
 
   if (type === 'ox') {
     return (
-      <div className="flex gap-3">
+      <div className="flex gap-2 sm:gap-3">
         {['O', 'X'].map((v) => (
           <button key={v} onClick={() => onSelect(v)}
-            className={`flex-1 py-4 text-2xl font-bold rounded-xl border transition-colors ${selectedAnswer === v ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-600 hover:border-slate-400'}`}>
+            className={`flex-1 py-3 text-2xl sm:py-4 font-bold rounded-xl border transition-colors ${selectedAnswer === v ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-600 hover:border-slate-400'}`}>
             {v}
           </button>
         ))}
@@ -47,7 +47,7 @@ export const AnswerInput: React.FC<Props> = ({ problem, selectedAnswer, onSelect
         onChange={(e) => onSelect(e.target.value)}
         placeholder={t.assignments.essayPlaceholder}
         rows={4}
-        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm resize-none"
+        className="w-full min-w-0 px-3 py-2.5 sm:py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm resize-none"
       />
     );
   }
@@ -59,7 +59,7 @@ export const AnswerInput: React.FC<Props> = ({ problem, selectedAnswer, onSelect
       value={selectedAnswer}
       onChange={(e) => onSelect(e.target.value)}
       placeholder={t.assignments.shortAnswerPlaceholder}
-      className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+      className="w-full min-w-0 px-3 py-2.5 sm:py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm"
     />
   );
 };

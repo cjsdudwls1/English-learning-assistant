@@ -64,7 +64,11 @@ export function gradeGeneratedProblem(
         if (problem.correct_answer === null || problem.correct_answer === undefined || problem.correct_answer === '') return null;
         return answer === problem.correct_answer;
       }
-      return answer === problem.choices?.[idx]?.text;
+      // 선택지 텍스트를 못 찾으면(choices 누락·인덱스 범위 밖) 비교 자체가 성립하지 않는다.
+      // 예전엔 `answer === undefined`가 되어 조용히 **오답**으로 확정됐다 — 이 파일 계약 위반.
+      const correctText = problem.choices?.[idx]?.text;
+      if (correctText === null || correctText === undefined) return null;
+      return answer === correctText;
     }
     return null;
   }
@@ -77,10 +81,20 @@ export function gradeGeneratedProblem(
     return user === correct;
   }
 
-  // short_answer
+  // short_answer — 백엔드 computeIsCorrect(dbOperations.js) 및 gradeRegisteredProblem과
+  // 같은 정규화를 쓴다. 예전엔 여기만 trim+toLowerCase라서 "The cat." vs "the cat"이
+  // 화면에 따라 정답/오답으로 갈렸다.
   const correct = problem.correct_answer;
   if (correct === null || correct === undefined || String(correct).trim() === '') return null;
-  return String(correct).trim().toLowerCase() === String(answer).trim().toLowerCase();
+  const ca = normalizeForCompare(String(correct));
+  const ua = normalizeForCompare(String(answer));
+  // 정규화 후 빈 문자열이면 null(미채점)이다. **의도한 동작이다.**
+  //  - ca가 빈 값: 정답이 구두점뿐(".", "?" 등)이라 답안지를 못 믿는다. 채점 불가가 맞다.
+  //  - ua가 빈 값: 학생 답이 공백·구두점뿐. 위 54행이 빈 문자열('')을 이미 null로 보내므로
+  //    "   "나 "..."만 false로 바꾸면 같은 무응답이 입력 방식에 따라 갈린다. 통계 분모에서
+  //    빼는 쪽으로 통일한다 — 이 파일의 계약이 "무응답을 오답으로 단정하지 않는다"이기 때문이다.
+  if (!ca || !ua) return null;
+  return ca === ua;
 }
 
 /**

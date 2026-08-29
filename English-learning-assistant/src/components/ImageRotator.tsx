@@ -120,14 +120,14 @@ export const ImageRotator: React.FC<ImageRotatorProps> = ({
       <div className="absolute bottom-2 left-2 flex gap-2">
         <button
           onClick={handleRotateLeft}
-          className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}
+          className={`inline-flex h-10 w-10 items-center justify-center sm:h-auto sm:w-auto px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}
           title={t.camera.rotateLeft}
         >
           ↶
         </button>
         <button
           onClick={handleRotateRight}
-          className={`px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}
+          className={`inline-flex h-10 w-10 items-center justify-center sm:h-auto sm:w-auto px-3 py-1 bg-white bg-opacity-80 text-slate-700 rounded text-sm shadow-md hover:bg-opacity-100`}
           title={t.camera.rotateRight}
         >
           ↷

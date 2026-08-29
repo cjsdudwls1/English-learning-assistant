@@ -117,38 +117,35 @@ export const MainPage: React.FC<MainPageProps> = ({
               </div>
             </div>
 
-            <div className="upload-panel-moved" style={{ marginTop: '1.5rem' }}>
-              <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
+            <div className="upload-panel-moved">
+              {/* 촬영/갤러리 버튼: 모바일에선 44~48px 터치 타깃, md(769px 이상 = app.css의 데스크톱 경계)부터 기존 1.5rem 패딩 복원.
+                  패딩·글자 크기는 인라인 style에서 className으로 옮겨야 반응형이 먹는다(인라인이 클래스를 이긴다). */}
+              <div className="mb-2 flex gap-2 md:mb-4">
                 <button
                   type="button"
-                  className="mobile-only-btn"
+                  className="mobile-only-btn min-h-[44px] sm:min-h-0 flex-1 px-3 py-2 text-[0.95rem] md:p-6 md:text-base"
                   onClick={onOpenCamera}
                   style={{
-                    flex: 1,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    padding: '1.5rem',
                     border: '2px solid rgba(79,70,229,0.5)',
                     borderRadius: 'var(--radius-md)',
                     cursor: 'pointer',
                     background: 'rgba(79,70,229,0.15)',
                     color: 'var(--text-main)',
                     fontWeight: 600,
-                    fontSize: '1rem',
                   }}
                 >
                   📸 {t.camera.takePhoto}
                 </button>
                 <label
                   htmlFor="hero-image-input"
-                  className="file-label"
+                  className="file-label min-h-[44px] sm:min-h-0 flex-1 px-3 py-2 text-[0.95rem] md:p-6 md:text-base"
                   style={{
-                    flex: 1,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    padding: '1.5rem',
                     border: '2px dashed rgba(255,255,255,0.2)',
                     borderRadius: 'var(--radius-md)',
                     cursor: 'pointer',
@@ -181,23 +178,26 @@ export const MainPage: React.FC<MainPageProps> = ({
 
               {imageFiles.length > 0 && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div className="mb-2 flex items-center justify-between">
                     <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                       {t.upload.countImages.replace('{count}', String(imageFiles.length))}
                     </span>
                     <button
                       onClick={onClearAll}
+                      className="relative px-2 py-[0.2rem] before:absolute before:content-[''] before:-inset-x-1 before:-inset-y-1.5"
                       style={{
                         background: 'transparent', border: '1px solid #ff4444', color: '#ff4444',
-                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer'
+                        borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer'
                       }}
                     >
                       {t.upload.clearAll}
                     </button>
                   </div>
-                  <div className="image-previews" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+                  {/* 썸네일: 모바일은 4열 그리드로 크게(업로드 아래 빈 공간을 쓰면서, OCR 전에 사진이 읽을 만한지 확인 가능),
+                      md 이상은 기존 60px 가로 스트립 그대로. */}
+                  <div className="image-previews mb-3 grid grid-cols-4 gap-2 pb-2 md:mb-4 md:flex md:overflow-x-auto">
                     {imageFiles.map((imageFile, index) => (
-                      <div key={imageFile.id} style={{ position: 'relative', flexShrink: 0, width: '60px', height: '60px' }}>
+                      <div key={imageFile.id} className="relative aspect-square w-full shrink-0 md:aspect-auto md:h-[60px] md:w-[60px]">
                         <img
                           src={imageFile.previewUrl}
                           alt="preview"
@@ -205,12 +205,12 @@ export const MainPage: React.FC<MainPageProps> = ({
                         />
                         <button
                           onClick={(e) => { e.preventDefault(); onRemove(index); }}
+                          className="absolute top-0.5 right-0.5 h-6 w-6 text-xs md:-top-[5px] md:-right-[5px] md:h-[18px] md:w-[18px] md:text-[10px]"
                           style={{
-                            position: 'absolute', top: -5, right: -5,
                             background: '#ff4444', color: 'white',
-                            borderRadius: '50%', width: '18px', height: '18px',
+                            borderRadius: '50%',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            border: 'none', cursor: 'pointer', fontSize: '10px'
+                            border: 'none', cursor: 'pointer'
                           }}
                         >
                           ×
@@ -221,11 +221,13 @@ export const MainPage: React.FC<MainPageProps> = ({
                 </>
               )}
 
+              {/* .primary는 app.css의 레이어 밖 규칙이라 Tailwind 유틸리티가 못 이긴다 → 인라인 clamp로 반응형 처리.
+                  가운데 항(vw)이 615px 부근에서 이미 상한에 닿으므로 데스크톱(769px+)에서는 기존 1rem/1.1rem 그대로다. */}
               <button
                 className="primary"
                 onClick={onAnalyzeClick}
                 disabled={imageFiles.length === 0 || isLoading}
-                style={{ width: '100%', padding: '1rem', fontSize: '1.1rem' }}
+                style={{ width: '100%', padding: 'clamp(0.7rem, 2.6vw, 1rem)', fontSize: 'clamp(1rem, 2.9vw, 1.1rem)' }}
               >
                 {isLoading
                   ? t.analyzing.analyzing

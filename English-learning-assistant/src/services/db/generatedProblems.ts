@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { fetchByIdChunks } from './queryPage';
 import type { GeneratedProblem } from '../../types';
 
 export interface FetchExistingProblemsOptions {
@@ -222,17 +223,18 @@ export async function fetchGeneratedProblemsByIds(ids: string[]): Promise<Genera
   const queryable = ids.filter((id) => UUID_RE.test(id));
   if (queryable.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from('generated_problems')
-    .select('*')
-    .in('id', queryable);
-
-  if (error) {
+  // id 전량을 .in()에 실으면 긴 학습 계획(수백 문제)에서 URL이 414로 죽는다 — 청킹한다.
+  // 출력 순서는 아래에서 요청 id 배열 기준으로 다시 세우므로 청크 순서에 의존하지 않는다.
+  let rows: Array<Record<string, unknown>>;
+  try {
+    rows = await fetchByIdChunks<Record<string, unknown>>(queryable, (chunk) =>
+      supabase.from('generated_problems').select('*').in('id', chunk));
+  } catch (error) {
     console.error('Error fetching generated problems by ids:', error);
     throw error;
   }
 
-  const byId = new Map((data || []).map((p) => [p.id as string, p as GeneratedProblem]));
+  const byId = new Map(rows.map((p) => [p.id as string, p as unknown as GeneratedProblem]));
   return ids.map((id) => byId.get(id)).filter((p): p is GeneratedProblem => !!p);
 }
 

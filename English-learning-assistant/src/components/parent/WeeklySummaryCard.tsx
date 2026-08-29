@@ -56,7 +56,7 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5">
         <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">{t.parent.weeklySummaryTitle}</h2>
         <p className="text-sm text-slate-600 dark:text-slate-400">{t.common.loading}</p>
       </div>
@@ -66,7 +66,7 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
   if (!summary) {
     if (!error) return null;
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5">
         <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">{t.parent.weeklySummaryTitle}</h2>
         <p className="text-sm text-red-500">{error}</p>
       </div>
@@ -74,7 +74,7 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5">
       <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">{t.parent.weeklySummaryTitle}</h2>
       {summary.thisWeekCount === 0 ? (
         <div className="space-y-1">
@@ -86,18 +86,18 @@ export const WeeklySummaryCard: React.FC<Props> = ({ childId }) => {
           )}
         </div>
       ) : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4">
+            <div className="p-3 sm:p-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
               <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">{t.parent.thisWeekSolved}</div>
-              <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">{summary.thisWeekCount}</div>
+              <div className="text-xl sm:text-2xl font-bold text-blue-800 dark:text-blue-200">{summary.thisWeekCount}</div>
               <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 {t.parent.vsLastWeek.replace('{count}', String(summary.lastWeekCount))}
               </div>
             </div>
-            <div className="p-4 bg-purple-50 dark:bg-purple-900/30 rounded-xl">
+            <div className="p-3 sm:p-4 bg-purple-50 dark:bg-purple-900/30 rounded-xl">
               <div className="text-xs text-purple-600 dark:text-purple-400 mb-1">{t.parent.weeklyAccuracy}</div>
-              <div className="text-2xl font-bold text-purple-800 dark:text-purple-200">{summary.thisWeekCorrectRate}%</div>
+              <div className="text-xl sm:text-2xl font-bold text-purple-800 dark:text-purple-200">{summary.thisWeekCorrectRate}%</div>
             </div>
           </div>
           {weakCategories.length > 0 && (

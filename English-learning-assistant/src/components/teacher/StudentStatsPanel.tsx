@@ -79,22 +79,22 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 text-center text-slate-500">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 text-center text-slate-500">
         {t.teacher.loadingStudentStats}
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-4 sm:space-y-5">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="min-w-0 break-words text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">
           {studentEmail ? `${studentEmail}` : t.teacher.student}{t.teacher.statisticsSuffix}
         </h3>
         {onClose && (
           <button
             onClick={onClose}
-            className="text-xs px-3 py-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            className="shrink-0 min-h-[40px] sm:min-h-0 text-xs px-3 py-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
           >
             {t.common.close}
           </button>
@@ -155,7 +155,7 @@ export const StudentStatsPanel: React.FC<Props> = ({ studentId, studentEmail, on
       <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
         <button
           onClick={() => setShowTaxonomy(!showTaxonomy)}
-          className="flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+          className="flex -my-2.5 items-center gap-2 py-2.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
         >
           <span>{showTaxonomy ? '▼' : '▶'}</span>
           {t.teacher.statsByProblemType}

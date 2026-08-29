@@ -195,7 +195,7 @@ export const ApiKeySettings: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="text-center text-slate-500 dark:text-slate-400 py-8">{ko ? '불러오는 중...' : 'Loading...'}</div>;
+    return <div className="text-center text-slate-500 dark:text-slate-400 py-6 sm:py-8">{ko ? '불러오는 중...' : 'Loading...'}</div>;
   }
 
   const optionCard = (value: Selection, title: string, desc: string) => {
@@ -205,7 +205,7 @@ export const ApiKeySettings: React.FC = () => {
       <button
         type="button"
         onClick={() => { setSelected(value); clearMsg(); }}
-        className={`w-full text-left p-4 rounded-xl border transition-colors ${
+        className={`w-full text-left p-3 sm:p-4 rounded-xl border transition-colors ${
           isSelected
             ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-400'
             : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
@@ -229,9 +229,9 @@ export const ApiKeySettings: React.FC = () => {
     const saved = savedKeyFor(p);
     const isActive = activeProvider === p;
     return (
-      <div className="space-y-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-700/40">
+      <div className="space-y-3 p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-700/40">
         {saved ? (
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm text-slate-700 dark:text-slate-300">
               {ko ? '저장된 키' : 'Saved key'}: <span className="font-mono">{saved.key_hint ?? '****'}</span>
             </div>
@@ -241,7 +241,7 @@ export const ApiKeySettings: React.FC = () => {
                   type="button"
                   disabled={saving}
                   onClick={() => handleActivate(p)}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white hover:bg-indigo-700 disabled:opacity-50"
+                  className="relative px-3 py-1.5 text-xs rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white hover:bg-indigo-700 disabled:opacity-50 before:absolute before:content-[''] before:-inset-x-1 before:-inset-y-1.5"
                 >
                   {ko ? '이 키 사용' : 'Use this key'}
                 </button>
@@ -250,7 +250,7 @@ export const ApiKeySettings: React.FC = () => {
                 type="button"
                 disabled={saving}
                 onClick={() => handleDelete(p)}
-                className="px-3 py-1.5 text-xs rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 disabled:opacity-50"
+                className="relative px-3 py-1.5 text-xs rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 disabled:opacity-50 before:absolute before:content-[''] before:-inset-x-1 before:-inset-y-1.5"
               >
                 {ko ? '삭제' : 'Delete'}
               </button>
@@ -266,7 +266,7 @@ export const ApiKeySettings: React.FC = () => {
             value={modelChoice[p]}
             disabled={saving}
             onChange={(e) => handleModelChange(p, e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+            className="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
           >
             {MODEL_CATALOG[p].map((m) => (
               <option key={m.id} value={m.id}>
@@ -285,7 +285,7 @@ export const ApiKeySettings: React.FC = () => {
           <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
             {saved ? (ko ? '키 교체' : 'Replace key') : (ko ? 'API 키 입력' : 'Enter API key')} · {meta.help[ko ? 'ko' : 'en']}
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="password"
               autoComplete="off"
@@ -293,13 +293,13 @@ export const ApiKeySettings: React.FC = () => {
               value={selected === p ? keyInput : ''}
               onChange={(e) => setKeyInput(e.target.value)}
               placeholder={meta.placeholder}
-              className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 px-3 py-2 text-base sm:text-sm font-mono border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500"
             />
             <button
               type="button"
               disabled={saving}
               onClick={() => handleSave(p)}
-              className="px-4 py-2 text-sm rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
+              className="min-h-[40px] sm:min-h-0 px-4 py-2 text-sm rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
             >
               {saving ? (ko ? '확인 중...' : 'Checking...') : (ko ? '저장' : 'Save')}
             </button>
@@ -315,7 +315,7 @@ export const ApiKeySettings: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       <div>
         <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">
           {ko ? 'AI 모델 선택 (API 키)' : 'AI Model (API Key)'}
@@ -334,7 +334,7 @@ export const ApiKeySettings: React.FC = () => {
       </div>
 
       {selected === 'gemini' && (
-        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-700/40">
+        <div className="p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-700/40">
           {activeProvider === 'gemini' ? (
             <p className="text-sm text-slate-600 dark:text-slate-300">{ko ? '현재 시스템 기본 AI(Gemini)를 사용 중입니다.' : 'Currently using system default AI (Gemini).'}</p>
           ) : (
@@ -342,7 +342,7 @@ export const ApiKeySettings: React.FC = () => {
               type="button"
               disabled={saving}
               onClick={handleUseGemini}
-              className="px-4 py-2 text-sm rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white font-medium hover:bg-indigo-700 disabled:opacity-50"
+              className="min-h-[40px] sm:min-h-0 px-4 py-2 text-sm rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white font-medium hover:bg-indigo-700 disabled:opacity-50"
             >
               {ko ? '시스템 Gemini로 전환' : 'Switch to system Gemini'}
             </button>

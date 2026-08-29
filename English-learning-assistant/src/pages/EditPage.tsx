@@ -47,7 +47,7 @@ export const EditPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200">
         <p className="text-center text-slate-600">{t.common.loading}</p>
       </div>
     );
@@ -55,7 +55,7 @@ export const EditPage: React.FC = () => {
 
   if (error || !data) {
     return (
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200">
         <p className="text-center text-red-600">{error || t.edit.notFound}</p>
         <div className="text-center mt-4">
           <button
@@ -70,12 +70,12 @@ export const EditPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">{t.edit.title}</h2>
+    <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4 sm:mb-6">
+        <h2 className="text-lg sm:text-2xl font-bold">{t.edit.title}</h2>
         <button
           onClick={() => navigate('/stats')}
-          className="px-4 py-2 text-slate-600 hover:text-slate-800 underline"
+          className="px-2 py-2 sm:px-4 text-sm sm:text-base text-slate-600 hover:text-slate-800 underline"
         >
           {t.common.cancel}
         </button>

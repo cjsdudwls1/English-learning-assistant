@@ -29,6 +29,10 @@ interface UseStatsDataParams {
   language: 'ko' | 'en';
 }
 
+// 폴링 간격 — 한 틱마다 무거운 질의 6개가 나가므로 3초는 모바일에서 스크롤을 끊었다.
+// 분석 진행 중에만 도는 값이라 5초면 완료 반영 체감 지연 없이 요청 수를 40% 줄인다.
+const POLL_INTERVAL_MS = 5000;
+
 const EMPTY_SUMMARY: UnifiedSummary = {
   registered: 0, regCorrect: 0, regIncorrect: 0, regUngraded: 0,
   gen: 0, genCorrect: 0, genIncorrect: 0, genUngraded: 0,
@@ -61,6 +65,8 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
   const [analyzingSessions, setAnalyzingSessions] = useState<SessionWithProblems[]>([]);
   const [failedSessions, setFailedSessions] = useState<SessionWithProblems[]>([]);
   const [pendingLabelingSessions, setPendingLabelingSessions] = useState<SessionWithProblems[]>([]);
+  // 초기값 true는 의도적이다 — 첫 로드가 auth lock 충돌로 조용히 return하면(아래 catch)
+  // 다음 폴링 틱이 유일한 재시도 경로다. 첫 로드가 끝나면 진행 중 여부로 즉시 갱신된다.
   const [pollingActive, setPollingActive] = useState(true);
   const lastAnalyzingSeenAtRef = useRef<number>(0);
 
@@ -92,15 +98,17 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
       setPendingLabelingSessions(filteredPendingSessions);
       setFailedSessions(failed);
 
-      // 폴링 로직 (RecentProblemsPage와 동일한 이유):
-      // analyzing이 끝난 직후 completed/failed 카드가 다음 틱에 잡힐 수 있으므로,
-      // 잠깐(60초) 더 폴링을 유지해서 "카드 공백" 구간을 없앰.
+      // 폴링은 '분석이 진행 중'일 때만 유지한다.
+      // 라벨링 대기(pendingSessions)는 사용자가 검수를 눌러야 사라지는 정적 상태라,
+      // 조건에 넣으면 대기 세션이 하나만 있어도 폴링이 영영 안 꺼져 무거운 질의 6개를 계속 반복했다.
+      // analyzing이 끝난 직후 completed/failed/라벨링 카드가 다음 틱에 잡히는 "카드 공백"은
+      // recentlyHadAnalyzing(60초)이 덮는다. 같은 탭의 라벨링 완료는 handleLabelingComplete가 갱신한다.
       const now = Date.now();
       if (analyzing.length > 0) {
         lastAnalyzingSeenAtRef.current = now;
       }
       const recentlyHadAnalyzing = lastAnalyzingSeenAtRef.current > 0 && now - lastAnalyzingSeenAtRef.current < 60_000;
-      setPollingActive(analyzing.length > 0 || pendingSessions.length > 0 || recentlyHadAnalyzing);
+      setPollingActive(analyzing.length > 0 || recentlyHadAnalyzing);
     } catch (e) {
       const msg = normalizeError(e, language);
       if (msg.includes('Lock broken') || msg.includes('steal')) {
@@ -120,13 +128,13 @@ export function useStatsData({ startDate, endDate, language }: UseStatsDataParam
     loadData(true); // 초기 로드 시에만 loading 표시
   }, [loadData]);
 
-  // 폴링 로직: 분석 중이거나 라벨링이 필요한 세션이 있으면 3초마다 상태 확인 (loading 표시 없음)
+  // 폴링 로직: 분석이 진행 중일 때만 주기적으로 상태 확인 (loading 표시 없음)
   useEffect(() => {
     if (!pollingActive) return;
 
     const interval = setInterval(() => {
       loadData(false); // 폴링 시에는 loading 표시 안 함
-    }, 3000);
+    }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, [pollingActive, loadData]);

@@ -36,15 +36,15 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
   );
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
-      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '학급별 통계' : 'Statistics by Class'}</h2>
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-3 sm:space-y-4">
+      <h2 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '학급별 통계' : 'Statistics by Class'}</h2>
 
       <div className="flex flex-wrap gap-2">
         {classes.map((cls) => (
           <button
             key={cls.id}
             onClick={() => { onSelectClass(cls.id); setSelectedMonth(null); }}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${selectedClassId === cls.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200'}`}
+            className={`min-h-[40px] sm:min-h-0 px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-colors ${selectedClassId === cls.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200'}`}
           >
             {cls.name} ({cls.student_count ?? 0}{language === 'ko' ? '명' : ' students'})
           </button>
@@ -63,7 +63,7 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
                     onDeleteClass(selectedClassId);
                   }
                 }}
-                className="px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800/50 rounded-lg text-sm font-medium transition-colors"
+                className="relative px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800/50 rounded-lg text-sm font-medium transition-colors before:absolute before:content-[''] before:-inset-x-1 before:-inset-y-1"
               >
                 {language === 'ko' ? '현재 학급 삭제' : 'Delete Current Class'}
               </button>

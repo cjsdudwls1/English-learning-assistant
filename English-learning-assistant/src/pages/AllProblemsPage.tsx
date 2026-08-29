@@ -219,6 +219,12 @@ export const AllProblemsPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to delete problems:', err);
       setError(language === 'ko' ? '문제 삭제 중 오류가 발생했습니다.' : 'Failed to delete problems.');
+      // deleteProblems는 청크(500건)로 나눠 지운다 — 중간에 실패해도 **앞 청크는 이미 지워져 있다.**
+      // 여기서 목록을 다시 읽지 않으면 없는 문제가 화면에 남고, 확인 모달도 열린 채라
+      // 사용자가 같은 삭제를 다시 누른다. 실패했어도 화면은 DB와 맞춰 둔다.
+      setSelectedIds(new Set());
+      setShowDeleteConfirm(false);
+      await loadProblems().catch(() => {});
     } finally {
       setDeleting(false);
     }
@@ -226,8 +232,8 @@ export const AllProblemsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="text-center py-16">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-4 sm:py-8">
+        <div className="text-center py-6 sm:py-16">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto"></div>
           <p className="mt-4 text-slate-600 dark:text-slate-400">
             {language === 'ko' ? '문제 불러오는 중...' : 'Loading problems...'}
@@ -238,13 +244,13 @@ export const AllProblemsPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="max-w-6xl mx-auto px-3 py-4 sm:px-4 sm:py-8">
       {/* 헤더 */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-200 mb-1 sm:mb-2">
           {language === 'ko' ? '등록 문제 일람' : 'All Problems'}
         </h1>
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-xs sm:text-base text-slate-600 dark:text-slate-400">
           {genN > 0
             ? (language === 'ko'
                 ? `총 ${combinedTotal}개 — 등록 문제 ${registeredN} + 과제·생성 풀이 ${genN} (통계 화면과 동일 기준)`
@@ -256,23 +262,23 @@ export const AllProblemsPage: React.FC = () => {
       </div>
 
       {/* 통계 요약 — 전체/정답/오답은 과제·생성 풀이 포함(통계 화면과 동일 기준) */}
-      <div className="mb-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700 text-center">
-            <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{combinedTotal}</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '전체' : 'Total'}</p>
+      <div className="mb-4 sm:mb-6">
+        <div className="grid grid-cols-4 sm:grid-cols-2 md:grid-cols-4 gap-1.5 sm:gap-3">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-2 sm:p-4 border border-slate-200 dark:border-slate-700 text-center">
+            <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{combinedTotal}</p>
+            <p className="text-[11px] leading-tight sm:text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '전체' : 'Total'}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-blue-200 dark:border-blue-800 text-center">
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{combinedCorrect}</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '정답' : 'Correct'}</p>
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-2 sm:p-4 border border-blue-200 dark:border-blue-800 text-center">
+            <p className="text-lg sm:text-2xl font-bold text-blue-600 dark:text-blue-400">{combinedCorrect}</p>
+            <p className="text-[11px] leading-tight sm:text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '정답' : 'Correct'}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-red-200 dark:border-red-800 text-center">
-            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{combinedIncorrect}</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '오답' : 'Incorrect'}</p>
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-2 sm:p-4 border border-red-200 dark:border-red-800 text-center">
+            <p className="text-lg sm:text-2xl font-bold text-red-600 dark:text-red-400">{combinedIncorrect}</p>
+            <p className="text-[11px] leading-tight sm:text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '오답' : 'Incorrect'}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700 text-center">
-            <p className="text-2xl font-bold text-slate-500 dark:text-slate-400">{unmarkedCount}</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '미채점' : 'Unmarked'}</p>
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-2 sm:p-4 border border-slate-200 dark:border-slate-700 text-center">
+            <p className="text-lg sm:text-2xl font-bold text-slate-500 dark:text-slate-400">{unmarkedCount}</p>
+            <p className="text-[11px] leading-tight sm:text-sm text-slate-500 dark:text-slate-400">{language === 'ko' ? '미채점' : 'Unmarked'}</p>
           </div>
         </div>
         <p className="mt-2 text-xs text-slate-400 dark:text-slate-500 break-words">
@@ -283,20 +289,20 @@ export const AllProblemsPage: React.FC = () => {
       </div>
 
       {/* 검색 + 필터 */}
-      <div className="flex flex-col md:flex-row gap-3 mb-6">
+      <div className="flex flex-col md:flex-row gap-2 sm:gap-3 mb-4 sm:mb-6">
         <input
           type="text"
           value={searchText}
           onChange={(e) => { setSearchText(e.target.value); setPage(0); }}
           placeholder={language === 'ko' ? '문제 내용 또는 분류로 검색...' : 'Search by content or classification...'}
-          className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500"
+          className="flex-1 px-3 py-2 sm:px-4 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500"
         />
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 sm:gap-2">
           {(['all', 'correct', 'incorrect', 'unmarked'] as FilterCorrectness[]).map(f => (
             <button
               key={f}
               onClick={() => { setFilterCorrectness(f); setPage(0); }}
-              className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+              className={`flex-1 sm:flex-none px-2 py-3 text-xs sm:px-3 sm:py-2 sm:text-sm rounded-lg transition-colors ${
                 filterCorrectness === f
                   ? 'bg-indigo-600 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -313,8 +319,8 @@ export const AllProblemsPage: React.FC = () => {
 
       {/* 선택 컨트롤 바 */}
       {someSelected && (
-        <div className="flex items-center justify-between mb-4 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg">
-          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4 px-3 py-2 sm:px-4 sm:py-3 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+          <span className="text-xs sm:text-sm font-medium text-indigo-700 dark:text-indigo-300">
             {language === 'ko'
               ? `${selectedIds.size}개 문제 선택됨`
               : `${selectedIds.size} problem(s) selected`}
@@ -322,13 +328,13 @@ export const AllProblemsPage: React.FC = () => {
           <div className="flex gap-2">
             <button
               onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-1.5 text-sm rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+              className="px-3 py-2 sm:py-1.5 text-sm rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
             >
               {language === 'ko' ? '선택 해제' : 'Deselect'}
             </button>
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+              className="px-3 py-2 sm:py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
             >
               {language === 'ko' ? '선택 삭제' : 'Delete Selected'}
             </button>
@@ -337,7 +343,7 @@ export const AllProblemsPage: React.FC = () => {
       )}
 
       {error && (
-        <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg">
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 text-sm bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg">
           {error}
         </div>
       )}
@@ -345,35 +351,40 @@ export const AllProblemsPage: React.FC = () => {
       {/* 문제 테이블 */}
       <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900/50">
               <tr>
-                <th className="px-3 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={allPagedSelected}
-                    onChange={toggleSelectAll}
-                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                    title={language === 'ko' ? '전체 선택' : 'Select all'}
-                  />
+                <th className="px-1.5 py-2 sm:px-3 sm:py-3 text-center">
+                  {/* 탭 영역만 넓힌다 — p로 히트 영역을 키우고 -m으로 레이아웃 점유는 원래대로 되돌린다 */}
+                  <label className="inline-flex items-center justify-center cursor-pointer p-2.5 -m-2.5 sm:p-2 sm:-m-2">
+                    <input
+                      type="checkbox"
+                      checked={allPagedSelected}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      title={language === 'ko' ? '전체 선택' : 'Select all'}
+                    />
+                  </label>
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300">#</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300">
+                {/* 보조 3열(#·분류·등록일)은 md에서 한꺼번에 등장한다. sm에서 하나씩 끼어들면
+                    640~768px에서 열이 들쭉날쭉해지고, 본문 열이 sm:max-w-xs를 못 쓰고 짓눌린다 */}
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300">#</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left font-medium text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '문제 내용' : 'Problem'}
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300">
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '분류' : 'Classification'}
                 </th>
-                <th className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
+                <th className="px-1.5 py-2 sm:px-4 sm:py-3 text-center font-medium text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '사용자 답안' : 'Your Answer'}
                 </th>
-                <th className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
+                <th className="px-1.5 py-2 sm:px-4 sm:py-3 text-center font-medium text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '정답' : 'Correct'}
                 </th>
-                <th className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
+                <th className="px-1.5 py-2 sm:px-4 sm:py-3 text-center font-medium text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '결과' : 'Result'}
                 </th>
-                <th className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
+                <th className="hidden md:table-cell px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '등록일' : 'Date'}
                 </th>
               </tr>
@@ -381,7 +392,6 @@ export const AllProblemsPage: React.FC = () => {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
               {paged.map((p, idx) => {
                 const stem = p.content?.stem || p.content?.question_text || '';
-                const truncated = stem.length > 60 ? stem.substring(0, 60) + '...' : stem;
                 const classLabel = [p.classification?.depth1, p.classification?.depth2].filter(Boolean).join(' > ') || '-';
                 const dateStr = p.session_created_at ? new Date(p.session_created_at).toLocaleDateString() : '-';
 
@@ -393,29 +403,36 @@ export const AllProblemsPage: React.FC = () => {
                     }`}
                     onClick={() => navigate(`/session/${p.session_id}`)}
                   >
-                    <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(p.id)}
-                        onChange={() => toggleSelect(p.id)}
-                        aria-label={language === 'ko' ? `문제 ${idx + 1} 선택` : `Select problem ${idx + 1}`}
-                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
+                    <td className="px-1.5 py-2 sm:px-3 sm:py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      {/* 탭 영역만 넓힌다. 부모 td가 이미 stopPropagation 하므로 행 navigate와 이중 발화하지 않는다 */}
+                      <label className="inline-flex items-center justify-center cursor-pointer p-2.5 -m-2.5 sm:p-2 sm:-m-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(p.id)}
+                          onChange={() => toggleSelect(p.id)}
+                          aria-label={language === 'ko' ? `문제 ${idx + 1} 선택` : `Select problem ${idx + 1}`}
+                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
                     </td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{idx + 1}</td>
-                    <td className="px-4 py-3 text-slate-800 dark:text-slate-200 max-w-xs">
-                      <span title={stem}>{truncated || (language === 'ko' ? '내용 없음' : 'No content')}</span>
+                    <td className="hidden md:table-cell px-4 py-3 text-slate-500 dark:text-slate-400">{idx + 1}</td>
+                    <td className="px-2 py-2 sm:px-4 sm:py-3 text-slate-800 dark:text-slate-200 max-w-[40vw] sm:max-w-xs break-words">
+                      {/* 절단은 CSS 한 곳에서만 한다 — JS로 60자를 미리 자르면 title 툴팁과 데스크톱 표시까지 같이 잘렸다 */}
+                      <span title={stem} className="line-clamp-3 sm:line-clamp-4">{stem || (language === 'ko' ? '내용 없음' : 'No content')}</span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400 max-w-[150px] truncate">
+                    <td title={classLabel} className="hidden md:table-cell px-4 py-3 text-xs text-slate-600 dark:text-slate-400 max-w-[150px] truncate">
                       {classLabel}
                     </td>
-                    <td className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 font-mono">
+                    {/* 답안은 읽히는 게 목적이다. break-all은 줄마다 아무 글자에서나 끊어 단어를 쪼갠다.
+                        폭은 실측으로 정했다(390px 기준 표 가로 초과 0). 고정 px 대신 23vw인 이유:
+                        360/390/430px에서 각각 83/90/99px로 기기 폭만큼 답안 열이 같이 넓어진다 */}
+                    <td className="px-1.5 py-2 sm:px-4 sm:py-3 text-center text-slate-700 dark:text-slate-300 font-mono max-w-[23vw] sm:max-w-none break-words">
                       {p.user_answer || '-'}
                     </td>
-                    <td className="px-4 py-3 text-center text-green-700 dark:text-green-400 font-mono font-medium">
+                    <td className="px-1.5 py-2 sm:px-4 sm:py-3 text-center text-green-700 dark:text-green-400 font-mono font-medium max-w-[23vw] sm:max-w-none break-words">
                       {p.correct_answer || '-'}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-1.5 py-2 sm:px-4 sm:py-3 text-center">
                       {p.is_correct === true && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">O</span>
                       )}
@@ -426,7 +443,7 @@ export const AllProblemsPage: React.FC = () => {
                         <span className="text-xs text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center text-xs text-slate-500 dark:text-slate-400">
+                    <td className="hidden md:table-cell px-4 py-3 text-center text-xs text-slate-500 dark:text-slate-400">
                       {dateStr}
                     </td>
                   </tr>
@@ -437,7 +454,7 @@ export const AllProblemsPage: React.FC = () => {
         </div>
 
         {paged.length === 0 && (
-          <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+          <div className="text-center py-6 sm:py-12 text-slate-500 dark:text-slate-400">
             {language === 'ko' ? '검색 결과가 없습니다.' : 'No results found.'}
           </div>
         )}
@@ -445,7 +462,7 @@ export const AllProblemsPage: React.FC = () => {
 
       {/* 더 보기 버튼 */}
       {paged.length < filtered.length && (
-        <div className="mt-6 text-center">
+        <div className="mt-4 sm:mt-6 text-center">
           <button
             onClick={() => setPage(p => p + 1)}
             className="px-6 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
@@ -458,7 +475,7 @@ export const AllProblemsPage: React.FC = () => {
       )}
 
       {/* 결과 요약 */}
-      <div className="mt-4 text-sm text-slate-500 dark:text-slate-400 text-center">
+      <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-slate-500 dark:text-slate-400 text-center">
         {language === 'ko'
           ? `${filtered.length}개 중 ${paged.length}개 표시`
           : `Showing ${paged.length} of ${filtered.length}`}
@@ -466,12 +483,12 @@ export const AllProblemsPage: React.FC = () => {
 
       {/* 삭제 확인 모달 */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 border border-slate-200 dark:border-slate-700">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-4 sm:p-6 max-h-none overflow-y-auto sm:max-h-[90vh] max-w-md w-full border border-slate-200 dark:border-slate-700">
             <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-3">
               {language === 'ko' ? '문제 삭제 확인' : 'Confirm Delete'}
             </h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 sm:mb-6">
               {language === 'ko'
                 ? `선택된 ${selectedIds.size}개의 문제를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`
                 : `Are you sure you want to delete ${selectedIds.size} problem(s)? This action cannot be undone.`}
@@ -480,14 +497,14 @@ export const AllProblemsPage: React.FC = () => {
               <button
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={deleting}
-                className="px-4 py-2 text-sm rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                className="px-4 py-2.5 sm:py-2 text-sm rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
               >
                 {language === 'ko' ? '취소' : 'Cancel'}
               </button>
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2.5 sm:py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {deleting && (
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

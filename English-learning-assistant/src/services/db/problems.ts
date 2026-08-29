@@ -107,26 +107,47 @@ export async function fetchProblemsByIds(problemIds: string[]): Promise<ProblemI
     labelsRows.push(...(data || []));
   }
 
-  // transformFromLabelJoin 호환 형태로 wrapping
-  const result: ProblemItem[] = [];
+  // 4) **요청한 id 순서대로** 조립한다.
+  //
+  // 예전에는 labels 행을 돌며 만들었다. 두 가지가 깨져 있었다.
+  //  - labels가 아직 없는 문제(검수 전)는 결과에서 통째로 사라졌다. 호출부는 요청한 개수보다
+  //    적게 받고도 왜 빠졌는지 알 수 없었다.
+  //  - 남은 문제도 DB가 labels를 돌려준 순서로 나왔다. '틀린 문제 다시 풀기'는 사용자가 고른
+  //    순서가 곧 시험지 순서라, 순서가 섞이면 다른 시험지가 된다.
+  //
+  // 라벨은 **선택**으로 붙인다. 라벨 없는 문제에 transformFromLabelJoin을 그대로 쓰면
+  // normalizeMark(undefined)가 'X'를 돌려줘 **사용자가 오답 처리한 것으로 위조**된다.
+  // 그래서 라벨 없는 쪽은 transformToProblemItem(p) — 사용자 채점은 null로 남는다.
+  const labelByProblem = new Map<string, any>();
   for (const l of labelsRows) {
-    const p = problemMap.get(l.problem_id);
-    if (!p) continue;
+    if (!labelByProblem.has(l.problem_id)) labelByProblem.set(l.problem_id, l);
+  }
+
+  const result: ProblemItem[] = [];
+  const emitted = new Set<string>();
+  for (const id of problemIds) {
+    if (emitted.has(id)) continue; // 같은 id를 두 번 요청해도 한 번만 낸다
+    const p = problemMap.get(id);
+    if (!p) continue;              // 없는 문제이거나 내 세션이 아닌 문제
+    emitted.add(id);
+    const l = labelByProblem.get(id);
     result.push(
-      transformFromLabelJoin({
-        problem_id: l.problem_id,
-        user_answer: l.user_answer,
-        user_mark: l.user_mark,
-        is_correct: l.is_correct,
-        correct_answer: l.correct_answer,
-        classification: l.classification,
-        problems: {
-          id: p.id,
-          index_in_image: p.index_in_image,
-          content: p.content,
-          session_id: p.session_id,
-        },
-      }),
+      l
+        ? transformFromLabelJoin({
+            problem_id: l.problem_id,
+            user_answer: l.user_answer,
+            user_mark: l.user_mark,
+            is_correct: l.is_correct,
+            correct_answer: l.correct_answer,
+            classification: l.classification,
+            problems: {
+              id: p.id,
+              index_in_image: p.index_in_image,
+              content: p.content,
+              session_id: p.session_id,
+            },
+          })
+        : transformToProblemItem(p),
     );
   }
   return result;
@@ -352,13 +373,21 @@ export async function updateProblemLabels(sessionId: string, items: ProblemItem[
 export async function deleteProblems(problemIds: string[]): Promise<number> {
   if (!problemIds || problemIds.length === 0) return 0;
 
-  const { data, error } = await supabase
-    .from('problems')
-    .delete()
-    .in('id', problemIds)
-    .select('id');
+  // PostgREST는 .in() 목록을 **URL 쿼리스트링**에 싣는다. UUID 하나가 36자라
+  // 전체 선택 삭제(AllProblemsPage)처럼 수천 건이 오면 요청 URL이 서버 상한을 넘겨
+  // 414(URI Too Long)로 죽는다. 이 파일의 다른 대량 조회들이 이미 쓰는 ID_CHUNK 관례를 따른다.
+  let deleted = 0;
+  for (let i = 0; i < problemIds.length; i += ID_CHUNK) {
+    const chunk = problemIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await supabase
+      .from('problems')
+      .delete()
+      .in('id', chunk)
+      .select('id');
 
-  if (error) throw error;
+    if (error) throw error;
+    deleted += data?.length ?? 0;
+  }
 
-  return data?.length ?? 0;
+  return deleted;
 }

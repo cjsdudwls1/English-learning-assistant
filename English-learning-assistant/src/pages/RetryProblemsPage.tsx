@@ -67,8 +67,12 @@ export const RetryProblemsPage: React.FC = () => {
     if (!items) return;
     const newResults: Record<string, boolean | null> = {};
     items.forEach((item, index) => {
-      const answer = answers[keyOf(item, index)] ?? '';
-      newResults[keyOf(item, index)] = gradeRegisteredProblem(item, answer);
+      const key = keyOf(item, index);
+      const answer = answers[key] ?? '';
+      // 미응답은 채점 대상이 아니다 — 기권을 null로 기록하면 배지는 '미응답'인데
+      // 요약의 '수동 확인' 숫자에 섞여 들어가 두 표시가 어긋난다.
+      if (answer.trim() === '') return;
+      newResults[key] = gradeRegisteredProblem(item, answer);
     });
     setResults(newResults);
     setSubmitted(true);
@@ -99,11 +103,11 @@ export const RetryProblemsPage: React.FC = () => {
     if (wrongIds.length > 0) navigate(`/retry?ids=${wrongIds.join(',')}`);
   };
 
-  if (loading) return <div className="text-center text-slate-600 py-10">{t.common.loading}</div>;
-  if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
+  if (loading) return <div className="text-center text-slate-600 py-6 sm:py-10">{t.common.loading}</div>;
+  if (error) return <div className="text-center text-red-700 py-6 sm:py-10">{error}</div>;
   if (!items || items.length === 0) {
     return (
-      <div className="text-center py-10">
+      <div className="text-center py-6 sm:py-10">
         <p className="text-slate-600 mb-4">{t.retry.empty}</p>
         <button onClick={() => navigate('/stats')} className="px-4 py-2 bg-indigo-600 text-white rounded">{t.edit.backToStats}</button>
       </div>
@@ -123,15 +127,15 @@ export const RetryProblemsPage: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700 max-w-full lg:max-w-5xl">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.retry.title} ({t.retry.itemCountUnit.replace('{count}', String(items.length))})</h2>
-        <button onClick={() => navigate('/stats')} className="px-3 py-1 text-sm bg-gray-200 dark:bg-slate-600 dark:text-slate-200 rounded">{t.session.back}</button>
+    <div className="mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700 max-w-full lg:max-w-5xl">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4">
+        <h2 className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.retry.title} ({t.retry.itemCountUnit.replace('{count}', String(items.length))})</h2>
+        <button onClick={() => navigate('/stats')} className="shrink-0 px-3 py-2.5 sm:py-1 text-xs sm:text-sm bg-gray-200 dark:bg-slate-600 dark:text-slate-200 rounded">{t.session.back}</button>
       </div>
 
       {submitted && (
-        <div className="mb-4 p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800">
-          <p className="font-semibold text-slate-800 dark:text-slate-200">
+        <div className="mb-3 sm:mb-4 p-3 sm:p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800">
+          <p className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200">
             {t.retry.resultSummary
               .replace('{correct}', String(correctCount))
               .replace('{wrong}', String(wrongCount))
@@ -151,7 +155,7 @@ export const RetryProblemsPage: React.FC = () => {
         </div>
       )}
 
-      <div className="space-y-5">
+      <div className="space-y-3 sm:space-y-5">
         {items.map((item, index) => {
           const key = keyOf(item, index);
           const answer = answers[key] ?? '';
@@ -161,7 +165,7 @@ export const RetryProblemsPage: React.FC = () => {
           const attempts = item.id ? history[item.id] : undefined;
 
           return (
-            <div key={key} className={`p-4 border-2 rounded-xl ${submitted
+            <div key={key} className={`p-3 sm:p-4 border-2 rounded-xl ${submitted
               ? result === true
                 ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                 : result === false
@@ -172,7 +176,7 @@ export const RetryProblemsPage: React.FC = () => {
               : 'border-slate-300 dark:border-slate-600'
               }`}>
               <div className="flex items-start justify-between gap-2 mb-2">
-                <p className="font-semibold text-slate-800 dark:text-slate-200">
+                <p className="min-w-0 break-words text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200">
                   {index + 1}. {item.instruction || item.문제내용?.text}
                 </p>
                 <div className="flex items-center gap-2 shrink-0">
@@ -205,7 +209,7 @@ export const RetryProblemsPage: React.FC = () => {
                         key={cIdx}
                         onClick={() => !submitted && setAnswers(prev => ({ ...prev, [key]: value }))}
                         disabled={submitted}
-                        className={`w-full text-left p-2.5 border-2 rounded-lg text-sm transition-colors ${isSelected
+                        className={`w-full text-left p-3 sm:p-2.5 border-2 rounded-lg text-sm transition-colors ${isSelected
                           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
                           : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                           } ${submitted ? 'cursor-default' : ''} text-slate-700 dark:text-slate-300`}
@@ -222,7 +226,7 @@ export const RetryProblemsPage: React.FC = () => {
                   onChange={(e) => setAnswers(prev => ({ ...prev, [key]: e.target.value }))}
                   disabled={submitted}
                   placeholder={t.assignments.shortAnswerPlaceholder}
-                  className="w-full px-3 py-2 border-2 border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200"
+                  className="w-full px-3 py-2.5 sm:py-2 border-2 border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200"
                 />
               )}
 
@@ -245,8 +249,8 @@ export const RetryProblemsPage: React.FC = () => {
       </div>
 
       {!submitted && (
-        <div className="mt-6 text-center">
-          <button onClick={handleSubmit} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors">
+        <div className="mt-4 sm:mt-6 text-center">
+          <button onClick={handleSubmit} className="w-full sm:w-auto px-6 sm:px-8 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors">
             {t.retry.grade}
           </button>
         </div>

@@ -100,21 +100,21 @@ export const AnalyzingPage: React.FC = () => {
 
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 border border-slate-200">
         <div className="text-center">
-          <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-red-600 mb-4">{t.analyzing.failedTitle}</h2>
-          <p className="text-slate-700 mb-6">{error}</p>
-          <div className="flex gap-4 justify-center">
+          <div className="text-2xl sm:text-6xl mb-3 sm:mb-4">⚠️</div>
+          <h2 className="text-xl sm:text-2xl font-bold text-red-600 mb-3 sm:mb-4">{t.analyzing.failedTitle}</h2>
+          <p className="text-slate-700 mb-4 sm:mb-6">{error}</p>
+          <div className="flex flex-wrap gap-2 sm:gap-4 justify-center">
             <button
               onClick={handleRetry}
-              className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="px-4 py-2.5 sm:px-6 sm:py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
             >
               {t.analyzing.retry}
             </button>
             <button
               onClick={handleGoToStats}
-              className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
+              className="px-4 py-2.5 sm:px-6 sm:py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
             >
               {t.analyzing.goToStats}
             </button>
@@ -125,24 +125,24 @@ export const AnalyzingPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
+    <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 border border-slate-200">
       <div className="text-center">
-        <div className="text-6xl mb-6">🔍</div>
-        <h2 className="text-3xl font-bold text-slate-800 mb-4">
+        <div className="text-2xl sm:text-6xl mb-3 sm:mb-6">🔍</div>
+        <h2 className="text-xl sm:text-3xl font-bold text-slate-800 mb-3 sm:mb-4">
           {language === 'ko' ? '분석중' : 'Analyzing'}{'.'.repeat(dots)}
         </h2>
-        <p className="text-slate-600 mb-6 text-lg">
+        <p className="text-slate-600 mb-4 sm:mb-6 text-sm sm:text-lg">
           {t.analyzing.subtitle}
         </p>
 
         {currentModel && (
-          <div className="mb-8 inline-flex items-center px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700">
+          <div className="mb-4 sm:mb-8 inline-flex items-center px-3 sm:px-4 py-2 text-sm sm:text-base rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700">
             <span className="mr-2 animate-pulse">🤖</span>
             <span className="font-medium">{t.analyzing.currentModel.replace('{model}', currentModel)}</span>
           </div>
         )}
 
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-left max-w-lg mx-auto">
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6 text-left max-w-lg mx-auto">
           <p className="text-green-800 text-sm font-medium flex items-center gap-2">
             ✅ {t.analyzing.backgroundRunning}
           </p>
@@ -150,15 +150,15 @@ export const AnalyzingPage: React.FC = () => {
             💡 {t.analyzing.backgroundHint}
           </p>
         </div>
-        <div className="flex gap-4 justify-center">
+        <div className="flex flex-wrap gap-2 sm:gap-4 justify-center">
           <button
             onClick={() => navigate('/stats')}
-            className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
+            className="px-4 py-2.5 sm:px-6 sm:py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
           >
             {t.analyzing.goToStatsPage}
           </button>
         </div>
-        <div className="flex justify-center mt-6">
+        <div className="flex justify-center mt-4 sm:mt-6">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
         </div>
       </div>

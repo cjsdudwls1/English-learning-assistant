@@ -127,21 +127,21 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
   const totalCount = Object.values(problemCounts).reduce((sum, count) => sum + count, 0);
 
   return (
-    <div className="mt-6 p-6 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="mt-4 p-4 sm:mt-6 sm:p-6 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+      <div className="mb-3 sm:mb-4 flex items-center justify-between gap-2">
         <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
           {language === 'ko' ? '문제 생성' : 'Generate Problems'}
         </h3>
         <button
           onClick={onClose}
-          className="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          className="shrink-0 inline-flex min-h-[40px] items-center justify-center px-3 py-2 sm:min-h-0 sm:py-1 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
         >
           {language === 'ko' ? '닫기' : 'Close'}
         </button>
       </div>
 
-      <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-        <p className="text-sm text-blue-800 dark:text-blue-200">
+      <div className="mb-3 sm:mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed break-words">
           {selectedNodesCount > 0
             ? (language === 'ko'
               ? '✓ 선택한 카테고리 기반으로 문제가 생성됩니다.'
@@ -154,14 +154,17 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
       </div>
 
       {/* 문제 유형별 문제 수 입력 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+      <div className="mb-4 sm:mb-6">
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 sm:mb-3">
           {language === 'ko' ? '문제 유형별 문제 수 설정' : 'Set Problem Count by Type'}
+          {/* 입력 가능 범위 힌트. 행마다 붙은 (0-50)은 모바일에서 자리가 없어 숨기므로(아래 hidden sm:inline),
+              모바일에선 여기 라벨 옆에 한 번만 작게 보여준다. 값 제약을 모른 채 입력하는 상황을 막는 게 목적이다. */}
+          <span className="ml-1.5 text-xs font-normal text-slate-500 dark:text-slate-400 sm:hidden">(0-50)</span>
         </label>
-        <div className="space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           {(['multiple_choice', 'short_answer', 'essay', 'ox'] as ProblemType[]).map((type) => (
-            <div key={type} className="flex items-center justify-between p-3 bg-white dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex-1">
+            <div key={type} className="flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3 bg-white dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex-1 min-w-0">
                 {type === 'multiple_choice' && (language === 'ko' ? '객관식' : 'Multiple Choice')}
                 {type === 'short_answer' && (language === 'ko' ? '단답형' : 'Short Answer')}
                 {type === 'essay' && (language === 'ko' ? '서술형' : 'Essay')}
@@ -183,7 +186,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                     max="50"
                     value={problemCounts[type]}
                     onChange={(e) => handleCountInputChange(type, e.target.value)}
-                    className="w-20 px-3 py-2 text-center border-0 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 bg-transparent text-slate-900 dark:text-slate-200"
+                    className="w-14 sm:w-20 px-2 sm:px-3 py-2 text-base text-center border-0 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 bg-transparent text-slate-900 dark:text-slate-200"
                   />
                   <button
                     type="button"
@@ -194,7 +197,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                     ↑
                   </button>
                 </div>
-                <span className="text-xs text-slate-500 dark:text-slate-400 w-12 text-right">
+                <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400 w-12 text-right">
                   {language === 'ko' ? '(0-50)' : '(0-50)'}
                 </span>
               </div>
@@ -204,12 +207,13 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
       </div>
 
       {/* 모드 선택 (기존 문제 불러오기 기능이 있는 경우) */}
+      {/* 모바일에선 세로로 쌓는다 — 가로 2등분이면 긴 한글 라벨이 2줄로 접히고, 형제가 stretch로 같이 부풀어 버튼 높이가 과대해진다. */}
       {onLoadExisting && onToggleUseExisting && (
-        <div className="mb-4 flex gap-2">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row">
           <button
             type="button"
             onClick={() => onToggleUseExisting(true)}
-            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${useExistingProblems
+            className={`flex-1 px-3 py-2.5 sm:px-4 sm:py-2 rounded-lg font-medium transition-colors ${useExistingProblems
                 ? 'bg-green-600 dark:bg-green-500 text-white'
                 : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
               }`}
@@ -219,7 +223,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
           <button
             type="button"
             onClick={() => onToggleUseExisting(false)}
-            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${!useExistingProblems
+            className={`flex-1 px-3 py-2.5 sm:px-4 sm:py-2 rounded-lg font-medium transition-colors ${!useExistingProblems
                 ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                 : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
               }`}
@@ -231,13 +235,13 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
 
       {/* AI 생성 옵션 (AI 모드일 때만 표시) */}
       {!useExistingProblems && (
-        <div className="mb-4 space-y-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+        <div className="mb-4 space-y-3 p-3 sm:space-y-4 sm:p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
           <h4 className="text-sm font-bold text-indigo-800 dark:text-indigo-300">
             {language === 'ko' ? 'AI 생성 옵션' : 'AI Generation Options'}
           </h4>
 
           {/* 지문 포함 토글 */}
-          <label className="flex items-center gap-3 cursor-pointer">
+          <label className="relative flex items-center gap-3 cursor-pointer before:absolute before:content-[''] before:inset-x-0 before:-inset-y-2.5">
             <input
               type="checkbox"
               checked={includePassage}
@@ -251,7 +255,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
 
           {/* 지문 길이 슬라이더 */}
           {includePassage && (
-            <div className="pl-7 space-y-3">
+            <div className="pl-3 sm:pl-7 space-y-3">
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-xs text-slate-600 dark:text-slate-400">{language === 'ko' ? '지문 길이' : 'Passage length'}</span>
@@ -266,7 +270,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                   step={100}
                   value={passageLength}
                   onChange={(e) => setPassageLength(Number(e.target.value))}
-                  className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  className="range-slider"
                 />
                 <div className="flex justify-between text-[10px] text-slate-400">
                   <span>700</span><span>1000</span><span>1500</span><span>2000</span>
@@ -284,7 +288,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                       <button
                         type="button"
                         onClick={() => setExpandedCategory(expandedCategory === cat.id ? null : cat.id)}
-                        className={`w-full px-3 py-2 text-xs font-medium rounded-lg transition-colors ${expandedCategory === cat.id || passageTopic?.category === (language === 'ko' ? cat.ko : cat.en)
+                        className={`w-full min-h-[40px] sm:min-h-0 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${expandedCategory === cat.id || passageTopic?.category === (language === 'ko' ? cat.ko : cat.en)
                           ? 'bg-indigo-600 text-white'
                           : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-indigo-100 dark:hover:bg-slate-600'
                           }`}
@@ -304,7 +308,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                                 });
                                 setExpandedCategory(null);
                               }}
-                              className={`px-2 py-1 text-xs rounded-full transition-colors ${passageTopic?.subfield === (language === 'ko' ? sub.ko : sub.en)
+                              className={`inline-flex min-h-[40px] items-center px-2.5 py-1.5 sm:min-h-0 sm:px-2 sm:py-1 text-xs rounded-full transition-colors ${passageTopic?.subfield === (language === 'ko' ? sub.ko : sub.en)
                                 ? 'bg-indigo-500 text-white'
                                 : 'bg-slate-100 dark:bg-slate-600 text-slate-600 dark:text-slate-300 hover:bg-indigo-200'
                                 }`}
@@ -324,7 +328,8 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                         ? `선택: ${passageTopic.category} > ${passageTopic.subfield}`
                         : `Selected: ${passageTopic.category} > ${passageTopic.subfield}`}
                     </span>
-                    <button type="button" onClick={() => setPassageTopic(null)} className="text-xs text-red-500 hover:underline">
+                    {/* 탭 타깃 확보: 패딩으로 40px를 만들고 같은 크기의 음수 마진으로 되돌려 시각 크기는 유지한다. */}
+                    <button type="button" onClick={() => setPassageTopic(null)} className="inline-flex min-h-[40px] sm:min-h-0 items-center p-2.5 -m-2.5 text-xs text-red-500 hover:underline">
                       {language === 'ko' ? '초기화' : 'Reset'}
                     </button>
                   </div>
@@ -342,7 +347,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                       key={genre.id}
                       type="button"
                       onClick={() => setPassageGenre(passageGenre === genre.id ? null : genre.id)}
-                      className={`px-3 py-1.5 text-xs rounded-full transition-colors ${
+                      className={`inline-flex min-h-[40px] items-center sm:min-h-0 px-3 py-2 sm:py-1.5 text-xs rounded-full transition-colors ${
                         passageGenre === genre.id
                           ? 'bg-indigo-600 text-white'
                           : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-indigo-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600'
@@ -359,7 +364,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
                         ? `선택: ${PASSAGE_GENRES.find(g => g.id === passageGenre)?.[language === 'ko' ? 'ko' : 'en'] || passageGenre}`
                         : `Selected: ${PASSAGE_GENRES.find(g => g.id === passageGenre)?.en || passageGenre}`}
                     </span>
-                    <button type="button" onClick={() => setPassageGenre(null)} className="text-xs text-red-500 hover:underline">
+                    <button type="button" onClick={() => setPassageGenre(null)} className="inline-flex min-h-[40px] sm:min-h-0 items-center p-2.5 -m-2.5 text-xs text-red-500 hover:underline">
                       {language === 'ko' ? '초기화' : 'Reset'}
                     </button>
                   </div>
@@ -385,7 +390,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
               step={1}
               value={difficultyLevel}
               onChange={(e) => setDifficultyLevel(Number(e.target.value))}
-              className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              className="range-slider"
             />
             <div className="flex justify-between text-[10px] text-slate-400">
               <span>{language === 'ko' ? '기초' : 'Basic'}</span>
@@ -411,7 +416,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
               step={1}
               value={vocabLevel}
               onChange={(e) => setVocabLevel(Number(e.target.value))}
-              className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              className="range-slider"
             />
             <div className="flex justify-between text-[10px] text-slate-400">
               <span>{language === 'ko' ? '중학' : 'Middle'}</span>
@@ -429,7 +434,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
           <button
             onClick={onLoadExisting}
             disabled={isLoadingExisting || isGenerating || totalCount < 1}
-            className="w-full px-6 py-3 bg-green-600 dark:bg-green-500 text-white rounded-lg font-semibold hover:bg-green-700 dark:hover:bg-green-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+            className="w-full px-4 py-3 sm:px-6 bg-green-600 dark:bg-green-500 text-white rounded-lg font-semibold hover:bg-green-700 dark:hover:bg-green-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
           >
             {isLoadingExisting
               ? (language === 'ko' ? '불러오는 중...' : 'Loading...')
@@ -454,7 +459,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
             }
           }}
           disabled={isGenerating || isLoadingExisting || totalCount < 1}
-          className="w-full px-6 py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+          className="w-full px-4 py-3 sm:px-6 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
           {isGenerating
             ? (language === 'ko' ? '생성 중...' : 'Generating...')
@@ -463,7 +468,7 @@ export const ProblemGeneratorUI: React.FC<ProblemGeneratorUIProps> = ({
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg">
+        <div className="mb-4 p-3 sm:p-4 break-words bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg">
           {error}
         </div>
       )}

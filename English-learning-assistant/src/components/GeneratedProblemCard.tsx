@@ -193,7 +193,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
       return (
         <div
           key={cIdx}
-          className={`w-full text-left p-3 rounded-lg border-2 transition-all ${isSelected
+          className={`w-full text-left px-3 py-2.5 sm:p-3 rounded-lg border-2 transition-all ${isSelected
               ? reviewIsCorrect
                 ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-200'
                 : 'border-red-500 dark:border-red-400 bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200'
@@ -203,20 +203,20 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
             }`}
         >
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-600 dark:text-slate-400">
+            <span className="shrink-0 font-semibold text-slate-600 dark:text-slate-400">
               {String.fromCharCode(65 + cIdx)}.
             </span>
-            <span>{choice.text}</span>
+            <span className="min-w-0 break-words">{choice.text}</span>
             {reviewSelectedIndex !== null && (
               <>
                 {isSelected && reviewIsCorrect && (
-                  <span className="ml-auto text-green-600 dark:text-green-400 font-bold">✓</span>
+                  <span className="ml-auto shrink-0 text-green-600 dark:text-green-400 font-bold">✓</span>
                 )}
                 {isSelected && !reviewIsCorrect && (
-                  <span className="ml-auto text-red-600 dark:text-red-400 font-bold">✗</span>
+                  <span className="ml-auto shrink-0 text-red-600 dark:text-red-400 font-bold">✗</span>
                 )}
                 {showCorrect && !isSelected && (
-                  <span className="ml-auto text-green-600 dark:text-green-400 font-bold">{t.practice.answer}</span>
+                  <span className="ml-auto shrink-0 text-green-600 dark:text-green-400 font-bold">{t.practice.answer}</span>
                 )}
               </>
             )}
@@ -232,7 +232,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
         key={cIdx}
         onClick={() => handleChoiceClick(cIdx)}
         disabled={selectedIndex !== null}
-        className={`w-full text-left p-3 rounded-lg border-2 transition-all ${selectedIndex === null
+        className={`w-full text-left px-3 py-2.5 sm:p-3 rounded-lg border-2 transition-all ${selectedIndex === null
             ? 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer'
             : isSelected
               ? 'border-indigo-500 dark:border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-200'
@@ -240,10 +240,10 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
           }`}
       >
         <div className="flex items-center gap-2">
-          <span className={`font-semibold ${selectedIndex === null ? 'text-slate-600 dark:text-slate-400' : ''}`}>
+          <span className={`shrink-0 font-semibold ${selectedIndex === null ? 'text-slate-600 dark:text-slate-400' : ''}`}>
             {String.fromCharCode(65 + cIdx)}.
           </span>
-          <span>{choice.text}</span>
+          <span className="min-w-0 break-words">{choice.text}</span>
         </div>
       </button>
     );
@@ -260,20 +260,20 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
       {};
 
     return (
-      <div className="mt-4 space-y-3">
+      <div className="mt-3 space-y-2 sm:mt-4 sm:space-y-3">
         {problem.explanation && (
-          <div className="p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg">
+          <div className="p-3 sm:p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg">
             <p className="text-sm font-semibold text-green-800 dark:text-green-200 mb-2">
               ✓ {t.practice.explanation}:
             </p>
-            <p className="text-sm text-green-700 dark:text-green-300 whitespace-pre-line">
+            <p className="text-sm leading-relaxed text-green-700 dark:text-green-300 whitespace-pre-line break-words">
               {problem.explanation}
             </p>
           </div>
         )}
 
         {(problem.wrong_explanations || problem.wrong_explanation) && reviewSelectedIndex !== null && (
-          <div className={`p-4 border rounded-lg ${reviewIsCorrect
+          <div className={`p-3 sm:p-4 border rounded-lg ${reviewIsCorrect
               ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800'
               : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800'
             }`}>
@@ -283,7 +283,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
               }`}>
               {reviewIsCorrect ? `✓ ${t.practice.selectedAnswer}:` : `✗ ${t.practice.wrongExplanation}:`}
             </p>
-            <p className={`text-sm whitespace-pre-line ${reviewIsCorrect
+            <p className={`text-sm leading-relaxed break-words whitespace-pre-line ${reviewIsCorrect
                 ? 'text-green-700 dark:text-green-300'
                 : 'text-red-700 dark:text-red-300'
               }`}>
@@ -299,8 +299,8 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
   }, [mode, problem.explanation, problem.wrong_explanations, problem.wrong_explanation, reviewIsCorrect, reviewSelectedIndex, t.practice.explanation, t.practice.noExplanation, t.practice.selectedAnswer, t.practice.wrongExplanation]);
 
   return (
-    <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-900/30">
-      <div className="mb-2 flex items-center justify-between">
+    <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 bg-slate-50/50 dark:bg-slate-900/30">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
           {t.practice.problem} {index + 1}
         </span>
@@ -310,7 +310,7 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
           </span>
         )}
         {problem.classification && (
-          <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
+          <span className="min-w-0 break-words sm:ml-2 text-xs text-slate-500 dark:text-slate-400">
             ({problem.classification.depth1}
             {problem.classification.depth2 && ` > ${problem.classification.depth2}`}
             {problem.classification.depth3 && ` > ${problem.classification.depth3}`}
@@ -319,15 +319,16 @@ export const GeneratedProblemCard: React.FC<GeneratedProblemCardProps> = ({
         )}
       </div>
 
-      <div className="text-slate-700 dark:text-slate-300 mb-4">
-        <p className="font-medium mb-3 text-lg">{problem.stem}</p>
+      <div className="text-slate-700 dark:text-slate-300 mb-3 sm:mb-4">
+        <p className="font-medium mb-2 sm:mb-3 text-lg break-words text-pretty">{problem.stem}</p>
 
         {problem.passage && (
-          <div className="mb-4 p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
-            <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+          <div className="mb-3 p-3 sm:mb-4 sm:p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
+            <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 sm:mb-2 uppercase tracking-wide">
               {language === 'ko' ? '지문' : 'Passage'}
             </div>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {/* 영어 지문: lang="en"이 있어야 hyphens-auto가 실제로 동작한다(문서 기본 lang은 ko) */}
+            <p lang="en" className="text-sm leading-relaxed whitespace-pre-wrap break-words hyphens-auto max-w-none">
               {problem.passage}
             </p>
           </div>

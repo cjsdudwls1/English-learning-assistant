@@ -198,7 +198,7 @@ export const SessionDetailPage: React.FC = () => {
 
   if (error || !data) {
     return (
-      <div className="max-w-6xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+      <div className="max-w-6xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700">
         <p className="text-center text-red-600">{error || t.session.notFound}</p>
         <div className="text-center mt-4">
           <button
@@ -213,67 +213,67 @@ export const SessionDetailPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t.session.title}</h2>
+    <div className="max-w-6xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4 sm:mb-6">
+        <h2 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{t.session.title}</h2>
         <button
           onClick={() => navigate('/stats')}
-          className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline"
+          className="px-2 py-2 sm:px-4 text-sm sm:text-base text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline"
         >
           {t.session.backToStats}
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
         {/* 좌측: 이미지 영역 */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+        <div className="space-y-3 sm:space-y-4">
+          <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">
             {t.session.uploadedImages}{imageUrls.length > 0 ? ` (${imageUrls.length})` : ''}
           </h3>
 
           {imageUrls.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {imageUrls.map((url, index) => (
-                <div key={`${index}-${url}`} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                <div key={`${index}-${url}`} className="border border-slate-200 dark:border-slate-700 rounded-lg p-2 sm:p-4 bg-slate-50 dark:bg-slate-900">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400">
                       {t.session.imageNofM.replace('{current}', String(index + 1)).replace('{total}', String(imageUrls.length))}
                     </div>
                     <button
                       type="button"
                       onClick={() => handleImageClick(index)}
-                      className="text-xs px-3 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded"
+                      className="text-xs px-3 py-2.5 sm:py-1 shrink-0 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded"
                     >
                       {t.session.zoom}
                     </button>
                   </div>
-                  <div className="max-h-[600px] overflow-auto flex items-start justify-center">
+                  <div className="sm:max-h-[600px] sm:overflow-auto flex items-start justify-center">
                     <ImageRotator
                       imageUrl={url || '/placeholder-image.jpg'}
                       onRotate={(blob) => handleRotate(blob, index)}
-                      className="max-w-full max-h-[600px] object-contain"
+                      className="max-w-full sm:max-h-[600px] object-contain"
                     />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900 flex items-center justify-center min-h-[200px]">
+            <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 bg-slate-50 dark:bg-slate-900 flex items-center justify-center min-h-[120px] sm:min-h-[200px]">
               <p className="text-slate-500 dark:text-slate-400">{t.session.noImages}</p>
             </div>
           )}
 
           {imageUrls.length > 0 && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-2">
               {t.upload.rotateHint}
             </p>
           )}
         </div>
 
         {/* 우측: 분석 결과 */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{t.session.aiAnalysisResult}</h3>
-          <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+        <div className="space-y-3 sm:space-y-4">
+          <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">{t.session.aiAnalysisResult}</h3>
+          <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-2 sm:p-4">
             <MultiProblemEditor
               initial={{ items: data }}
               onSubmit={handleSubmit}

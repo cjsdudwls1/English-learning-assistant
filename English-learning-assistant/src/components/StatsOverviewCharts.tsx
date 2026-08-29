@@ -184,6 +184,12 @@ const getCurrentCategoryLabel = (state: DrillDownState, labels: StatsOverviewCha
   return '';
 };
 
+// 좁은 캔버스에서 축 라벨·데이터라벨이 서로 겹쳐 차트를 먹는다. 뷰포트가 아니라 캔버스 폭을
+// 기준으로 글자 크기만 줄인다(넓은 화면에서는 Chart.js 기본값 12와 동일).
+// 폭을 못 읽으면 좁은 값이 아니라 기존 동작(넓은 값)으로 떨어뜨린다 — 조용한 데스크톱 회귀 방지.
+const compactFontSize = (ctx: ChartContext, narrow: number, wide: number) =>
+  ({ size: (ctx?.chart?.width ?? Infinity) < 420 ? narrow : wide });
+
 // 막대 차트 옵션 생성 함수
 const createBarChartOptions = (
   palette: typeof CHART_COLORS.light | typeof CHART_COLORS.dark,
@@ -210,6 +216,12 @@ const createBarChartOptions = (
         boxWidth: 12,
         boxHeight: 12,
         usePointStyle: true,
+        // 범례는 position:'bottom'이라 좁은 화면에서 차트 영역을 그대로 깎아먹는다. 넓은 값은
+        // 12 — 원래 이 옵션 자체가 없어 Chart.js 기본값 12로 그려지고 있었으므로 데스크톱은 그대로다.
+        // 여기서 콜백이 동작하는 이유: pluginOpts()가 scriptable:false로 풀긴 하지만, legend
+        // 플러그인이 descriptors._scriptable을 따로 등록해(chart.js 4.5.1) 그 기본값을 덮는다.
+        // 즉 "플러그인 옵션에는 콜백을 못 쓴다"는 통설은 legend에는 해당하지 않는다 — 실측 확인함.
+        font: (ctx: ChartContext) => compactFontSize(ctx, 10, 12),
       },
     },
     tooltip: {
@@ -231,6 +243,7 @@ const createBarChartOptions = (
         color: palette.text,
         maxRotation: 45,
         minRotation: 0,
+        font: (ctx: ChartContext) => compactFontSize(ctx, 9, 12),
       },
       grid: {
         display: false,
@@ -240,6 +253,7 @@ const createBarChartOptions = (
       stacked: true,
       ticks: {
         color: palette.text,
+        font: (ctx: ChartContext) => compactFontSize(ctx, 9, 12),
       },
       grid: {
         color: palette.grid,
@@ -273,10 +287,10 @@ const createDoughnutChartOptions = (palette: typeof CHART_COLORS.light | typeof 
       anchor: 'center' as const,
       align: 'center' as const,
       offset: -25,
-      font: {
-        size: 13,
+      font: (ctx: ChartContext) => ({
+        ...compactFontSize(ctx, 10, 13),
         weight: 'bold' as const,
-      },
+      }),
       formatter: (value: number) => {
         return value > 0 ? value.toString() : '';
       },
@@ -925,31 +939,37 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
   const barKey = useMemo(() => generateChartKey('bar', drillDownState), [drillDownState]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 sm:space-y-6">
       {/* 네비게이션 바 */}
       {drillDownState.type !== 'overview' && (
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+          {/* 여기만 min-h를 그대로 둔다(모달 닫기·팝업 ×는 패딩+음수 마진으로 바꿨다).
+              이 버튼은 배경(bg-slate-200 rounded-lg)이 보이는 단독 내비 버튼이라 패딩을 주면
+              알약 자체가 커지고, ::before로 넓히자니 위쪽 8px이 이 컴포넌트 바깥 —
+              다른 담당 영역의 요소 위로 삐져나간다. 모바일 28→44px 증가는 감수한다:
+              app.css의 --btn-min-h가 단독 버튼에 정해 둔 값이 정확히 44px다.
+              데스크톱은 sm:min-h-0으로 풀어 HEAD와 동일하게 되돌린다. */}
           <button
             onClick={handleBack}
-            className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors flex items-center gap-1"
+            className="min-h-[44px] sm:min-h-0 shrink-0 px-2.5 sm:px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors flex items-center gap-1"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             {t.session.back}
           </button>
-          <span className="text-slate-500 dark:text-slate-400">{navigationPath}</span>
+          <span className="text-slate-500 dark:text-slate-400 min-w-0 break-words">{navigationPath}</span>
         </div>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-3 sm:gap-6 md:grid-cols-2">
         {/* 도넛차트 */}
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-4 shadow-sm transition-all duration-300">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">
+        <div className="min-w-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-2.5 sm:p-4 shadow-sm transition-all duration-300">
+          <h3 className="text-sm sm:text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2 sm:mb-4 break-words">
             {doughnutTitle}
           </h3>
           {doughnutData ? (
-            <div className="relative h-64 flex items-center justify-center">
+            <div className="relative h-52 sm:h-64 flex items-center justify-center">
               <Doughnut
                 key={doughnutKey}
                 ref={setDoughnutChartRef}
@@ -994,7 +1014,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           )}
           {/* 정답/오답 정보 - overview 또는 최종 depth일 때 표시 */}
           {(drillDownState.type === 'overview' || isFinalDepth(drillDownState)) && doughnutCenterData && doughnutCenterData.subValues && (
-            <div className="mt-2 flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs sm:text-sm justify-center">
+            <div className="mt-2 flex flex-row flex-wrap gap-x-3 gap-y-1 sm:gap-4 text-[11px] sm:text-sm justify-center">
               <div className="flex items-center justify-center gap-1">
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: palette.correct }} />
                 <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap">
@@ -1011,7 +1031,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           )}
           {/* 카테고리별 정보 - overview가 아닌 모든 하이라키 레벨에서 표시 */}
           {drillDownState.type !== 'overview' && doughnutData && doughnutData.labels && doughnutData.labels.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm justify-center">
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 sm:gap-4 text-[11px] sm:text-sm justify-center">
               {doughnutData.labels.map((label: string, index: number) => {
                 const count = doughnutData.datasets[0].data[index];
                 const color = doughnutData.datasets[0].backgroundColor[index];
@@ -1029,19 +1049,19 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           )}
           {/* 클릭 안내 */}
           {drillDownState.type === 'overview' && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">
+            <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-2 text-center break-words">
               💡 {t.charts.clickChartHint}
             </p>
           )}
         </div>
 
         {/* 막대그래프 */}
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-4 shadow-sm transition-all duration-300">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">
+        <div className="min-w-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-2.5 sm:p-4 shadow-sm transition-all duration-300">
+          <h3 className="text-sm sm:text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2 sm:mb-4 break-words">
             {barTitle}
           </h3>
           {barData ? (
-            <div className="relative h-64">
+            <div className="relative h-52 sm:h-64">
               <Bar
                 key={barKey}
                 ref={setBarChartRef}
@@ -1055,7 +1075,7 @@ export const StatsOverviewCharts: React.FC<StatsOverviewChartsProps> = ({
           )}
           {/* 클릭 안내 */}
           {(drillDownState.type === 'overview' || drillDownState.type === 'filtered' || drillDownState.type === 'category' || (drillDownState.type === 'depth' && drillDownState.depth < 4)) && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">
+            <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-2 text-center break-words">
               💡 {t.charts.clickBarHint}
             </p>
           )}

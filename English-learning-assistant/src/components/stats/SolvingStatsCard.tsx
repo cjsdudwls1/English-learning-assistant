@@ -36,18 +36,18 @@ export const SolvingStatsCard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 text-center text-slate-500">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 text-center text-sm sm:text-base text-slate-500">
         {language === 'ko' ? '통계 불러오는 중...' : 'Loading statistics...'}
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-5 space-y-5">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-3 sm:space-y-5">
       <div>
-        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.stats.monthlyDailySolvingStats}</h3>
+        <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{t.stats.monthlyDailySolvingStats}</h3>
       </div>
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error && <p className="text-red-500 text-xs sm:text-sm break-words">{error}</p>}
 
       <AssignmentStatsDisplay
         totalCount={yearTotals.total}

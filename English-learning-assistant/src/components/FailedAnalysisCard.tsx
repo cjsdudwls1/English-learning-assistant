@@ -55,13 +55,13 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
   const isMany = displayImageUrls.length > 4;
 
   const thumbnails = (
-    <div className={`flex flex-wrap gap-2 ${isMany ? 'w-full mb-4' : 'flex-shrink-0'}`}>
+    <div className={`flex flex-wrap gap-2 ${isMany ? 'w-full mb-3 sm:mb-4' : 'flex-shrink-0'}`}>
       {displayImageUrls.map((url, idx) => (
         <img
           key={`${idx}-${url}`}
           src={url}
           alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
-          className={`${isMany ? 'w-16 h-16' : 'w-24 h-24'} object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
+          className={`${isMany ? 'w-14 h-14 sm:w-16 sm:h-16' : 'w-16 h-16 sm:w-24 sm:h-24'} object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
           onClick={() => setLightboxImageUrl(url)}
           title={language === 'ko' ? '클릭하여 원본 보기' : 'Click to view original'}
         />
@@ -71,7 +71,7 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
 
   const messageContent = (
     <div className="flex-1 min-w-0">
-      <h3 className="text-xl font-bold text-red-700 dark:text-red-300 mb-2">
+      <h3 className="text-base sm:text-xl font-bold text-red-700 dark:text-red-300 mb-2">
         {language === 'ko' ? '분석 실패(0문항)' : 'Analysis Failed (0 items)'}
       </h3>
       <p className="text-slate-600 dark:text-slate-400">
@@ -106,14 +106,14 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
   );
 
   return (
-    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-red-200 dark:border-red-800 mb-6 overflow-hidden">
+    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-red-200 dark:border-red-800 mb-4 sm:mb-6 overflow-hidden">
       {onDelete && (
         <button
           type="button"
           onClick={() => onDelete(session.id)}
           aria-label={language === 'ko' ? '실패 세션 삭제' : 'Delete failed session'}
           title={language === 'ko' ? '삭제' : 'Delete'}
-          className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200 dark:hover:bg-red-900/40"
+          className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200 dark:hover:bg-red-900/40"
         >
           <span className="text-xl leading-none">&times;</span>
         </button>
@@ -124,7 +124,7 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
           {messageContent}
         </div>
       ) : (
-        <div className="flex items-start gap-6">
+        <div className="flex items-start gap-3 sm:gap-6">
           {thumbnails}
           {messageContent}
         </div>
