@@ -214,6 +214,15 @@ export function useConsulting({
           stats: scope.stats,
           byCategory: scope.byCategory,
         });
+        // 폴백 경로는 이미 !result.report를 검사한다(위 runFallback). 에이전트 경로만 안 했었다.
+        // 그 비대칭이 실제 사고를 냈다 — 서버가 result 모양을 망가뜨렸는데 아무도 안 막아서
+        // 빈 모달이 뜨고, 그 아래 saveConsultingReport가 **빈 보고서 행까지** 남겼다.
+        // 여기서 던지면 아래 catch가 받아 단발 경로로 떨어진다. 그게 폴백이 있는 이유다.
+        if (!outcome.result?.report) {
+          throw new Error(language === 'ko'
+            ? '에이전트가 보고서 없이 끝났습니다.'
+            : 'The agent finished without a report.');
+        }
         report = outcome.result.report;
         agentRunId = outcome.runId;
       } catch (agentErr) {

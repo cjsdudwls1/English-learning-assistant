@@ -18,6 +18,7 @@
 const MAX_JSON_CHARS = 4000;
 const MAX_THOUGHT_CHARS = 1500;
 
+/** 감사 기록(input/args/observation) 전용. 넘치면 **모양째** 요약으로 바꾼다. */
 function truncateJson(value) {
   if (value === undefined || value === null) return null;
   try {
@@ -27,6 +28,60 @@ function truncateJson(value) {
   } catch {
     return { _unserializable: true, preview: String(value).slice(0, 500) };
   }
+}
+
+/* result는 감사 기록이 아니라 **제품 그 자체**다. 그래서 자를 자가 다르다.
+ *
+ * index.js는 result를 HTTP 응답에 싣지 않고(:381) 프론트는 agent_runs.result 행에서
+ * 읽는다(useAgentRun.applyRun — Realtime UPDATE든 폴링이든 결국 같은 행이다).
+ * 그러니 여기서 truncateJson을 쓰면 보고서가 상한을 넘긴 런에서만 result가
+ * {_truncated, preview} 로 **바뀌어** report 키가 통째로 사라지고, 사용자는
+ * "생성된 보고서가 없습니다"를 본다 — 서버 로그는 stopReason=final로 초록인 채.
+ * 2026-08-28 프로덕션 사고가 정확히 이것이었다(보고서 약 6천자 > 상한 4천자).
+ * 크기 의존이라 짧은 런에서는 멀쩡해 재현이 들쭉날쭉했다.
+ *
+ * 상한 자체는 남긴다 — Realtime record 상한(1MB)을 넘기면 페이로드가 통째로 버려진다.
+ * 다만 모델 출력은 maxOutputTokens=16384로 이미 묶여 있어(한글 기준 약 2만자)
+ * 아래 값에는 한참 못 미친다. 즉 이 상한은 평상시엔 안 걸리는 안전판이고,
+ * 걸리더라도 **문자열만 제자리에서** 줄여 최상위 키는 반드시 살린다.
+ */
+const MAX_RESULT_CHARS = 200_000;
+const FIELD_CLIP_STEPS = [20_000, 4_000, 1_000, 200];
+
+/** 객체 모양은 그대로 두고 문자열 값만 limit까지 줄인다. */
+function clipStrings(value, limit) {
+  if (typeof value === 'string') {
+    return value.length <= limit ? value : `${value.slice(0, limit)}…[${value.length}자 중 ${limit}자]`;
+  }
+  if (Array.isArray(value)) return value.map((v) => clipStrings(v, limit));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, clipStrings(v, limit)]));
+  }
+  return value;
+}
+
+function capResult(value) {
+  if (value === undefined || value === null) return null;
+
+  let text;
+  try {
+    text = JSON.stringify(value);
+  } catch {
+    return { _unserializable: true, preview: String(value).slice(0, 500) };
+  }
+  if (text === undefined) return null;              // 함수·undefined 등 직렬화 대상이 아닌 값
+  if (text.length <= MAX_RESULT_CHARS) return value;
+
+  console.warn('[agent:trace] result가 상한을 넘어 문자열을 줄인다:', { chars: text.length });
+
+  let clipped = value;
+  for (const limit of FIELD_CLIP_STEPS) {
+    clipped = clipStrings(value, limit);
+    if (JSON.stringify(clipped).length <= MAX_RESULT_CHARS) break;
+  }
+  // 잘렸다는 사실은 숨기지 않는다. 단 최상위가 객체일 때만 표식을 붙일 수 있다.
+  const isPlainObject = clipped && typeof clipped === 'object' && !Array.isArray(clipped);
+  return isPlainObject ? { ...clipped, _truncated: true, _originalChars: text.length } : clipped;
 }
 
 /**
@@ -76,7 +131,7 @@ export async function finishRun(supabase, runId, { status, stopReason, result, e
       .update({
         status,
         stop_reason: stopReason ?? null,
-        result: truncateJson(result),
+        result: capResult(result),          // truncateJson 금지 — 위 주석 참고
         error: error ? String(error).slice(0, 1000) : null,
         total_tokens: totalTokens ?? 0,
         model_calls: modelCalls ?? 0,
