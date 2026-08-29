@@ -6,7 +6,14 @@ const baseURL = process.env.E2E_BASE_URL || 'http://localhost:3001';
 export default defineConfig({
   testDir: 'e2e',
   timeout: 60_000,
-  fullyParallel: true,
+  // 직렬 실행. 스펙 전체가 역할당 QA 시드 계정 하나(@test.com)를 공유하기 때문이다.
+  // 병렬(fullyParallel + 워커 4개)로 돌리면 같은 계정으로 2분 새 60여 회 로그인이 몰려
+  // helpers.ts의 waitForURL('**/upload')이 30초 안에 안 끝나고 5건 안팎이 무작위로 깨졌다.
+  // 비밀번호나 앱 코드 문제가 아니다 — 같은 조건에서 워커 1개면 81/81 전부 통과한다.
+  // 대가는 시간(약 3분 → 약 9분)뿐이고, CI e2e 잡의 timeout-minutes: 30 안에 들어온다.
+  // 병렬을 되살리려면 계정 공유부터 없애야 한다(역할별 storageState 재사용 또는 계정 분리).
+  fullyParallel: false,
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
