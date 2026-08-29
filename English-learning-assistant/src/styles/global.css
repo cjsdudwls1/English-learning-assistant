@@ -74,6 +74,16 @@ label,
     text-size-adjust: 100%;
   }
 
+  /* iOS Safari는 16px 미만인 입력 필드에 포커스가 가면 화면을 자동 확대하고,
+     빠져나올 때 레이아웃이 틀어진다. 위 `font: inherit` 때문에 입력 필드는
+     부모의 text-sm 같은 유틸리티를 그대로 물려받으므로 하한선을 따로 못 박는다.
+     max(16px, 1em)이라 더 큰 글자는 그대로 유지된다. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+
   /* 작은 화면에서 폰트 렌더링 최적화 */
   * {
     -webkit-font-smoothing: antialiased;

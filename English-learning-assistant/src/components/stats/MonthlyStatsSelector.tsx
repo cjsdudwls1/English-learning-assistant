@@ -18,27 +18,29 @@ export const MonthlyStatsSelector: React.FC<Props> = ({ year, monthlyData, selec
   const dataMap = new Map(monthlyData.map((d) => [d.month, d]));
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <button onClick={() => onYearChange(year - 1)} className="px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
+    <div className="space-y-2 sm:space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <button onClick={() => onYearChange(year - 1)} className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
           &larr;
         </button>
-        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.stats.yearLabel.replace('{year}', String(year))}</span>
-        <button onClick={() => onYearChange(year + 1)} className="px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
+        <span className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{t.stats.yearLabel.replace('{year}', String(year))}</span>
+        <button onClick={() => onYearChange(year + 1)} className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
           &rarr;
         </button>
       </div>
-      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+      <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
         {MONTH_LABELS.map((label, i) => {
           const month = i + 1;
           const stats = dataMap.get(month);
           const isSelected = selectedMonth === month;
           const hasData = !!stats && stats.total_count > 0;
           return (
+            // sm:min-h-0은 지금은 no-op이다(데스크톱 자연 높이 44px > 하한 40px). 그래도 붙여 둔다 —
+            // sm:py-3이 줄면 하한이 조용히 되살아나 데스크톱 칸 높이를 고정시킨다.
             <button
               key={month}
               onClick={() => onSelectMonth(month)}
-              className={`relative px-2 py-3 rounded-xl text-sm font-medium transition-all ${
+              className={`relative min-h-[40px] sm:min-h-0 px-1 py-2 sm:px-2 sm:py-3 rounded-xl text-xs sm:text-sm font-medium transition-all ${
                 isSelected
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
                   : hasData
@@ -48,7 +50,7 @@ export const MonthlyStatsSelector: React.FC<Props> = ({ year, monthlyData, selec
             >
               {label}
               {hasData && (
-                <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold ${
+                <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-0.5 flex items-center justify-center rounded-full text-[10px] font-bold ${
                   isSelected ? 'bg-white text-indigo-600' : 'bg-indigo-500 text-white'
                 }`}>
                   {stats!.total_count}

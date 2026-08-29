@@ -42,19 +42,19 @@ export const ClassListCard: React.FC<Props> = ({ classes: initialClasses, onDele
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.myClasses}</h2>
-        <button onClick={() => setShowForm(!showForm)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5">
+      <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+        <h2 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.myClasses}</h2>
+        <button onClick={() => setShowForm(!showForm)} className="shrink-0 -mx-2 -my-2.5 px-2 py-2.5 text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
           {showForm ? t.common.cancel : `+ ${t.teacher.addClass}`}
         </button>
       </div>
 
       {showForm && (
-        <div className="mb-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-700/50 space-y-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.teacher.classNamePlaceholder} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
-          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t.teacher.descriptionOptional} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
-          <button onClick={handleCreate} disabled={creating || !name.trim()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">
+        <div className="mb-3 sm:mb-4 p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-700/50 space-y-2">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.teacher.classNamePlaceholder} className="w-full min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm" />
+          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t.teacher.descriptionOptional} className="w-full min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm" />
+          <button onClick={handleCreate} disabled={creating || !name.trim()} className="min-h-[40px] sm:min-h-0 w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">
             {creating ? t.teacher.creating : t.teacher.create}
           </button>
         </div>
@@ -63,10 +63,10 @@ export const ClassListCard: React.FC<Props> = ({ classes: initialClasses, onDele
       {classes.length === 0 ? (
         <p className="text-slate-400 text-sm py-4 text-center">{t.teacher.noClasses}</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
           {classes.map((cls) => (
-            <Link key={cls.id} to={`/teacher/classes/${cls.id}`} className="block p-4 rounded-xl bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-              <div className="flex items-start justify-between">
+            <Link key={cls.id} to={`/teacher/classes/${cls.id}`} className="block p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+              <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-semibold text-slate-800 dark:text-slate-200">{cls.name}</p>
                   {cls.description && <p className="text-xs text-slate-500 mt-1">{cls.description}</p>}
@@ -77,7 +77,7 @@ export const ClassListCard: React.FC<Props> = ({ classes: initialClasses, onDele
                       e.preventDefault();
                       onDeleteClass(cls.id);
                     }}
-                    className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                    className="min-h-[40px] min-w-[40px] sm:min-h-0 sm:min-w-0 flex items-center justify-center p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                     title={t.teacher.deleteClass}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -86,7 +86,7 @@ export const ClassListCard: React.FC<Props> = ({ classes: initialClasses, onDele
                   </button>
                 )}
               </div>
-              <div className="flex gap-3 mt-2 text-xs text-slate-500">
+              <div className="flex flex-wrap gap-2 sm:gap-3 mt-2 text-xs text-slate-500">
                 <span>{t.teacher.studentCountInline.replace('{count}', String(cls.student_count ?? 0))}</span>
                 <span>{t.teacher.memberCountInline.replace('{count}', String(cls.member_count ?? 0))}</span>
               </div>

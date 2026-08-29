@@ -50,16 +50,16 @@ export const MemberList: React.FC<Props> = ({ classId, members, onUpdate, select
   const students = members.filter((m) => m.role === 'student');
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.membersCount.replace('{count}', String(members.length))}</h3>
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-3 sm:space-y-4">
+      <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.membersCount.replace('{count}', String(members.length))}</h3>
 
-      <div className="flex gap-2">
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.teacher.addByEmailPlaceholder} className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
-        <select value={role} onChange={(e) => setRole(e.target.value as 'teacher' | 'student')} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm">
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.teacher.addByEmailPlaceholder} className="flex-1 min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm" />
+        <select value={role} onChange={(e) => setRole(e.target.value as 'teacher' | 'student')} className="min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm">
           <option value="student">{t.teacher.student}</option>
           <option value="teacher">{t.teacher.teacher}</option>
         </select>
-        <button onClick={handleAdd} disabled={adding} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">
+        <button onClick={handleAdd} disabled={adding} className="min-h-[40px] sm:min-h-0 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">
           {adding ? '...' : t.teacher.add}
         </button>
       </div>
@@ -103,15 +103,15 @@ const MemberRow: React.FC<{
   const t = getTranslation(language);
   return (
   <div
-    className={`flex items-center justify-between py-2 px-3 rounded-lg transition-colors ${
+    className={`flex min-h-[40px] sm:min-h-0 items-center justify-between gap-2 py-2 px-3 rounded-lg transition-colors ${
       isSelected
         ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700'
         : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
     } ${onSelect ? 'cursor-pointer' : ''}`}
     onClick={onSelect}
   >
-    <div className="flex items-center gap-2">
-      <span className="text-sm text-slate-700 dark:text-slate-300">{member.name || member.email || member.user_id.slice(0, 8)}</span>
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <span title={member.name || member.email || member.user_id.slice(0, 8)} className="line-clamp-2 break-all text-sm text-slate-700 dark:text-slate-300">{member.name || member.email || member.user_id.slice(0, 8)}</span>
       {onSelect && (
         <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
           {isSelected ? t.teacher.viewingStats : t.teacher.clickToViewStats}
@@ -120,7 +120,7 @@ const MemberRow: React.FC<{
     </div>
     <button
       onClick={(e) => { e.stopPropagation(); onRemove(member.user_id); }}
-      className="text-xs text-red-500 hover:underline"
+      className="shrink-0 -mx-2 -my-2 px-2 py-2 text-xs text-red-500 hover:underline"
     >
       {t.common.delete}
     </button>

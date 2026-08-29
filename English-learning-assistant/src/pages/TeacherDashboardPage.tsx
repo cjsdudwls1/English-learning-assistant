@@ -35,7 +35,7 @@ export const TeacherDashboardPage: React.FC = () => {
   }, []);
 
   if (loading) {
-    return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+    return <div className="text-center py-6 sm:py-20 text-slate-500">{t.common.loading}</div>;
   }
 
   const handleDeleteClass = async (classId: string) => {
@@ -49,10 +49,10 @@ export const TeacherDashboardPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.teacher.dashboardTitle}</h1>
-        <Link to="/teacher/assignments/create" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.teacher.dashboardTitle}</h1>
+        <Link to="/teacher/assignments/create" className="inline-flex min-h-[40px] sm:min-h-0 items-center px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium whitespace-nowrap hover:bg-indigo-700 transition-colors">
           + {t.teacher.createAssignment}
         </Link>
       </div>
@@ -60,20 +60,20 @@ export const TeacherDashboardPage: React.FC = () => {
 
       <ClassListCard classes={classes} onDeleteClass={handleDeleteClass} />
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">{t.teacher.recentAssignments}</h2>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5">
+        <h2 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200 mb-3 sm:mb-4">{t.teacher.recentAssignments}</h2>
         {assignments.length === 0 ? (
           <p className="text-slate-600 dark:text-slate-400 text-sm py-4 text-center">{t.teacher.noAssignments}</p>
         ) : (
           <div className="space-y-2">
             {assignments.slice(0, 5).map((a) => (
-              <Link to={`/teacher/assignments/${a.id}`} key={a.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                <div>
-                  <p className="font-medium text-slate-800 dark:text-slate-200">{a.title}</p>
+              <Link to={`/teacher/assignments/${a.id}`} key={a.id} className="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-800 dark:text-slate-200 break-words">{a.title}</p>
                   <p className="text-xs text-slate-600 dark:text-slate-400">{new Date(a.created_at).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US')} · {t.teacher.problemUnit.replace('{count}', String(a.problem_count ?? 0))} · {t.teacher.responseUnit.replace('{count}', String(a.completed_count ?? 0))}</p>
                 </div>
                 {a.due_date && (
-                  <span className="text-xs text-orange-700 dark:text-orange-400">{t.teacher.dueDate.replace('{date}', new Date(a.due_date).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US'))}</span>
+                  <span className="shrink-0 text-xs text-orange-700 dark:text-orange-400">{t.teacher.dueDate.replace('{date}', new Date(a.due_date).toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US'))}</span>
                 )}
               </Link>
             ))}

@@ -54,25 +54,25 @@ export const AssignmentDetailPage: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+  if (loading) return <div className="text-center py-6 sm:py-20 text-slate-500">{t.common.loading}</div>;
   if (loadError) {
     return (
-      <div className="max-w-4xl mx-auto text-center py-20 space-y-4">
+      <div className="max-w-4xl mx-auto text-center py-6 sm:py-20 space-y-4">
         <p className="text-red-600 dark:text-red-400">{loadError}</p>
-        <Link to="/teacher/dashboard" className="inline-block px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">&larr; {t.teacher.dashboard}</Link>
+        <Link to="/teacher/dashboard" className="inline-flex min-h-[40px] sm:min-h-0 items-center px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">&larr; {t.teacher.dashboard}</Link>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
           <Link to="/teacher/dashboard" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">&larr; {t.teacher.dashboard}</Link>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.assignments.detailTitle}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.assignments.detailTitle}</h1>
         </div>
         <button onClick={handleDelete} disabled={deleting}
-          className="px-4 py-2 bg-red-500 text-white rounded-xl text-sm hover:bg-red-600 disabled:opacity-50">
+          className="shrink-0 min-h-[40px] sm:min-h-0 px-3 sm:px-4 py-2 bg-red-500 text-white rounded-xl text-sm hover:bg-red-600 disabled:opacity-50">
           {deleting ? t.teacher.deleting : t.assignments.delete}
         </button>
       </div>

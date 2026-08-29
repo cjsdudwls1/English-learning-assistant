@@ -11,6 +11,7 @@ export {
   fetchFailedSessions,
   fetchPendingLabelingSessions,
   deleteSession,
+  deleteSessions,
   getSessionStatus,
   getSessionProgress,
 } from './db/sessions';
@@ -79,6 +80,7 @@ export {
   fetchChildAssignments,
   submitAssignmentResponse,
   fetchAssignmentResponses,
+  fetchMyAssignmentResponses,
   gradeAssignmentResponse,
   fetchAssignmentProblems,
   deleteAssignment,

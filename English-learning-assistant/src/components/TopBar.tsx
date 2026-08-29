@@ -1,5 +1,5 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { LogoutButton } from './LoginButton';
@@ -17,40 +17,65 @@ export const TopBar: React.FC<TopBarProps> = ({ status = 'idle' }) => {
   const { language } = useLanguage();
   const t = getTranslation(language);
   const { role } = useUserRole();
+  const navRef = useRef<HTMLElement>(null);
+  const { pathname } = useLocation();
+
+  // 현재 페이지 표시. 정확 일치만 쓴다.
+  // 접두사 매칭을 하면 /teacher/assignments/create 같은 형제 경로끼리 서로 잡아먹는다.
+  // 예외는 하나뿐 — App.tsx에서 '/'와 '/upload'가 같은 mainPageElement를 렌더하므로
+  // '/'에 있을 때도 '업로드' 탭이 켜져야 한다.
+  const path = pathname.replace(/\/+$/, '') || '/';
+  const current = path === '/' ? '/upload' : path;
+  const cur = (to: string): 'page' | undefined => (current === to ? 'page' : undefined);
+
+  // 탭바를 가로 스크롤 한 줄로 바꾸면서 활성 탭이 화면 밖에 있을 수 있다.
+  // 마운트/경로 변경 시 활성 탭을 스크롤 범위 안으로 끌어온다.
+  // - block:'nearest'를 빼면 페이지 전체가 세로로 튄다.
+  // - behavior는 지정하지 않는다(기본 auto). smooth면 라우팅마다 탭바가 미끄러져 산만하다.
+  // - 데스크톱은 nav가 넘치지 않으므로 아무 일도 일어나지 않는다.
+  // - role이 나중에 채워지면 탭 구성이 통째로 바뀌므로 deps에 포함한다.
+  // - 활성 링크를 querySelector로 찾는다. 링크마다 ref를 다는 것과 결과는 같은데
+  //   조건부 ref를 11곳에 중복시키지 않아도 되고, role 분기가 바뀌어도 안 깨진다.
+  // - jsdom엔 scrollIntoView가 없어 옵셔널 호출로 방어한다.
+  useEffect(() => {
+    navRef.current
+      ?.querySelector<HTMLElement>('a[aria-current="page"]')
+      ?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' });
+  }, [current, role]);
 
   return (
     <header className="topbar">
       <div className="brand">
         AI<span>{t.app.brandEnglish}</span><span>{t.app.brandProblem}</span><span>{t.app.brandAnalyzer}</span>
       </div>
-      <nav>
+      <nav ref={navRef}>
         {role === 'student' && (
           <>
-            <Link to="/upload" data-discover="true">{t.header.upload}</Link>
-            <Link to="/stats" data-discover="true">{t.header.stats}</Link>
-            <Link to="/problems" data-discover="true">{t.header.problemManagement}</Link>
-            <Link to="/assignments" data-discover="true">{t.header.assignments}</Link>
+            <Link to="/upload" data-discover="true" aria-current={cur('/upload')}>{t.header.upload}</Link>
+            <Link to="/stats" data-discover="true" aria-current={cur('/stats')}>{t.header.stats}</Link>
+            <Link to="/problems" data-discover="true" aria-current={cur('/problems')}>{t.header.problemManagement}</Link>
+            <Link to="/assignments" data-discover="true" aria-current={cur('/assignments')}>{t.header.assignments}</Link>
           </>
         )}
         {role === 'teacher' && (
           <>
-            <Link to="/upload" data-discover="true">{t.header.upload}</Link>
-            <Link to="/teacher/dashboard" data-discover="true">{t.header.classManagement}</Link>
-            <Link to="/teacher/assignments/create" data-discover="true">{t.header.createAssignment}</Link>
-            <Link to="/stats" data-discover="true">{t.header.stats}</Link>
+            <Link to="/upload" data-discover="true" aria-current={cur('/upload')}>{t.header.upload}</Link>
+            <Link to="/teacher/dashboard" data-discover="true" aria-current={cur('/teacher/dashboard')}>{t.header.classManagement}</Link>
+            <Link to="/teacher/assignments/create" data-discover="true" aria-current={cur('/teacher/assignments/create')}>{t.header.createAssignment}</Link>
+            <Link to="/stats" data-discover="true" aria-current={cur('/stats')}>{t.header.stats}</Link>
           </>
         )}
         {role === 'parent' && (
           <>
-            <Link to="/parent/dashboard" data-discover="true">{t.header.childStatus}</Link>
+            <Link to="/parent/dashboard" data-discover="true" aria-current={cur('/parent/dashboard')}>{t.header.childStatus}</Link>
           </>
         )}
         {role === 'director' && (
           <>
-            <Link to="/director/dashboard" data-discover="true">{t.header.academyManagement}</Link>
+            <Link to="/director/dashboard" data-discover="true" aria-current={cur('/director/dashboard')}>{t.header.academyManagement}</Link>
           </>
         )}
-        <Link to="/profile" data-discover="true">{t.header.profile}</Link>
+        <Link to="/profile" data-discover="true" aria-current={cur('/profile')}>{t.header.profile}</Link>
       </nav>
       <div className="top-actions">
         <LanguageToggle />

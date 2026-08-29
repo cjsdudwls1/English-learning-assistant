@@ -59,19 +59,19 @@ export const AssignmentCreatePage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
         <Link to="/teacher/dashboard" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">&larr; {t.teacher.dashboard}</Link>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.assignments.createTitle}</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.assignments.createTitle}</h1>
       </div>
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.assignments.titlePlaceholder} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t.teacher.descriptionOptional} rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm resize-none" />
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-3 sm:space-y-4">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.assignments.titlePlaceholder} className="w-full min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm" />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t.teacher.descriptionOptional} rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm resize-none" />
         <div>
           <label htmlFor="assignment-due-date" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.assignments.dueDateOptional}</label>
-          <input id="assignment-due-date" type="datetime-local" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm" />
+          <input id="assignment-due-date" type="datetime-local" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm" />
         </div>
       </div>
 
@@ -86,7 +86,7 @@ export const AssignmentCreatePage: React.FC = () => {
         onSelectStudents={setSelectedStudentIds}
       />
 
-      <button onClick={handleCreate} disabled={creating} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+      <button onClick={handleCreate} disabled={creating} className="w-full py-2.5 sm:py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
         {creating ? t.teacher.creating : t.assignments.createSubmitWithCounts.replace('{problems}', String(selectedProblemIds.length)).replace('{students}', String(selectedStudentIds.length))}
       </button>
     </div>

@@ -160,13 +160,13 @@ export const AcademyMembersPage: React.FC = () => {
     student: members.filter(m => m.role === 'student'),
   };
 
-  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+  if (loading) return <div className="text-center py-6 sm:py-20 text-slate-500">{t.common.loading}</div>;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.academy.membersTitle}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.academy.membersTitle}</h1>
           {academyName && <p className="text-sm text-slate-500 mt-0.5">{academyName}</p>}
         </div>
         <button
@@ -190,8 +190,8 @@ export const AcademyMembersPage: React.FC = () => {
       )}
 
       {/* 학원 멤버 추가 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-4">{t.academy.addMember}</h2>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-6">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-3 sm:mb-4">{t.academy.addMember}</h2>
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -228,7 +228,7 @@ export const AcademyMembersPage: React.FC = () => {
           <button
             type="submit"
             disabled={adding || !searchEmail.trim()}
-            className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="w-full px-4 py-2.5 sm:px-6 sm:py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
             {adding ? t.academy.adding : t.academy.addToAcademy}
           </button>
@@ -237,7 +237,7 @@ export const AcademyMembersPage: React.FC = () => {
 
       {/* 멤버 목록 (역할별) */}
       {(['director', 'teacher', 'student'] as MemberRole[]).map(role => (
-        <div key={role} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
+        <div key={role} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-6">
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-3">
             {roleLabel(t, role)} <span className="text-sm text-slate-400 ml-1">({t.academy.peopleCount.replace('{count}', String(grouped[role].length))})</span>
           </h2>
@@ -246,11 +246,11 @@ export const AcademyMembersPage: React.FC = () => {
           ) : (
             <div className="space-y-1.5">
               {grouped[role].map(m => (
-                <div key={`${m.role}-${m.user_id}`} className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-700/50">
-                  <span className="text-sm text-slate-800 dark:text-slate-200">{m.email || m.user_id.slice(0, 8)}</span>
+                <div key={`${m.role}-${m.user_id}`} className="flex min-h-[40px] sm:min-h-0 items-center justify-between gap-2 py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-700/50">
+                  <span title={m.email || m.user_id.slice(0, 8)} className="line-clamp-2 break-all text-sm text-slate-800 dark:text-slate-200">{m.email || m.user_id.slice(0, 8)}</span>
                   <button
                     onClick={() => handleRemove(m.user_id, m.role, m.email)}
-                    className="text-xs text-red-500 hover:text-red-700 px-2 py-1"
+                    className="shrink-0 -mx-1 -my-2 px-3 py-3 text-xs text-red-500 hover:text-red-700"
                   >
                     {t.academy.remove}
                   </button>
@@ -263,7 +263,7 @@ export const AcademyMembersPage: React.FC = () => {
 
       {/* 반 배정 */}
       {classes.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-6 space-y-3 sm:space-y-4">
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200">{t.academy.classAssignment}</h2>
 
           <div>
@@ -290,7 +290,7 @@ export const AcademyMembersPage: React.FC = () => {
             <>
               <form onSubmit={handleAddClassMember} className="space-y-3 border-t border-slate-200 dark:border-slate-700 pt-4">
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.academy.addClassMember}</p>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <input
                     type="email"
                     value={classMemberAddEmail}
@@ -310,7 +310,7 @@ export const AcademyMembersPage: React.FC = () => {
                   <button
                     type="submit"
                     disabled={classBusy || !classMemberAddEmail.trim()}
-                    className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                    className="min-h-[40px] sm:min-h-0 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                   >
                     {t.academy.add}
                   </button>
@@ -324,11 +324,11 @@ export const AcademyMembersPage: React.FC = () => {
                 {classMembers.length === 0 ? (
                   <p className="text-sm text-slate-400 py-2 text-center">{t.academy.noMembers}</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-none overflow-y-auto sm:max-h-64">
                     {classMembers.map(cm => (
-                      <div key={cm.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-700/50">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-slate-800 dark:text-slate-200">{cm.email || cm.user_id.slice(0, 8)}</span>
+                      <div key={cm.id} className="flex min-h-[40px] sm:min-h-0 items-center justify-between gap-2 py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-700/50">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span title={cm.email || cm.user_id.slice(0, 8)} className="line-clamp-2 break-all text-sm text-slate-800 dark:text-slate-200">{cm.email || cm.user_id.slice(0, 8)}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
                             cm.role === 'teacher'
                               ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
@@ -339,7 +339,7 @@ export const AcademyMembersPage: React.FC = () => {
                         </div>
                         <button
                           onClick={() => handleRemoveClassMember(cm.user_id, cm.email || '')}
-                          className="text-xs text-red-500 hover:text-red-700 px-2 py-1"
+                          className="shrink-0 -mx-1 -my-2 px-3 py-3 text-xs text-red-500 hover:text-red-700"
                         >
                           {t.academy.remove}
                         </button>

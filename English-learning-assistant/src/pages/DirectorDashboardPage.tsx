@@ -125,11 +125,11 @@ export const DirectorDashboardPage: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="text-center py-20 text-slate-500">{t.common.loading}</div>;
+  if (loading) return <div className="text-center py-6 sm:py-20 text-slate-500">{t.common.loading}</div>;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{t.director.dashboardTitle}</h1>
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.director.dashboardTitle}</h1>
       {error && <p className="text-red-500 text-sm">{error}</p>}
       {overview && <AcademyOverviewCard overview={overview} />}
       <TeacherPerformanceCard teachers={teachers} />
@@ -154,10 +154,10 @@ export const DirectorDashboardPage: React.FC = () => {
 
       {/* 학급 전체 택사노미별 통계 */}
       {selectedClassId && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-3 sm:space-y-4">
           <button
             onClick={handleToggleClassTaxonomy}
-            className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+            className="flex -my-2.5 items-center gap-2 py-2.5 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
           >
             <span>{showClassTaxonomy ? '\u25BC' : '\u25B6'}</span>
             {t.teacher.classTaxonomyStats}
@@ -179,22 +179,22 @@ export const DirectorDashboardPage: React.FC = () => {
 
       {/* 학급 내 학생 목록 및 개별 통계 */}
       {selectedClassId && students.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-3">
-          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.statsByStudent}</h3>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-2 sm:space-y-3">
+          <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{t.teacher.statsByStudent}</h3>
           <p className="text-xs text-slate-500">{t.teacher.clickStudentHint}</p>
-          <div className="space-y-1 max-h-48 overflow-y-auto">
+          <div className="space-y-1 max-h-none overflow-y-auto sm:max-h-48">
             {students.map((s) => (
               <button
                 key={s.user_id}
                 onClick={() => handleSelectStudent(s.user_id, s.name || s.email)}
-                className={`w-full text-left flex items-center justify-between py-2 px-3 rounded-lg text-sm transition-colors ${
+                className={`w-full text-left flex min-h-[40px] sm:min-h-0 items-center justify-between gap-2 py-2 px-3 rounded-lg text-sm transition-colors ${
                   selectedStudentId === s.user_id
                     ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300'
                     : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-300'
                 }`}
               >
-                <span>{s.name || s.email || s.user_id.slice(0, 8)}</span>
-                <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
+                <span title={s.name || s.email || s.user_id.slice(0, 8)} className="line-clamp-2 break-all">{s.name || s.email || s.user_id.slice(0, 8)}</span>
+                <span className="shrink-0 text-[10px] text-indigo-500 dark:text-indigo-400">
                   {selectedStudentId === s.user_id ? `(${t.teacher.viewing})` : t.teacher.viewStats}
                 </span>
               </button>

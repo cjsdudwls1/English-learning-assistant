@@ -29,8 +29,8 @@ export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClas
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-3">
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.assignments.selectTarget}</h3>
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-2 sm:space-y-3">
+      <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{t.assignments.selectTarget}</h3>
 
       <div>
         <label htmlFor="target-class-select" className="text-xs font-semibold text-slate-500 mb-1 block">{t.teacher.selectClass}</label>
@@ -42,7 +42,7 @@ export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClas
             onSelectClass(v);
             onSelectStudents([]);
           }}
-          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+          className="w-full min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm"
         >
           <option value="">{t.teacher.selectClassPlaceholder}</option>
           {classes.map((c) => (
@@ -55,15 +55,15 @@ export const TargetSelector: React.FC<Props> = ({ classes, members, selectedClas
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-slate-500">{t.teacher.studentsSelectedRatio.replace('{selected}', String(selectedStudentIds.length)).replace('{total}', String(members.length))}</label>
-            <button onClick={selectAllStudents} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+            <button onClick={selectAllStudents} className="-mx-2 -my-2 px-2 py-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
               {selectedStudentIds.length === members.length ? t.teacher.deselectAll : t.teacher.selectAll}
             </button>
           </div>
-          <div className="max-h-40 overflow-y-auto space-y-1">
+          <div className="max-h-none overflow-y-auto space-y-1 sm:max-h-40">
             {members.map((m) => (
-              <label key={m.user_id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer ${selectedStudentIds.includes(m.user_id) ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+              <label key={m.user_id} className={`flex min-h-[40px] sm:min-h-0 items-center gap-3 p-2 rounded-lg cursor-pointer ${selectedStudentIds.includes(m.user_id) ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
                 <input type="checkbox" checked={selectedStudentIds.includes(m.user_id)} onChange={() => toggleStudent(m.user_id)} className="rounded border-slate-300" />
-                <span className="text-sm text-slate-700 dark:text-slate-300">{m.email || m.user_id.slice(0, 8)}</span>
+                <span title={m.email || m.user_id.slice(0, 8)} className="line-clamp-2 break-all text-sm text-slate-700 dark:text-slate-300">{m.email || m.user_id.slice(0, 8)}</span>
               </label>
             ))}
           </div>

@@ -50,9 +50,9 @@ export const LearningPlanModal: React.FC<LearningPlanModalProps> = ({
     (busy === key ? t.common.loading : fallback);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="flex max-h-[88vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl dark:bg-slate-800">
-        <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5 dark:border-slate-700">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-2 sm:p-4">
+      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl dark:bg-slate-800 sm:max-h-[88vh]">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4 sm:p-5 dark:border-slate-700">
           <div className="min-w-0">
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">{t.stats.planModalTitle}</h3>
             {scopeLabel && (
@@ -63,23 +63,23 @@ export const LearningPlanModal: React.FC<LearningPlanModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="flex-shrink-0 rounded bg-slate-200 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+            className="inline-flex min-h-[40px] flex-shrink-0 items-center justify-center rounded bg-slate-200 px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-300 sm:min-h-0 sm:py-1.5 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
           >
             {t.common.close}
           </button>
         </div>
 
-        <div className="overflow-y-auto p-6">
+        <div className="overflow-y-auto p-4 sm:p-6">
           {!plan ? (
             <p className="text-slate-500 dark:text-slate-400">{t.stats.planEmpty}</p>
           ) : (
             <>
               {plan.summary && (
-                <section className="mb-6">
+                <section className="mb-4 sm:mb-6">
                   <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     {t.stats.planSummaryTitle}
                   </h4>
-                  <article className="max-w-none break-keep text-[15px] text-slate-700 dark:text-slate-300">
+                  <article className="max-w-none break-keep break-words leading-relaxed text-[15px] text-slate-700 dark:text-slate-300">
                     {renderMarkdown(plan.summary)}
                   </article>
                 </section>
@@ -101,7 +101,7 @@ export const LearningPlanModal: React.FC<LearningPlanModalProps> = ({
                     <button
                       onClick={() => void handleSolve('all', plan.problemIds)}
                       disabled={busy !== null}
-                      className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-[40px] items-center justify-center rounded bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:py-1.5"
                     >
                       {solveLabel('all', `${t.stats.planSolveAll} (${plan.problemIds.length})`)}
                     </button>
@@ -116,17 +116,17 @@ export const LearningPlanModal: React.FC<LearningPlanModalProps> = ({
                   </p>
                 )}
 
-                <ol className="space-y-3">
+                <ol className="space-y-2 sm:space-y-3">
                   {plan.weeklyPlan.map((day) => (
                     <li
                       key={day.day}
-                      className="rounded-lg border border-slate-200 p-4 dark:border-slate-700"
+                      className="rounded-lg border border-slate-200 p-3 sm:p-4 dark:border-slate-700"
                     >
-                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 sm:gap-x-3">
+                        <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                           {t.stats.planDayLabel.replace('{count}', String(day.day))}
                         </span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{day.focus}</span>
+                        <span className="min-w-0 break-words font-semibold text-slate-800 dark:text-slate-200">{day.focus}</span>
                         {day.nodePath && (
                           <span className="break-words text-xs text-slate-500 dark:text-slate-400">{day.nodePath}</span>
                         )}
@@ -138,7 +138,7 @@ export const LearningPlanModal: React.FC<LearningPlanModalProps> = ({
                         </p>
                       )}
 
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <div className="mt-2 sm:mt-3 flex flex-wrap items-center gap-2 sm:gap-3">
                         {day.problemIds.length > 0 ? (
                           <>
                             <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -147,7 +147,7 @@ export const LearningPlanModal: React.FC<LearningPlanModalProps> = ({
                             <button
                               onClick={() => void handleSolve(day.day, day.problemIds)}
                               disabled={busy !== null}
-                              className="rounded bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                              className="inline-flex min-h-[40px] items-center justify-center rounded bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:py-1.5 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
                             >
                               {solveLabel(day.day, t.stats.planSolve)}
                             </button>
@@ -162,7 +162,7 @@ export const LearningPlanModal: React.FC<LearningPlanModalProps> = ({
               </section>
 
               {plan.assignmentDraft && (
-                <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                <section className="mt-4 sm:mt-6 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-900/40">
                   <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {t.stats.planAssignmentTitle}
                   </h4>

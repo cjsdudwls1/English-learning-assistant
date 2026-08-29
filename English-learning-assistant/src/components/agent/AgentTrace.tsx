@@ -109,8 +109,8 @@ export function AgentTrace({ language, steps, state, stopReason, error }: AgentT
   const isPartial = state === 'completed' && !!stopReason && stopReason !== 'final';
 
   return (
-    <div className="mb-4 w-full max-w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
-      <div className="mb-3 flex items-center gap-2">
+    <div className="mb-3 sm:mb-4 w-full max-w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-800/50">
+      <div className="mb-2 sm:mb-3 flex flex-wrap items-center gap-2">
         {state === 'running' && (
           <span className="inline-block h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-blue-500" aria-hidden="true" />
         )}
@@ -128,11 +128,11 @@ export function AgentTrace({ language, steps, state, stopReason, error }: AgentT
         <p className="text-xs text-slate-500 dark:text-slate-400">{t.stats.agentStarting}</p>
       )}
 
-      <ol className="max-h-64 space-y-2 overflow-y-auto">
+      <ol className="max-h-none space-y-1.5 overflow-y-auto sm:max-h-64 sm:space-y-2">
         {steps.map((step) => {
           const observation = summarize(step.observation, language);
           return (
-            <li key={step.id ?? step.seq} className="flex gap-3">
+            <li key={step.id ?? step.seq} className="flex gap-2 sm:gap-3">
               <span
                 className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
                   step.ok

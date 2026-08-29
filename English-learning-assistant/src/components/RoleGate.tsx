@@ -29,7 +29,7 @@ export const RoleGate: React.FC<RoleGateProps> = ({ allowedRoles, requiredAcadem
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center py-6 sm:py-20">
         <div className="w-8 h-8 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );

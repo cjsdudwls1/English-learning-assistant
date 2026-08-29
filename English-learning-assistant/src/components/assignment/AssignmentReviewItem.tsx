@@ -53,9 +53,9 @@ export const AssignmentReviewItem: React.FC<Props> = ({ problem, response, index
   const correctIdx = type === 'multiple_choice' ? getCorrectChoiceIndex(problem) : null;
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <p className="font-medium text-slate-800 dark:text-slate-200">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5 space-y-2.5 sm:space-y-3">
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        <p className="min-w-0 break-words text-pretty text-base font-medium text-slate-800 dark:text-slate-200">
           {index != null ? `${index + 1}. ` : ''}
           {problem.stem}
         </p>
@@ -63,11 +63,12 @@ export const AssignmentReviewItem: React.FC<Props> = ({ problem, response, index
       </div>
 
       {problem.passage && (
-        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
-          <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+        <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
+          <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 sm:mb-2 uppercase tracking-wide">
             {t.assignments.passage}
           </div>
-          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+          {/* 영어 지문: lang="en"이 있어야 hyphens-auto가 실제로 동작한다(문서 기본 lang은 ko) */}
+          <p lang="en" className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words hyphens-auto max-w-none">
             {problem.passage}
           </p>
         </div>
@@ -85,9 +86,9 @@ export const AssignmentReviewItem: React.FC<Props> = ({ problem, response, index
               cls = 'border-red-400 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300';
             }
             return (
-              <div key={i} className={`flex items-center gap-2 p-3 rounded-xl border text-sm ${cls}`}>
-                <span className="font-medium">{i + 1}.</span>
-                <span className="flex-1">{c.text}</span>
+              <div key={i} className={`flex items-center gap-2 px-3 py-2.5 sm:p-3 rounded-xl border text-sm leading-relaxed ${cls}`}>
+                <span className="shrink-0 font-medium">{i + 1}.</span>
+                <span className="flex-1 min-w-0 break-words">{c.text}</span>
                 {isAnswerChoice && (
                   <span className="shrink-0 text-xs font-semibold">✓ {t.assignments.correctAnswer}</span>
                 )}
@@ -103,10 +104,11 @@ export const AssignmentReviewItem: React.FC<Props> = ({ problem, response, index
         </div>
       ) : (
         <div className="space-y-2 text-sm">
+          {/* 답안 대조는 전문이 보여야 한다 — 절대 자르지 말고 줄바꿈시킨다(min-w-0 + break-words) */}
           <div className="flex flex-wrap gap-x-2 gap-y-1">
-            <span className="font-medium text-slate-500 dark:text-slate-400">{t.assignments.yourAnswer}:</span>
+            <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400">{t.assignments.yourAnswer}:</span>
             <span
-              className={`whitespace-pre-wrap ${
+              className={`min-w-0 break-words whitespace-pre-wrap ${
                 isCorrect === false ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'
               }`}
             >
@@ -115,14 +117,14 @@ export const AssignmentReviewItem: React.FC<Props> = ({ problem, response, index
           </div>
           {type !== 'essay' && problem.correct_answer != null && (
             <div className="flex flex-wrap gap-x-2 gap-y-1">
-              <span className="font-medium text-slate-500 dark:text-slate-400">{t.assignments.correctAnswer}:</span>
-              <span className="text-green-700 dark:text-green-400 whitespace-pre-wrap">{displayCorrect}</span>
+              <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400">{t.assignments.correctAnswer}:</span>
+              <span className="min-w-0 break-words text-green-700 dark:text-green-400 whitespace-pre-wrap">{displayCorrect}</span>
             </div>
           )}
           {type === 'essay' && problem.guidelines && (
             <div className="flex flex-wrap gap-x-2 gap-y-1">
-              <span className="font-medium text-slate-500 dark:text-slate-400">{t.assignments.gradingGuide}:</span>
-              <span className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{problem.guidelines}</span>
+              <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400">{t.assignments.gradingGuide}:</span>
+              <span className="min-w-0 break-words text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{problem.guidelines}</span>
             </div>
           )}
         </div>
@@ -133,7 +135,7 @@ export const AssignmentReviewItem: React.FC<Props> = ({ problem, response, index
           <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">
             {t.assignments.explanationLabel}
           </div>
-          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
             {problem.explanation}
           </p>
         </div>

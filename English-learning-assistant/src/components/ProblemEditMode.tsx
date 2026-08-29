@@ -99,13 +99,13 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
   };
 
   return (
-    <div className="mb-6 p-4 border-2 border-indigo-500 dark:border-indigo-400 rounded-lg bg-indigo-50 dark:bg-indigo-900/20">
-      <h3 className="text-lg font-semibold text-indigo-800 dark:text-indigo-200 mb-4">
+    <div className="mb-4 sm:mb-6 p-3 sm:p-4 border-2 border-indigo-500 dark:border-indigo-400 rounded-lg bg-indigo-50 dark:bg-indigo-900/20">
+      <h3 className="text-base sm:text-lg font-semibold text-indigo-800 dark:text-indigo-200 mb-3 sm:mb-4">
         {language === 'ko' ? '문제 편집' : 'Edit Problem'}
       </h3>
 
       {/* 문제 본문 */}
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
           {language === 'ko' ? '문제 본문' : 'Problem Stem'}
         </label>
@@ -118,7 +118,7 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
       </div>
 
       {problem.passage !== undefined && (
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             {language === 'ko' ? '지문' : 'Passage'}
           </label>
@@ -133,31 +133,38 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
 
       {/* 문제 유형별 입력 필드 */}
       {problemType === 'multiple_choice' && (
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
             {language === 'ko' ? '선택지' : 'Choices'}
           </label>
           <div className="space-y-2">
             {choices.map((choice: any, index: number) => (
               <div key={index} className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  checked={correctAnswerIndex === index}
-                  onChange={() => setCorrectAnswerIndex(index)}
-                  className="w-4 h-4 text-indigo-600"
-                />
+                {/* 라디오 자체는 16px뿐이라 탭 타깃이 모자란다. 라벨로 감싸 40px 박스를 만들고
+                    음수 마진으로 되돌려 실제 차지하는 자리는 거의 그대로 둔다(라벨 탭 = 라디오 선택).
+                    오른쪽만 -mr-2인 이유: -m-3(12px)이면 옆 gap-2(8px)를 4px 넘어서 선택지 입력창 밑으로
+                    파고든다. 입력창이 뒤 형제라 위로 그려져 라디오 히트 영역이 36px로 깎였다 —
+                    오른쪽 삐져나감을 gap과 같은 8px로 맞춰 40px를 온전히 남긴다. */}
+                <label className="inline-flex min-h-[40px] sm:min-h-0 min-w-[40px] sm:min-w-0 shrink-0 -my-3 -ml-3 -mr-2 items-center justify-center cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={correctAnswerIndex === index}
+                    onChange={() => setCorrectAnswerIndex(index)}
+                    className="w-4 h-4 text-indigo-600"
+                  />
+                </label>
                 <input
                   type="text"
                   value={choice.text}
                   onChange={(e) => handleChoiceChange(index, e.target.value)}
-                  className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200"
+                  className="flex-1 min-w-0 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200"
                   placeholder={`${String.fromCharCode(65 + index)}. ${language === 'ko' ? '선택지 입력' : 'Enter choice'}`}
                 />
                 {choices.length > 2 && (
                   <button
                     type="button"
                     onClick={() => handleRemoveChoice(index)}
-                    className="px-3 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50"
+                    className="shrink-0 inline-flex min-h-[40px] items-center justify-center px-2 sm:min-h-0 sm:px-3 py-2 text-xs sm:text-base bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50"
                   >
                     {language === 'ko' ? '삭제' : 'Delete'}
                   </button>
@@ -178,7 +185,7 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
       )}
 
       {problemType === 'short_answer' && (
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             {language === 'ko' ? '정답' : 'Correct Answer'}
           </label>
@@ -193,7 +200,7 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
       )}
 
       {problemType === 'essay' && (
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             {language === 'ko' ? '답변 가이드라인' : 'Guidelines'}
           </label>
@@ -208,12 +215,12 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
       )}
 
       {problemType === 'ox' && (
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
             {language === 'ko' ? '정답' : 'Correct Answer'}
           </label>
           <div className="flex gap-4">
-            <label className="flex items-center gap-2">
+            <label className="flex -my-2 items-center gap-2 py-2 cursor-pointer">
               <input
                 type="radio"
                 checked={isCorrect === true}
@@ -222,7 +229,7 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
               />
               <span>O (True)</span>
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex -my-2 items-center gap-2 py-2 cursor-pointer">
               <input
                 type="radio"
                 checked={isCorrect === false}
@@ -236,7 +243,7 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
       )}
 
       {/* 해설 */}
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
           {language === 'ko' ? '해설' : 'Explanation'}
         </label>
@@ -255,17 +262,17 @@ export const ProblemEditMode: React.FC<ProblemEditModeProps> = ({
       )}
 
       {/* 버튼 */}
-      <div className="flex gap-3">
+      <div className="flex gap-2 sm:gap-3">
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+          className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? (language === 'ko' ? '저장 중...' : 'Saving...') : (language === 'ko' ? '저장' : 'Save')}
         </button>
         <button
           onClick={onCancel}
-          className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+          className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
         >
           {language === 'ko' ? '취소' : 'Cancel'}
         </button>

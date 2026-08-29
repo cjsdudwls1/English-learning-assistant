@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { getCurrentUserId } from './auth';
+import { fetchByIdChunks } from './queryPage';
 
 export interface ChildInfo {
   user_id: string;
@@ -35,16 +36,15 @@ export async function fetchMyChildren(): Promise<ChildInfo[]> {
     .eq('parent_id', parentId);
   if (error) throw error;
 
-  const childIds = (data || []).map(r => r.child_id);
+  const childIds = Array.from(new Set((data || []).map(r => r.child_id)));
   if (childIds.length === 0) return [];
 
-  const { data: profiles, error: pErr } = await supabase
-    .from('profiles')
-    .select('user_id, email, name, grade')
-    .in('user_id', childIds);
-  if (pErr) throw pErr;
+  const profiles = await fetchByIdChunks<{ user_id: string; email: string | null; name: string | null; grade: string | null }>(
+    childIds,
+    (chunk) => supabase.from('profiles').select('user_id, email, name, grade').in('user_id', chunk),
+  );
 
-  return (profiles || []).map(p => ({
+  return profiles.map(p => ({
     user_id: p.user_id,
     email: p.email ?? '',
     name: p.name ?? null,

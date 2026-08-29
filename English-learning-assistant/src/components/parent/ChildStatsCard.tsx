@@ -40,8 +40,8 @@ export const ChildStatsCard: React.FC<Props> = ({ monthlyStats, dailyStats, year
   );
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-5">
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '자녀 학습 통계' : 'Child Learning Statistics'}</h3>
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-4 sm:space-y-5">
+      <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '자녀 학습 통계' : 'Child Learning Statistics'}</h3>
 
       <AssignmentStatsDisplay
         totalCount={yearTotals.total}

@@ -33,9 +33,9 @@ export const AcademyCreatePage: React.FC = () => {
 
   return (
     <div className="max-w-lg mx-auto">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 md:p-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200">{createLabel}</h1>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-6 md:p-8">
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{createLabel}</h1>
           <button
             type="button"
             onClick={() => navigate('/academies')}
@@ -45,7 +45,7 @@ export const AcademyCreatePage: React.FC = () => {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               {t.academy.nameLabel} <span className="text-red-500">*</span>
@@ -82,7 +82,7 @@ export const AcademyCreatePage: React.FC = () => {
           <button
             type="submit"
             disabled={creating || !name.trim()}
-            className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full px-4 py-2.5 sm:px-6 sm:py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {creating ? t.academy.creating : createLabel}
           </button>

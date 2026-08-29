@@ -51,10 +51,10 @@ const StudentRow: React.FC<{
     <button
       type="button"
       onClick={() => onSelect?.(student.user_id, student.email)}
-      className="flex-1 text-left text-xs text-slate-700 dark:text-slate-300"
+      className="min-w-0 flex-1 text-left text-xs text-slate-700 dark:text-slate-300"
     >
       <div className="flex items-center flex-wrap gap-1.5">
-        <span className="font-medium">{student.email || student.user_id.slice(0, 8)}</span>
+        <span className="break-all font-medium">{student.email || student.user_id.slice(0, 8)}</span>
         {student.grade && <span className="text-[10px] text-slate-600 dark:text-slate-400">{student.grade}</span>}
         <RatePill rate={student.correct_rate} total={student.total_count} graded={student.graded_count} />
       </div>
@@ -85,11 +85,11 @@ const TeacherSection: React.FC<{
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
+        className="w-full flex min-h-[40px] sm:min-h-0 items-center justify-between gap-2 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span aria-hidden="true" className="text-xs text-slate-600 dark:text-slate-400">{open ? '▼' : '▶'}</span>
-          <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <span className="break-all text-sm font-semibold text-slate-800 dark:text-slate-200">
             {teacher.email || teacher.user_id.slice(0, 8)}
           </span>
           <span className="text-[10px] text-slate-600 dark:text-slate-400">
@@ -151,9 +151,9 @@ export const AcademyHierarchyCard: React.FC<Props> = ({ hierarchy, onSelectStude
   const { language } = useLanguage();
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '학원 조직도' : 'Academy Org Chart'}</h2>
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-5 space-y-3 sm:space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">{language === 'ko' ? '학원 조직도' : 'Academy Org Chart'}</h2>
         <span className="text-xs text-slate-500">
           {language === 'ko'
             ? `선생 ${hierarchy.teachers.length}명 · 학생 ${hierarchy.students.length}명`
@@ -182,9 +182,9 @@ export const AcademyHierarchyCard: React.FC<Props> = ({ hierarchy, onSelectStude
           <button
             type="button"
             onClick={() => setShowUnassigned(!showUnassigned)}
-            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+            className="w-full flex min-h-[40px] sm:min-h-0 items-center justify-between gap-2 px-3 py-2.5 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
           >
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span aria-hidden="true" className="text-xs text-slate-600 dark:text-slate-400">{showUnassigned ? '▼' : '▶'}</span>
               <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">
                 {language === 'ko' ? '미배정 학생' : 'Unassigned Students'}
@@ -193,7 +193,7 @@ export const AcademyHierarchyCard: React.FC<Props> = ({ hierarchy, onSelectStude
                 {language === 'ko' ? `${hierarchy.unassigned_students.length}명` : `${hierarchy.unassigned_students.length} students`}
               </span>
             </div>
-            <span className="text-[10px] text-amber-700 dark:text-amber-400">{language === 'ko' ? '선생/반 미배정' : 'No teacher or class'}</span>
+            <span className="shrink-0 text-[10px] text-amber-700 dark:text-amber-400">{language === 'ko' ? '선생/반 미배정' : 'No teacher or class'}</span>
           </button>
           {showUnassigned && (
             <div className="border-t border-amber-200 dark:border-amber-800 p-3 space-y-1">

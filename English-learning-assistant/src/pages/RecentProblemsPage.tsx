@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchUserSessions, deleteSession, fetchPendingLabelingSessions, fetchAnalyzingSessions, fetchFailedSessions } from '../services/db';
+import { fetchUserSessions, deleteSession, deleteSessions, fetchPendingLabelingSessions, fetchAnalyzingSessions, fetchFailedSessions } from '../services/db';
 import { ImageLightbox } from '../components/ImageLightbox';
 import { QuickLabelingCard } from '../components/QuickLabelingCard';
 import { AnalyzingCard } from '../components/AnalyzingCard';
@@ -103,10 +103,14 @@ export const RecentProblemsPage: React.FC = () => {
     if (!window.confirm(confirmMessage)) return;
 
     try {
-      await Promise.all(Array.from(selectedSessions).map(id => deleteSession(id)));
+      await deleteSessions(Array.from(selectedSessions));
       setSelectedSessions(new Set());
       await loadData();
     } catch (e) {
+      // 실패해도 목록은 반드시 다시 읽는다 — 청크 단위로 일부는 이미 지워졌을 수 있고,
+      // 그때 화면을 그대로 두면 없는 세션이 남아 사용자가 같은 삭제를 반복하게 된다.
+      setSelectedSessions(new Set());
+      await loadData().catch(() => {});
       alert(translateError(e, language, t, t.common.deleteFailed));
     }
   };
@@ -140,11 +144,11 @@ export const RecentProblemsPage: React.FC = () => {
     return sessions.slice(0, visibleSessionCount);
   }, [sessions, visibleSessionCount]);
 
-  if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0 && failedSessions.length === 0) return <div className="text-center text-slate-600 py-10">{t.common.loading}</div>;
-  if (error) return <div className="text-center text-red-700 py-10">{error}</div>;
+  if (loading && sessions.length === 0 && analyzingSessions.length === 0 && pendingLabelingSessions.length === 0 && failedSessions.length === 0) return <div className="text-center text-slate-600 py-6 sm:py-10">{t.common.loading}</div>;
+  if (error) return <div className="text-center text-red-700 py-6 sm:py-10">{error}</div>;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
       {/* 분석 중 UI - 최상단 */}
       {analyzingSessions.map((session) => (
         <AnalyzingCard
@@ -180,27 +184,27 @@ export const RecentProblemsPage: React.FC = () => {
         />
       ))}
 
-      <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold whitespace-nowrap">{t.recent.title}</h2>
-          <div className="flex gap-2">
+      <div className="bg-white rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-3 sm:mb-4">
+          <h2 className="text-lg sm:text-2xl font-bold whitespace-nowrap">{t.recent.title}</h2>
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               onClick={toggleSelectAll}
-              className="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700"
+              className="shrink-0 self-center whitespace-nowrap px-2.5 py-3 sm:px-4 sm:py-2 bg-gray-600 text-white text-xs sm:text-sm rounded-lg hover:bg-gray-700"
             >
               {selectedSessions.size === sessions.length && sessions.length > 0 ? t.recent.deselectAll : t.recent.selectAll}
             </button>
             {selectedSessions.size > 0 && (
               <button
                 onClick={handleBulkDelete}
-                className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+                className="shrink-0 self-center whitespace-nowrap px-2.5 py-3 sm:px-4 sm:py-2 bg-red-600 text-white text-xs sm:text-sm rounded-lg hover:bg-red-700"
               >
                 {t.recent.deleteSelected} ({selectedSessions.size})
               </button>
             )}
             <button
               onClick={loadData}
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+              className="shrink-0 self-center whitespace-nowrap px-2.5 py-3 sm:px-4 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm rounded-lg hover:bg-blue-700"
             >
               {t.recent.refresh}
             </button>
@@ -209,35 +213,38 @@ export const RecentProblemsPage: React.FC = () => {
         {sessions.length === 0 ? (
           <p className="text-slate-500 text-center py-4">{t.recent.noProblems}</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {displayedSessions.map((session) => {
               const sessionImageUrls = (session.image_urls && session.image_urls.length > 0)
                 ? session.image_urls
                 : (session.image_url ? [session.image_url] : []);
 
               return (
-                <div key={session.id} className="border border-slate-200 rounded-lg p-4 flex items-center gap-4">
-                  <input
-                    type="checkbox"
-                    checked={selectedSessions.has(session.id)}
-                    onChange={() => toggleSessionSelection(session.id)}
-                    aria-label={language === 'ko' ? '세션 선택' : 'Select session'}
-                    className="w-5 h-5"
-                  />
+                <div key={session.id} className="border border-slate-200 rounded-lg p-2.5 sm:p-4 flex items-center gap-2 sm:gap-4">
+                  {/* 탭 영역만 넓힌다 — p로 히트 영역을 키우고 -m으로 레이아웃 점유는 원래대로 되돌린다 */}
+                  <label className="inline-flex flex-shrink-0 items-center justify-center cursor-pointer p-2.5 -m-2.5 sm:p-2 sm:-m-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedSessions.has(session.id)}
+                      onChange={() => toggleSessionSelection(session.id)}
+                      aria-label={language === 'ko' ? '세션 선택' : 'Select session'}
+                      className="w-5 h-5 flex-shrink-0"
+                    />
+                  </label>
                   {/* 다중 이미지 썸네일 */}
-                  <div className="flex flex-wrap gap-1.5 flex-shrink-0 max-w-[50%]">
+                  <div className="flex flex-wrap gap-1 sm:gap-1.5 flex-shrink-0 max-w-[30%] sm:max-w-[50%]">
                     {sessionImageUrls.map((url, idx) => (
                       <img
                         key={`${idx}-${url}`}
                         src={url}
                         alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
-                        className={`${sessionImageUrls.length > 4 ? 'w-14 h-14' : 'w-20 h-20'} object-cover rounded border cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
+                        className={`${sessionImageUrls.length > 4 ? 'w-10 h-10 sm:w-14 sm:h-14' : 'w-12 h-12 sm:w-20 sm:h-20'} object-cover rounded border cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
                         onClick={() => setLightboxImageUrl(url)}
                       />
                     ))}
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-slate-500">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] leading-tight sm:text-sm text-slate-500">
                       {new Date(session.created_at).toLocaleString(language === 'ko' ? 'ko-KR' : 'en-US', {
                         year: 'numeric',
                         month: 'long',
@@ -247,11 +254,11 @@ export const RecentProblemsPage: React.FC = () => {
                       })}
                     </p>
                     {session.problem_count === 0 ? (
-                      <p className="text-orange-600 font-medium mt-1">
+                      <p className="text-xs sm:text-base text-orange-600 font-medium mt-0.5 sm:mt-1">
                         {language === 'ko' ? 'AI 분석 중... 잠시 후 새로고침해주세요' : 'AI analyzing... Please refresh later'}
                       </p>
                     ) : (
-                      <p className="text-slate-700 mt-1">
+                      <p className="text-xs sm:text-base text-slate-700 mt-0.5 sm:mt-1 break-words">
                         {language === 'ko'
                           ? `문제 ${session.problem_count}개 | 정답 ${session.correct_count}개 | 오답 ${session.incorrect_count}개`
                           : t.recent.sessionSummary
@@ -261,18 +268,18 @@ export const RecentProblemsPage: React.FC = () => {
                       </p>
                     )}
                     {sessionImageUrls.length > 1 && (
-                      <p className="text-xs text-slate-500 mt-0.5">
+                      <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
                         {language === 'ko'
                           ? `이미지 ${sessionImageUrls.length}장`
                           : `${sessionImageUrls.length} images`}
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <button
                       onClick={() => navigate(`/session/${session.id}`)}
                       disabled={session.problem_count === 0}
-                      className={`px-4 py-2 text-white text-sm rounded-lg ${session.problem_count === 0
+                      className={`self-center h-fit whitespace-nowrap px-3 py-3 sm:px-4 sm:py-2 text-white text-xs sm:text-sm rounded-lg ${session.problem_count === 0
                         ? 'bg-gray-400 cursor-not-allowed'
                         : 'bg-indigo-600 hover:bg-indigo-700'
                         }`}
@@ -284,10 +291,10 @@ export const RecentProblemsPage: React.FC = () => {
               );
             })}
             {visibleSessionCount < sessions.length && (
-              <div className="text-center pt-4">
+              <div className="text-center pt-2 sm:pt-4">
                 <button
                   onClick={() => setVisibleSessionCount(prev => Math.min(prev + 5, sessions.length))}
-                  className="px-4 py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
+                  className="whitespace-nowrap px-4 py-2.5 sm:py-2 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700"
                 >
                   {t.recent.loadMore} ({sessions.length - visibleSessionCount}{language === 'ko' ? '개' : ''})
                 </button>

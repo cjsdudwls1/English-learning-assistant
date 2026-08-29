@@ -116,7 +116,7 @@ export const LoginButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setRole('student')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     role === 'student'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -127,7 +127,7 @@ export const LoginButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setRole('parent')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     role === 'parent'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -138,7 +138,7 @@ export const LoginButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setRole('teacher')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     role === 'teacher'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -156,11 +156,11 @@ export const LoginButton: React.FC = () => {
             
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.login.gender || t.profile.gender}</label>
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setGender('male')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     gender === 'male'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -171,7 +171,7 @@ export const LoginButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setGender('female')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     gender === 'female'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -227,11 +227,11 @@ export const LoginButton: React.FC = () => {
             
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t.login.language}</label>
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setProfileLanguage('en')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     profileLanguage === 'en'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -242,7 +242,7 @@ export const LoginButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setProfileLanguage('ko')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     profileLanguage === 'ko'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -264,7 +264,7 @@ export const LoginButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setCountry('SG')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     country === 'SG'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -275,7 +275,7 @@ export const LoginButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setCountry('KR')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     country === 'KR'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -286,7 +286,7 @@ export const LoginButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setCountry('CN')}
-                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 px-2 py-2.5 sm:px-4 sm:py-3 rounded-lg font-medium transition-colors ${
                     country === 'CN'
                       ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
@@ -302,7 +302,7 @@ export const LoginButton: React.FC = () => {
         <button
           type="submit"
           disabled={loading}
-          className="w-full px-6 py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+          className="w-full px-4 py-2.5 sm:px-6 sm:py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-slate-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? t.login.processing : (isSignUp ? t.login.signup : t.login.login)}
         </button>
@@ -310,7 +310,7 @@ export const LoginButton: React.FC = () => {
       
       <button
         onClick={() => setIsSignUp(!isSignUp)}
-        className="mt-3 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline transition-colors"
+        className="relative mt-3 inline-flex items-center text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline transition-colors before:absolute before:content-[''] before:-inset-x-2 before:-inset-y-3"
       >
         {isSignUp 
           ? (language === 'ko' ? '이미 계정이 있으신가요? 로그인' : 'Already have an account? Login')
@@ -340,7 +340,7 @@ export const LogoutButton: React.FC = () => {
     window.location.reload();
   };
   return (
-    <button onClick={handleLogout} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-md font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
+    <button onClick={handleLogout} className="min-h-[40px] sm:min-h-0 px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-md font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
       {t.header.logout}
     </button>
   );

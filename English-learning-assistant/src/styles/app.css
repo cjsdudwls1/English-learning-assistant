@@ -1,10 +1,82 @@
 /* App Styles - 벤치마킹: eduscope-ai */
 
+/* ── 반응형 셸 토큰 ──────────────────────────────────────────────
+   :root 기본값 = 데스크톱(≥1041px) 기존 수치 그대로.
+   모바일 조정은 아래 미디어쿼리에서 "토큰만" 재정의한다.
+   480/640/768/1040 네 겹에 흩어져 있던 중복 수치를 한곳으로 모은 것이므로
+   새 수치를 넣을 때도 규칙이 아니라 토큰을 고쳐라.                  */
+:root {
+  /* 페이지 셸 */
+  --shell-pad-top: 2.5rem;
+  --shell-pad-x: 1.25rem;
+  --shell-pad-bottom: 3rem;
+  --shell-pad-top-app: 1rem; /* PageLayout(앱 화면) 상단 여백 */
+  --body-gap-top: 1rem; /* 탑바 ↔ 본문 간격 (앱 화면) */
+  --content-gap: 2.5rem; /* .page-content 섹션 간격 (랜딩) */
+  --content-gap-top: 1.25rem; /* 탑바 ↔ 본문 간격 (랜딩) */
+  --fs-body: 1rem;
+
+  /* 탑바 / 내비 */
+  --topbar-pad-y: 0.9rem;
+  --topbar-pad-x: 1.25rem;
+  --topbar-radius: 999px;
+  --topbar-gap: 1rem;
+  --brand-fs: 1.1rem;
+  --nav-gap: 0.9rem;
+  --nav-pad-y: 0.35rem;
+  --nav-pad-x: 0.55rem;
+  --nav-min-h: 44px;
+  --nav-fs: 1rem;
+
+  /* 패널 / 버튼 */
+  --panel-pad: 1.25rem;
+  --panel-radius: 1.2rem;
+  --btn-pad-y: 0.85rem;
+  --btn-pad-x: 1.3rem;
+  --btn-radius: 0.9rem;
+  --btn-min-h: 44px;
+  --btn-fs: 1rem;
+  /* 모바일 전용 촬영/갤러리 버튼 높이. 터치 최소치(iOS HIG 44px)와 같게 둔다 —
+     이 화면의 불만이 "버튼이 지나치게 크다"였으므로 최소치 위로 더 키우지 않는다.
+     44px 아래로는 내리지 말 것. 그 아래는 터치 실패가 늘고 e2e 회귀선(24px)과도 멀어진다. */
+  --touch-btn-h: 44px;
+
+  /* 히어로 패널(업로드 카드). 데스크톱 기본값 = 기존 하드코딩 값 그대로. */
+  --hero-panel-pad: 1.25rem;
+  --hero-panel-gap: 1rem;
+  --upload-panel-gap-top: 1.5rem; /* 예전 MainPage.tsx 인라인 marginTop과 같은 값 */
+}
+
 .page-shell {
   position: relative;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 3rem;
+  padding: var(--shell-pad-top) var(--shell-pad-x) var(--shell-pad-bottom);
+  /* 노치/홈 인디케이터 대응. env()가 0인 데스크톱에서는 위 shorthand와 동일한 값이 나온다. */
+  padding-top: max(var(--shell-pad-top), env(safe-area-inset-top, 0px));
+  padding-right: max(var(--shell-pad-x), env(safe-area-inset-right, 0px));
+  padding-bottom: max(var(--shell-pad-bottom), env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--shell-pad-x), env(safe-area-inset-left, 0px));
+  font-size: var(--fs-body);
+}
+
+/* PageLayout(앱 화면) 전용.
+   기존 인라인 style(paddingTop / overflowX / width / maxWidth)을 그대로 옮긴 것이다.
+   max-width:100%는 base의 1240px 상한을 푸는 기존 동작이므로 유지해야 하고,
+   overflow-x:hidden은 가로 오버플로 방어라 기능적으로 필요하다. */
+.page-shell--app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding-top: max(var(--shell-pad-top-app), env(safe-area-inset-top, 0px));
+}
+
+/* PageLayout 내부 본문 래퍼 (기존 인라인 marginTop/overflowX/width/maxWidth) */
+.page-body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  margin-top: var(--body-gap-top);
 }
 
 .bg-grid {
@@ -35,9 +107,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.9rem 1.25rem;
-  border-radius: 999px;
+  gap: var(--topbar-gap);
+  padding: var(--topbar-pad-y) var(--topbar-pad-x);
+  border-radius: var(--topbar-radius);
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid #e2e8f0;
   box-shadow: 0 10px 60px rgba(15, 23, 42, 0.08);
@@ -52,7 +124,7 @@
 .brand {
   font-weight: 700;
   letter-spacing: -0.02em;
-  font-size: 1.1rem;
+  font-size: var(--brand-fs);
   color: #0f172a;
 }
 
@@ -66,7 +138,7 @@
 
 nav {
   display: flex;
-  gap: 0.9rem;
+  gap: var(--nav-gap);
   align-items: center;
   font-weight: 600;
 }
@@ -74,10 +146,11 @@ nav {
 nav a {
   text-decoration: none;
   color: #334155;
-  padding: 0.35rem 0.55rem;
+  padding: var(--nav-pad-y) var(--nav-pad-x);
   border-radius: 0.65rem;
   transition: background 0.2s ease, color 0.2s ease;
-  min-height: 44px;
+  min-height: var(--nav-min-h);
+  font-size: var(--nav-fs);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,8 +251,8 @@ nav a:hover {
 .page-content {
   display: flex;
   flex-direction: column;
-  gap: 2.5rem;
-  margin-top: 1.25rem; /* create breathing room below sticky top bar */
+  gap: var(--content-gap);
+  margin-top: var(--content-gap-top); /* create breathing room below sticky top bar */
 }
 
 .hero {
@@ -237,14 +310,15 @@ nav a:hover {
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  padding: 0.85rem 1.3rem;
-  border-radius: 0.9rem;
+  padding: var(--btn-pad-y) var(--btn-pad-x);
+  border-radius: var(--btn-radius);
+  font-size: var(--btn-fs);
   font-weight: 700;
   border: none;
   text-decoration: none;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease, color 0.2s ease;
-  min-height: 44px;
+  min-height: var(--btn-min-h);
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -316,10 +390,16 @@ nav a:hover {
   border-radius: 1.25rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.35);
-  padding: 1.25rem;
+  padding: var(--hero-panel-pad);
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--hero-panel-gap);
+}
+
+/* 업로드 패널(.hero-panel 안의 촬영/선택 영역) 상단 간격.
+   MainPage.tsx의 인라인 style에서 옮겨온 값이다 — 인라인이면 미디어쿼리가 못 이긴다. */
+.upload-panel-moved {
+  margin-top: var(--upload-panel-gap-top);
 }
 
 .hero-panel__header {
@@ -405,8 +485,8 @@ nav a:hover {
 .panel {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid #e2e8f0;
-  border-radius: 1.2rem;
-  padding: 1.25rem;
+  border-radius: var(--panel-radius);
+  padding: var(--panel-pad);
   box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
 }
 
@@ -1347,12 +1427,145 @@ nav a:hover {
   color: #e2e8f0;
 }
 
+/* ── 라이트박스 이미지 높이 ────────────────────────────────────────────────
+   `vh`는 주소창이 숨은 "큰 뷰포트" 기준이라, 90vh로 잡으면 모바일에서 이미지
+   하단이 브라우저 UI에 잘린다. `svh`(주소창·제스처바가 보이는 상태)로 재야 한다.
+   svh 미지원(iOS Safari 15.3 이하 등)은 앞의 vh 선언이 그대로 남아 폴백된다 —
+   선언 순서가 폴백이므로 vh 줄을 지우면 안 된다.
+
+   데스크톱은 80%가 아니라 **90%를 유지한다.** 이 라이트박스로 보는 것은 대부분
+   시험지 스캔이라 크기가 곧 판독성이고, 데스크톱에는 높이를 갉아먹는 브라우저
+   UI가 없어 줄일 이유가 없다. 모바일 잘림을 고치려다 데스크톱까지 11% 줄이면
+   요청하지 않은 회귀가 된다. */
+.lightbox-image {
+  max-height: 80vh;
+  max-height: 80svh;
+}
+
+@media (min-width: 640px) {
+  .lightbox-image {
+    max-height: 90vh;
+    max-height: 90svh;
+  }
+}
+
+/* ── range 슬라이더 ────────────────────────────────────────────────────────
+   프로덕션 마크업(`appearance-none accent-indigo-600 h-2`)도 **손잡이는 정상적으로
+   그려진다.** 스크린샷으로 확인했다 — 회색 트랙 위에 인디고 원이 보인다.
+   (앞서 `getComputedStyle(el, '::-webkit-slider-thumb')`로 "손잡이가 없다"고 판정했으나
+    그 API는 Chromium에서 pseudo가 아니라 **입력 자신의** 스타일을 돌려준다. 폭이 매번
+    입력 폭과 정확히 일치(200/390/1280px)해서 드러났다. 이 클래스로 UA 섀도 렌더링을
+    측정하지 말 것 — 픽셀만이 근거다.)
+
+   이 규칙이 실제로 고치는 것은 **터치 영역 하나**다. 원래 입력 높이가 8px(h-2)라
+   손가락으로 잡을 수 있는 세로 폭이 8px뿐이었다. 모바일에서 사실상 조작 불가다.
+
+   그래서 트랙(시각)과 히트 영역(입력)을 분리한다:
+   - 트랙은 8px 그대로 — 화면을 더 먹지 않는다.
+   - 입력 자체는 모바일 44px / 데스크톱 28px로 키우되 배경을 투명하게 두고
+     음수 margin으로 되돌려, **보이는 두께도 차지하는 자리도 변하지 않는다.**
+     마우스는 정밀하니 데스크톱까지 44px를 쓸 이유가 없다.
+   - 손잡이는 18px 원형 + 흰 테두리. UA 기본 손잡이와 크기는 비슷하고,
+     트랙(8px)보다 크므로 margin-top으로 중앙을 맞춘다
+     (WebKit은 thumb를 트랙 기준으로 자동 정렬하지 않는다).
+     appearance:none을 걸면 accent-color가 무시되므로 색은 직접 지정한다. */
+.range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  cursor: pointer;
+  /* 히트 영역만 키웠으므로 여백처럼 보이지 않게 위아래 마진을 상쇄한다.
+     (44 - 8) / 2 = 18px */
+  margin-top: -18px;
+  margin-bottom: -18px;
+}
+
+.range-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: #e2e8f0; /* slate-200 — 기존 bg-slate-200과 동일 */
+}
+
+.range-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: #e2e8f0;
+}
+
+.range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #4f46e5; /* indigo-600 — 기존 accent-indigo-600이 의도했던 색 */
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  margin-top: -5px; /* (8 - 18) / 2 — 트랙 중앙에 맞춘다 */
+}
+
+.range-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #4f46e5;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+.range-slider:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+.range-slider:focus-visible::-moz-range-thumb {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+.dark .range-slider::-webkit-slider-runnable-track {
+  background: #475569; /* slate-600 — 기존 dark:bg-slate-600과 동일 */
+}
+
+.dark .range-slider::-moz-range-track {
+  background: #475569;
+}
+
+.dark .range-slider::-webkit-slider-thumb {
+  background: #818cf8; /* indigo-400 */
+  border-color: #1e293b; /* slate-800 — 다크 배경에서 흰 테두리는 튄다 */
+}
+
+.dark .range-slider::-moz-range-thumb {
+  background: #818cf8;
+  border-color: #1e293b;
+}
+
+@media (min-width: 640px) {
+  .range-slider {
+    height: 28px;
+    margin-top: -10px;
+    margin-bottom: -10px;
+  }
+}
+
 /* 반응형 디자인 */
 @media (max-width: 1040px) {
+  :root {
+    --topbar-radius: 1rem;
+    --topbar-pad-y: 0.75rem;
+    --topbar-pad-x: 1rem;
+    --brand-fs: 1rem;
+    --nav-gap: 0.5rem;
+    --nav-pad-y: 0.5rem;
+    --nav-pad-x: 0.75rem;
+    --nav-fs: 0.95rem;
+  }
+
   .topbar {
     flex-wrap: wrap;
-    border-radius: 1rem;
-    padding: 0.75rem 1rem;
   }
 
   .lab-grid {
@@ -1378,27 +1591,29 @@ nav a:hover {
     width: 100%;
   }
 
-  nav {
-    gap: 0.5rem;
-  }
-
-  nav a {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.95rem;
-  }
-
   .top-actions {
     gap: 0.4rem;
-  }
-
-  .brand {
-    font-size: 1rem;
   }
 }
 
 @media (max-width: 768px) {
-  .page-shell {
-    padding: 1.25rem 1rem 2rem;
+  /* 셸 여백은 여기 한 곳에서만 정한다.
+     (예전에는 640/480 블록과 파일 하단 768 블록이 같은 값을 세 번 덮어써서
+      실제로 무엇이 먹히는지 읽히지 않았다) */
+  :root {
+    --shell-pad-top: 0.5rem;
+    --shell-pad-x: clamp(0.5rem, 2vw, 0.9rem);
+    --shell-pad-bottom: 1rem;
+    --shell-pad-top-app: 0.5rem;
+    --body-gap-top: 0.6rem;
+    --content-gap: 0.75rem;
+    --content-gap-top: 0.5rem;
+    /* 업로드 카드(.hero-panel). 예전엔 768/640 어느 쪽도 안 건드려서
+       모바일에도 데스크톱 여백(1.25rem/1rem)이 그대로 남아 있었다. */
+    --hero-panel-pad: 0.9rem;
+    --hero-panel-gap: 0.6rem;
+    /* .hero-panel의 flex gap이 이미 헤더와 간격을 주므로 추가 상단 여백은 뺀다 */
+    --upload-panel-gap-top: 0;
   }
 
   .hero {
@@ -1438,8 +1653,26 @@ nav a:hover {
 }
 
 @media (max-width: 640px) {
-  .page-shell {
-    padding: 1rem 0.75rem 1.5rem;
+  :root {
+    /* 업로드 카드 여백 추가 축소 */
+    --hero-panel-pad: 0.75rem;
+    --hero-panel-gap: 0.5rem;
+    --topbar-pad-y: 0.5rem;
+    --topbar-pad-x: 0.7rem;
+    --topbar-radius: 0.9rem;
+    --topbar-gap: 0.5rem;
+    --brand-fs: 0.95rem;
+    --nav-gap: 0.15rem;
+    --nav-pad-y: 0.35rem;
+    --nav-pad-x: 0.6rem;
+    --nav-min-h: 44px;
+    --nav-fs: 0.9rem;
+    --panel-pad: 0.9rem;
+    --panel-radius: 0.9rem;
+    --btn-pad-y: 0.6rem;
+    --btn-pad-x: 1rem;
+    --btn-min-h: 44px;
+    --btn-fs: 0.95rem;
   }
 
   .hero-copy h1 {
@@ -1454,28 +1687,64 @@ nav a:hover {
   .topbar {
     position: relative;
     top: 0;
-    padding: 0.75rem;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    /* 아래 여백은 .page-body / .page-content의 상단 간격이 담당한다.
+       예전에는 여기 margin-bottom:1rem + 본문 margin-top:1rem이 겹쳐 2rem이 비었다. */
+    margin-bottom: 0;
   }
 
-  .brand {
-    font-size: 0.95rem;
-  }
-
+  /* 탭이 5개일 때 줄바꿈되던 문제:
+     flex:1 균등분할(한 칸 ~66px)을 버리고 가로 스크롤 한 줄로 바꾼다. */
   nav {
     order: 3;
     width: 100%;
-    justify-content: center;
-    margin-top: 0.5rem;
-    gap: 0.4rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    scroll-padding-inline: 0.25rem;
+    margin-top: 0.25rem;
+    /* 다 들어가면 가운데, 넘치면 왼쪽부터(=첫 탭이 잘려서 못 닿는 일이 없게).
+       safe를 모르는 구형 브라우저는 앞 선언(flex-start)으로 떨어진다. */
+    justify-content: flex-start;
+    justify-content: safe center;
+  }
+
+  nav::-webkit-scrollbar {
+    display: none;
   }
 
   nav a {
-    padding: 0.5rem 0.65rem;
-    font-size: 0.9rem;
-    flex: 1;
+    flex: 0 0 auto;
+    white-space: nowrap;
     text-align: center;
+  }
+
+  /* 현재 페이지 표시.
+     탭바를 가로 스크롤 한 줄로 바꾸면서 "탭이 전부 보이니까 어디 있는지 안다"가 깨졌다.
+     TopBar.tsx의 scrollIntoView는 활성 탭을 화면 안으로 끌어올 뿐이고,
+     "여기가 지금 페이지다"를 말해주는 건 이 규칙이다. 둘은 세트다.
+     하나라도 지우면 나머지 하나가 무의미해진다.
+
+     aria-current를 셀렉터로 쓰는 이유: 스타일과 접근성이 한 속성으로 같이 해결된다.
+     별도 클래스를 두면 둘이 어긋날 수 있다. TopBar.tsx가 이 속성을 붙인다.
+
+     주의 1: color는 절대 넣지 마라. 이 파일 상단 주석대로 레이어 없는 a color 규칙은
+             Tailwind v4 유틸리티를 전부 무시시킨다. 배경·굵기·밑줄로만 표시한다.
+     주의 2: hover(0.08)보다 확실히 진해야 구분된다. 명시도가 hover와 같고(0,1,2)
+             선언 순서가 뒤라서, 터치 후 hover가 남아도 활성 표시가 이긴다.
+     주의 3: 데스크톱은 nav가 안 넘쳐 원래 다 보이므로 이 블록(≤640px) 밖으로 내보내지 않는다.
+             데스크톱에도 표시가 필요하면 이 두 규칙을 미디어쿼리 밖으로 옮기면 된다. */
+  nav a[aria-current='page'] {
+    background: rgba(37, 99, 235, 0.16);
+    font-weight: 800;
+    box-shadow: inset 0 -2px 0 rgba(37, 99, 235, 0.9);
+  }
+
+  .dark nav a[aria-current='page'] {
+    background: rgba(37, 99, 235, 0.3);
+    box-shadow: inset 0 -2px 0 rgba(96, 165, 250, 0.9);
   }
 
   .top-actions {
@@ -1483,9 +1752,11 @@ nav a:hover {
     gap: 0.35rem;
   }
 
+  /* 정사각 탭 타깃 — 하드코딩 px을 두면 토큰을 고쳐도 여기만 뒤처진다.
+     가로/세로 같은 값을 쓰므로 높이 토큰을 양축에 그대로 쓴다. */
   .top-actions > * {
-    min-height: 40px;
-    min-width: 40px;
+    min-height: var(--btn-min-h);
+    min-width: var(--btn-min-h);
     padding: 0.5rem;
   }
 
@@ -1494,9 +1765,10 @@ nav a:hover {
     padding: 0.3rem 0.7rem;
   }
 
-  .panel {
-    padding: 0.9rem;
-    border-radius: 0.9rem;
+  /* 앱 화면에서는 status가 항상 'idle'(=“대기 중”)로 고정돼 있어
+     좁은 탑바 한 줄을 의미 없이 잡아먹는다. 진행/완료/오류는 그대로 보인다. */
+  .status-chip.status-idle {
+    display: none;
   }
 
   .image-grid {
@@ -1510,12 +1782,6 @@ nav a:hover {
 
   .hero-mini {
     padding: 0.75rem;
-  }
-
-  .primary,
-  .ghost {
-    padding: 0.75rem 1.1rem;
-    font-size: 0.95rem;
   }
 
   .eyebrow {
@@ -1533,10 +1799,6 @@ nav a:hover {
   .hero-tags span {
     padding: 0.3rem 0.6rem;
     font-size: 0.85rem;
-  }
-
-  .page-content {
-    gap: 1.5rem;
   }
 
   /* 터치 최적화 */
@@ -1557,8 +1819,17 @@ nav a:hover {
 }
 
 @media (max-width: 480px) {
-  .page-shell {
-    padding: 0.75rem 0.5rem 1.25rem;
+  :root {
+    --topbar-pad-y: 0.45rem;
+    --topbar-pad-x: 0.6rem;
+    --brand-fs: 0.9rem;
+    --nav-pad-x: 0.5rem;
+    --nav-fs: 0.85rem;
+    --panel-pad: 0.75rem;
+    --btn-pad-x: 0.85rem;
+    --btn-fs: 0.9rem;
+    /* 본문 15px. 입력 필드는 global.css가 16px 아래로 못 내려가게 막는다(iOS 자동 확대). */
+    --fs-body: 0.9375rem;
   }
 
   .hero-copy h1 {
@@ -1567,29 +1838,6 @@ nav a:hover {
 
   .section-head h2 {
     font-size: 1.35rem;
-  }
-
-  .topbar {
-    padding: 0.65rem;
-  }
-
-  .brand {
-    font-size: 0.9rem;
-  }
-
-  nav a {
-    font-size: 0.85rem;
-    padding: 0.45rem 0.55rem;
-  }
-
-  .panel {
-    padding: 0.75rem;
-  }
-
-  .primary,
-  .ghost {
-    padding: 0.7rem 1rem;
-    font-size: 0.9rem;
   }
 }
 
@@ -1615,10 +1863,42 @@ nav a:hover {
   }
 }
 
+/* 촬영/갤러리 진입 버튼(모바일 전용)의 높이 고정.
+   프로덕션 390px에서 107px로 실측된 원인은 app.css가 아니라 MainPage.tsx 쪽이었다.
+   (1) 인라인 padding:1.5rem = 위아래 48px, (2) 좁은 폭에서 "📸 사진 촬영" 라벨이
+   두 줄로 깨져 줄 높이가 두 배 → 48+4(테두리)+두 줄 ≈ 107px.
+   (1)은 MainPage.tsx가 className으로 옮겨 해결됐지만, (2)는 라벨 길이·언어·글꼴이
+   바뀌면 언제든 재발한다. 그래서 높이를 .tsx가 아니라 여기서 못 박는다.
+   ⚠ 이 블록은 unlayered라 Tailwind 유틸리티(min-h-/py-/px-/text-)를 이긴다.
+      이 버튼의 모바일 크기를 바꾸려면 .tsx가 아니라 여기(또는 --touch-btn-h)를 고쳐라. */
+@media (max-width: 768px) {
+  .mobile-only-btn {
+    /* min-height는 바닥값이지 상한이 아니다 — 라벨이 두 줄로 깨지면 여전히 자란다.
+       그래서 아래 font-size/line-height까지 같이 못 박아 두 줄이어도 ~54px에서 멈춘다
+       (e2e mobile-ergonomics의 tapHeightMax 64 안쪽). 값은 --touch-btn-h(44px)에서만 바꿀 것. */
+    min-height: var(--touch-btn-h);
+    /* px-3 py-2와 같은 값. 명시해 두면 Tailwind의 md(=768px min-width)와
+       app.css의 데스크톱 경계(769px)가 1px 어긋나 768px에서만 md:p-6가
+       새어 들어오는 것도 함께 막힌다. */
+    padding: 0.5rem 0.75rem;
+    font-size: 0.95rem;
+    line-height: 1.25;
+  }
+
+  /* 옆의 갤러리 라벨은 flex 행의 stretch로 같은 높이가 되지만,
+     .file-label 본래 규칙(폼 라벨용, 이 파일 위쪽)의 margin-bottom:0.25rem이
+     행 전체를 4px 늘린다. 버튼으로 쓰이는 모바일 구간에서만 지운다. */
+  .file-label {
+    margin-bottom: 0;
+  }
+}
+
 /* ═══════ 모바일 PWA 최적화 ═══════ */
 /* 모바일에서 마케팅 섹션 숨기고 업로드 영역만 표시 */
 @media (max-width: 768px) {
-  /* 마케팅 섹션 및 부가 설명 섹션 완전 숨김 */
+  /* 마케팅 섹션 및 부가 설명 섹션 완전 숨김.
+     (죽은 규칙 아님 — MainPage.tsx의 랜딩 섹션 5개가 실제로 이 클래스를 쓴다:
+      metrics:240 / solutions:261 / pipeline:305 / faq:327 / cta:345) */
   .pipeline,
   .faq,
   .cta,
@@ -1632,6 +1912,9 @@ nav a:hover {
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    /* 세로 스택으로 바뀐 뒤에도 기본 .hero의 align-items:center가 그대로 살아 있어
+       자식이 화면 폭을 다 못 쓰고 콘텐츠 폭으로 줄어든다. 모바일에선 꽉 채운다. */
+    align-items: stretch;
   }
 
   /* 히어로 카피 축소 */
@@ -1678,28 +1961,24 @@ nav a:hover {
     width: 100%;
   }
 
-  /* 페이지 여백 최소화 */
-  .page-shell {
-    padding: 0.5rem 0.5rem 1rem;
-  }
+  /* 페이지 여백/섹션 간격은 위쪽 @media (max-width: 768px)의 :root 토큰이 담당한다.
+     (여기서 다시 .page-shell/.page-content를 덮어쓰면 640/480 조정이 무력화된다) */
 
-  .page-content {
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-  }
-
-  /* 업로드 패널 여백 최적화 */
-  .upload-panel-moved {
-    margin-top: 0.75rem !important;
-  }
+  /* 업로드 패널 상단 여백은 --upload-panel-gap-top 토큰이 담당한다.
+     예전엔 MainPage.tsx의 인라인 marginTop:'1.5rem'을 이기려고 !important를 썼는데,
+     인라인을 걷어냈으므로 !important도 같이 없앴다.
+     모바일에서는 .hero-panel의 flex gap이 이미 간격을 주므로 토큰이 0이다. */
 }
 
 /* PWA standalone 모드 (홈화면에서 열었을 때) */
 @media (display-mode: standalone) {
-  /* standalone-safe-area 적용 */
-  .page-shell {
-    padding-top: max(0.5rem, env(safe-area-inset-top));
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  /* standalone에서는 브라우저 UI가 없어 상태바 아래로 콘텐츠가 파고든다.
+     일반 브라우저용 safe-area는 .page-shell/.page-shell--app이 이미 max()로 처리하므로
+     여기서는 토큰 하한만 standalone 값으로 낮춘다. */
+  :root {
+    --shell-pad-top: 0.5rem;
+    --shell-pad-top-app: 0.5rem;
+    --shell-pad-bottom: 1rem;
   }
 
   /* 마케팅 섹션 및 부가 기능 완전 숨김 */

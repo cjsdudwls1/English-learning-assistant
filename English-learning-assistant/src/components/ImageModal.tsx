@@ -59,20 +59,21 @@ export const ImageModal: React.FC<ImageModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
       onClick={handleBackdropClick}
     >
-      <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden">
-        {/* 헤더 */}
-        <div className="flex items-center justify-between p-4 bg-slate-100 border-b">
-          <h3 className="text-lg font-semibold">{t.problems.imageZoomTitle}</h3>
-          <div className="flex gap-2">
+      <div className="relative w-full h-full sm:w-auto sm:h-auto sm:max-w-4xl sm:max-h-[90vh] bg-white rounded-none sm:rounded-lg overflow-hidden flex flex-col">
+        {/* 헤더 — 모바일에선 패널이 화면을 꽉 채워 백드롭 여백이 없다. 즉 배경 탭으로는 닫을 수 없으므로
+            이 헤더의 닫기 버튼이 유일한 닫기 경로다. 항상 보이도록 상단 고정하고 탭 타깃을 44px로 준다. */}
+        <div className="sticky top-0 z-10 shrink-0 flex items-center justify-between gap-2 p-3 sm:p-4 bg-slate-100 border-b">
+          <h3 className="min-w-0 truncate text-base sm:text-lg font-semibold">{t.problems.imageZoomTitle}</h3>
+          <div className="flex gap-2 shrink-0">
             <button
               onClick={handleDownload}
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+              className="inline-flex min-h-[40px] items-center justify-center px-3 py-2.5 sm:min-h-0 sm:px-4 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm rounded hover:bg-blue-700"
             >
               {t.problems.download}
             </button>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-slate-600 text-white text-sm rounded hover:bg-slate-700"
+              className="inline-flex min-h-[40px] items-center justify-center px-3 py-2.5 sm:min-h-0 sm:px-4 sm:py-2 bg-slate-600 text-white text-xs sm:text-sm rounded hover:bg-slate-700"
             >
               {t.common.close}
             </button>
@@ -80,11 +81,11 @@ export const ImageModal: React.FC<ImageModalProps> = ({
         </div>
         
         {/* 이미지 */}
-        <div className="p-4">
+        <div className="flex-1 min-h-0 overflow-auto p-2 sm:p-4">
           <img
             src={imageUrl}
             alt={t.problems.enlargedImageAlt}
-            className="max-w-full max-h-[70vh] object-contain mx-auto"
+            className="max-w-full max-h-full sm:max-h-[70vh] object-contain mx-auto"
           />
         </div>
       </div>

@@ -51,11 +51,11 @@ export const ProblemMetadataModal: React.FC<ProblemMetadataModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* 헤더 */}
-        <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white dark:bg-slate-800 rounded-none sm:rounded-lg shadow-xl w-full h-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-hidden flex flex-col">
+        {/* 헤더 — 모바일에서도 항상 보이도록 상단 고정 */}
+        <div className="shrink-0 p-3 sm:p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+          <h2 className="min-w-0 text-base sm:text-2xl font-bold text-slate-800 dark:text-slate-200">
             {isCorrect 
               ? (language === 'ko' ? '정답 문제 분석' : 'Correct Answer Analysis')
               : (language === 'ko' ? '오답 문제 분석' : 'Incorrect Answer Analysis')
@@ -63,27 +63,27 @@ export const ProblemMetadataModal: React.FC<ProblemMetadataModalProps> = ({
           </h2>
           <button
             onClick={onClose}
-            className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-2xl font-bold"
+            className="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-full sm:h-auto sm:w-auto text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-2xl font-bold"
           >
             ×
           </button>
         </div>
 
         {/* 내용 */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6">
           {items.length === 0 ? (
-            <div className="text-center text-slate-500 dark:text-slate-400 py-10">
+            <div className="text-center text-slate-500 dark:text-slate-400 py-6 sm:py-10">
               {language === 'ko' ? '분석 정보가 없습니다.' : 'No analysis information available.'}
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {items.map((item, index) => (
                 <div
                   key={item.problem_id}
-                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50"
+                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/50"
                 >
                   {/* 문제 정보 헤더 (메타데이터 유무와 관계없이 표시) */}
-                  <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400 mb-3">
+                  <div className="flex items-center justify-between gap-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-2 sm:mb-3">
                     <span>
                       {language === 'ko' ? '문제 #' : 'Problem #'}{index + 1}
                     </span>
@@ -155,7 +155,7 @@ export const ProblemMetadataModal: React.FC<ProblemMetadataModalProps> = ({
                             href={url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block w-20 h-20 rounded-md overflow-hidden border border-slate-300 dark:border-slate-600 hover:ring-2 hover:ring-indigo-400 transition"
+                            className="block w-16 h-16 sm:w-20 sm:h-20 rounded-md overflow-hidden border border-slate-300 dark:border-slate-600 hover:ring-2 hover:ring-indigo-400 transition"
                             title={language === 'ko' ? '새 탭에서 원본 보기' : 'Open original in new tab'}
                           >
                             <img

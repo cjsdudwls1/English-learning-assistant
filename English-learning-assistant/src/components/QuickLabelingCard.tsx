@@ -308,8 +308,8 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6">
-        <div className="text-center py-8">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-4 sm:mb-6">
+        <div className="text-center py-6 sm:py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto"></div>
           <p className="mt-4 text-slate-600 dark:text-slate-400">
             {language === 'ko' ? '문제 불러오는 중...' : 'Loading problems...'}
@@ -322,13 +322,13 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   const isMany = displayImageUrls.length > 4;
 
   const thumbnails = (
-    <div className={`flex flex-wrap gap-2 ${isMany ? 'w-full mb-4' : 'flex-shrink-0'}`}>
+    <div className={`flex flex-wrap gap-1.5 sm:gap-2 ${isMany ? 'w-full mb-3 sm:mb-4' : 'flex-shrink-0'}`}>
       {displayImageUrls.map((url, idx) => (
         <img
           key={`${idx}-${url}`}
           src={url}
           alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
-          className={`${isMany ? 'w-16 h-16' : 'w-24 h-24'} object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
+          className={`${isMany ? 'w-12 h-12 sm:w-16 sm:h-16' : 'w-16 h-16 sm:w-24 sm:h-24'} object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
           onClick={() => setLightboxImageUrl(url)}
           title={language === 'ko' ? '클릭하여 원본 보기' : 'Click to view original'}
         />
@@ -338,8 +338,8 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
 
   const headerContent = (
     <div className="flex-1 min-w-0">
-      <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+        <h3 className="text-base sm:text-xl font-bold text-slate-800 dark:text-slate-200">
           {language === 'ko' ? 'AI 분석 완료' : 'AI Analysis Complete'}
         </h3>
         {modelsUsed ? (
@@ -357,7 +357,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           </span>
         ) : null}
       </div>
-      <p className="text-slate-600 dark:text-slate-400">
+      <p className="text-xs sm:text-base text-slate-600 dark:text-slate-400">
         {language === 'ko'
           ? `AI가 분석한 문제 ${problems.length}개를 확인하고 검수해주세요.`
           : `Please review and verify ${problems.length} problem(s) analyzed by AI.`}
@@ -373,32 +373,32 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   );
 
   return (
-    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700 mb-4 sm:mb-6 overflow-hidden">
       {onDelete && (
         <button
           type="button"
           onClick={() => onDelete(sessionId)}
           aria-label={language === 'ko' ? '세션 삭제' : 'Delete session'}
           title={language === 'ko' ? '삭제' : 'Delete'}
-          className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200 dark:hover:bg-red-900/40"
+          className="absolute right-2 top-2 sm:right-3 sm:top-3 z-10 inline-flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200 dark:hover:bg-red-900/40"
         >
           <span className="text-xl leading-none">&times;</span>
         </button>
       )}
       {isMany ? (
-        <div className="mb-6">
+        <div className={`mb-4 sm:mb-6 ${onDelete ? 'pr-9 sm:pr-0' : ''}`}>
           {thumbnails}
           {headerContent}
         </div>
       ) : (
-        <div className="flex items-start gap-6 mb-6">
+        <div className={`flex items-start gap-3 sm:gap-6 mb-4 sm:mb-6 ${onDelete ? 'pr-9 sm:pr-0' : ''}`}>
           {thumbnails}
           {headerContent}
         </div>
       )}
 
       {/* 문제 목록 */}
-      <div className="space-y-4 mb-6">
+      <div className="space-y-2 sm:space-y-4 mb-4 sm:mb-6">
         {problems.map((problem) => {
           // 라벨 없으면 undefined 유지 — O/X 어느 버튼도 강조 안 함. (기존 `|| 'O'`는 미채점/빈답 문항의 O 버튼을 파랗게 켜서 '정답'처럼 보이게 하던 문제)
           const currentMark = labels[`${problem.index}`];
@@ -425,11 +425,11 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           const qType = inferQuestionType(problem);
 
           return (
-            <div key={problem.index} className="relative border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
-              <div className="flex flex-col xl:flex-row items-start justify-between gap-4">
-                <div className="flex-1 w-full">
-                  <div className="flex flex-wrap items-center gap-3 mb-2">
-                    <span className="font-bold text-lg text-slate-700 dark:text-slate-300">Q{problem.index + 1}</span>
+            <div key={problem.index} className="relative border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 sm:p-4 bg-slate-50 dark:bg-slate-900/50">
+              <div className="flex flex-col xl:flex-row items-start justify-between gap-2 sm:gap-4">
+                <div className="flex-1 w-full min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1.5 sm:mb-2">
+                    <span className="font-bold text-base sm:text-lg text-slate-700 dark:text-slate-300">Q{problem.index + 1}</span>
                     <span className="text-xs px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700">
                       {getTypeLabel(qType)}
                     </span>
@@ -462,7 +462,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                       onClick={() => handleDeleteProblem(problem)}
                       aria-label={language === 'ko' ? '문제 삭제' : 'Delete problem'}
                       title={language === 'ko' ? '이 문제 삭제' : 'Delete this problem'}
-                      className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-red-100 hover:text-red-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-red-900/40 dark:hover:text-red-400 transition-colors shadow-sm"
+                      className="ml-auto inline-flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-red-100 hover:text-red-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-red-900/40 dark:hover:text-red-400 transition-colors shadow-sm"
                     >
                       <span className="text-lg leading-none">&times;</span>
                     </button>
@@ -494,7 +494,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400 mb-1">
                           {language === 'ko' ? '지시문' : 'Instruction'}
                         </div>
-                        <p className="text-slate-800 dark:text-slate-200 font-semibold">{problem.instruction}</p>
+                        <p className="text-sm sm:text-base text-slate-800 dark:text-slate-200 font-semibold">{problem.instruction}</p>
                       </div>
                     )}
                     {problem.question_body && (
@@ -507,7 +507,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     )}
                     {/* 분리 필드가 하나도 없을 때만 stem 폴백 표시 */}
                     {!problem.passage && !problem.instruction && !problem.question_body && !problem.visual_context && (
-                      <p className="text-slate-700 dark:text-slate-300 font-medium whitespace-pre-wrap">{problem.문제내용.text}</p>
+                      <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 font-medium whitespace-pre-wrap">{problem.문제내용.text}</p>
                     )}
                     {qType === 'multiple_choice' && problem.문제_보기 && problem.문제_보기.length > 0 && (
                       <div>
@@ -550,23 +550,23 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                             </span>
                             <div className="flex-1 min-w-0 space-y-1">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[52px]">{language === 'ko' ? '사용자:' : 'User:'}</span>
+                                <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[44px] sm:min-w-[52px]">{language === 'ko' ? '사용자:' : 'User:'}</span>
                                 <input
                                   type="text"
                                   value={blankUser[bi] ?? ''}
                                   onChange={(e) => handleBlankChange(problem.index, 'user', bi, e.target.value)}
                                   placeholder={language === 'ko' ? '미작성' : 'blank'}
-                                  className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500"
+                                  className="flex-1 px-2 py-2 text-base sm:py-1 sm:text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500"
                                 />
                               </div>
                               <div className="flex items-center gap-1.5">
-                                <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[52px]">{language === 'ko' ? '정답:' : 'Answer:'}</span>
+                                <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[44px] sm:min-w-[52px]">{language === 'ko' ? '정답:' : 'Answer:'}</span>
                                 <input
                                   type="text"
                                   value={blankCorrect[bi] ?? ''}
                                   onChange={(e) => handleBlankChange(problem.index, 'correct', bi, e.target.value)}
                                   placeholder={language === 'ko' ? '정답 입력' : 'Enter answer'}
-                                  className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-green-700 dark:text-green-400 font-medium focus:ring-1 focus:ring-green-500"
+                                  className="flex-1 px-2 py-2 text-base sm:py-1 sm:text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-green-700 dark:text-green-400 font-medium focus:ring-1 focus:ring-green-500"
                                 />
                               </div>
                             </div>
@@ -595,7 +595,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                                 type="button"
                                 title={choice.text}
                                 onClick={() => handleMultiToggle(problem.index, 'user', num)}
-                                className={`w-8 h-8 rounded-full text-sm font-semibold border transition-colors ${
+                                className={`w-10 h-10 sm:w-8 sm:h-8 rounded-full text-sm font-semibold border transition-colors ${
                                   selected
                                     ? (wrong
                                         ? 'bg-red-600 text-white border-red-600'
@@ -621,7 +621,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                                 type="button"
                                 title={choice.text}
                                 onClick={() => handleMultiToggle(problem.index, 'correct', num)}
-                                className={`w-8 h-8 rounded-full text-sm font-semibold border transition-colors ${
+                                className={`w-10 h-10 sm:w-8 sm:h-8 rounded-full text-sm font-semibold border transition-colors ${
                                   selected
                                     ? 'bg-emerald-600 text-white border-emerald-600'
                                     : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
@@ -638,7 +638,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     // 단일답/주관식 (편집 가능 텍스트 입력) — 기존 UI 불변
                     <div className="mb-3 space-y-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[70px]">
+                        <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[62px] sm:min-w-[70px]">
                           {language === 'ko' ? '사용자 답안:' : 'User answer:'}
                         </span>
                         <input
@@ -646,11 +646,11 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                           value={editableAnswers[`${problem.index}`] ?? ''}
                           onChange={(e) => handleAnswerChange(problem.index, e.target.value)}
                           placeholder={language === 'ko' ? '답안 입력' : 'Enter answer'}
-                          className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500"
+                          className="flex-1 px-2 py-2 text-base sm:py-1 sm:text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500"
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[70px]">
+                        <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap min-w-[62px] sm:min-w-[70px]">
                           {language === 'ko' ? '실제 정답:' : 'Correct answer:'}
                         </span>
                         <input
@@ -658,7 +658,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                           value={editableCorrectAnswers[`${problem.index}`] ?? ''}
                           onChange={(e) => handleCorrectAnswerChange(problem.index, e.target.value)}
                           placeholder={language === 'ko' ? '정답 입력' : 'Enter correct answer'}
-                          className="flex-1 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-green-700 dark:text-green-400 font-medium focus:ring-1 focus:ring-green-500"
+                          className="flex-1 px-2 py-2 text-base sm:py-1 sm:text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-green-700 dark:text-green-400 font-medium focus:ring-1 focus:ring-green-500"
                         />
                       </div>
                     </div>
@@ -678,10 +678,10 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                 </div>
 
                 {/* 정답/오답 버튼 */}
-                <div className="flex gap-2 flex-shrink-0">
+                <div className="flex w-full gap-2 xl:w-auto xl:flex-shrink-0">
                   <button
                     onClick={() => handleMarkChange(problem.index, 'O')}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${currentMark === 'O'
+                    className={`flex-1 xl:flex-none px-4 py-2.5 sm:py-2 rounded-lg font-medium transition-colors ${currentMark === 'O'
                       ? 'bg-blue-600 dark:bg-blue-500 text-white'
                       : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                       }`}
@@ -690,7 +690,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                   </button>
                   <button
                     onClick={() => handleMarkChange(problem.index, 'X')}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${currentMark === 'X'
+                    className={`flex-1 xl:flex-none px-4 py-2.5 sm:py-2 rounded-lg font-medium transition-colors ${currentMark === 'X'
                       ? 'bg-red-600 dark:bg-red-500 text-white'
                       : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                       }`}
@@ -705,17 +705,17 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
       </div>
 
       {/* 저장 및 상세보기 버튼 */}
-      <div className="flex gap-3 justify-end">
+      <div className="flex gap-2 sm:gap-3 justify-end">
         <button
           onClick={() => navigate(`/session/${sessionId}`)}
-          className="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          className="flex-1 sm:flex-none px-4 sm:px-6 py-2.5 sm:py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
         >
           {t.labeling.viewDetails}
         </button>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-6 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+          className="flex-1 sm:flex-none px-4 sm:px-6 py-2.5 sm:py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? t.labeling.saving : t.labeling.finalSave}
         </button>

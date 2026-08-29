@@ -54,21 +54,21 @@ export const StatsGeneratedProblems: React.FC<StatsGeneratedProblemsProps> = ({
   if (generatedProblems.length === 0) return null;
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 md:p-8 border border-slate-200 dark:border-slate-700">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-3 sm:p-6 md:p-8 border border-slate-200 dark:border-slate-700">
+      <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+        <h3 className="text-base sm:text-xl font-bold text-slate-800 dark:text-slate-200 min-w-0 break-words">
           {t.stats.generatedProblems} ({generatedProblems.length}{language === 'ko' ? '개' : ''})
         </h3>
         <button
           onClick={onClose}
-          className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          className="min-h-[40px] sm:min-h-0 shrink-0 px-3 sm:px-4 py-2 text-sm sm:text-base bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
         >
           {t.common.close}
         </button>
       </div>
 
       {!showResultSummary && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <GeneratedProblemCard
             key={currentProblemIndex}
             problem={generatedProblems[currentProblemIndex]}
@@ -79,7 +79,7 @@ export const StatsGeneratedProblems: React.FC<StatsGeneratedProblemsProps> = ({
             onResult={(result) => onProblemResult(currentProblemIndex, result)}
           />
           {generatedProblems.length > 1 && (
-            <div className="text-center text-sm text-slate-500 dark:text-slate-400">
+            <div className="text-center text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               {language === 'ko' 
                 ? `문제 ${currentProblemIndex + 1} / ${generatedProblems.length}`
                 : `Problem ${currentProblemIndex + 1} / ${generatedProblems.length}`}
@@ -89,19 +89,19 @@ export const StatsGeneratedProblems: React.FC<StatsGeneratedProblemsProps> = ({
       )}
 
       {showResultSummary && summaryStats && (
-        <div className="space-y-4">
-          <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-lg flex flex-wrap items-center justify-between gap-3">
-            <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-lg flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+            <h4 className="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-200">
               {t.practice.summaryTitle}
             </h4>
-            <div className="flex flex-wrap gap-4 text-sm text-slate-600 dark:text-slate-300">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 sm:gap-4 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
               <span>{t.practice.correct}: {summaryStats.correctCount}</span>
               <span>{t.practice.incorrect}: {summaryStats.incorrectCount}</span>
               <span>{t.practice.timeSpent}: {formatSeconds(summaryStats.totalTime)}</span>
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {generatedProblems.map((problem, idx) => (
               <GeneratedProblemCard
                 key={problem.id ?? idx}

@@ -45,7 +45,7 @@ export function InstallBanner() {
   const renderContent = () => {
     if (isIOS) {
       return (
-        <div className="flex-1 mr-4">
+        <div className="flex-1 min-w-0 mr-2 sm:mr-4">
           <p className="text-sm font-bold mb-1">{t.install.installAsApp}</p>
           <p className="text-xs opacity-90">
             {t.install.iosInstructions}
@@ -57,7 +57,7 @@ export function InstallBanner() {
     if (isAndroid && !isInstallable) {
       // beforeinstallprompt가 안 잡혔을 때 수동 안내
       return (
-        <div className="flex-1 mr-4">
+        <div className="flex-1 min-w-0 mr-2 sm:mr-4">
           <p className="text-sm font-bold mb-1">{t.install.installAsApp}</p>
           <p className="text-xs opacity-90">
             {t.install.androidInstructions}
@@ -68,7 +68,7 @@ export function InstallBanner() {
 
     // isInstallable인 경우 (Android 또는 Desktop)
     return (
-      <div className="flex-1 mr-4">
+      <div className="flex-1 min-w-0 mr-2 sm:mr-4">
         <p className="text-sm font-medium">
           {t.install.installable}
         </p>
@@ -78,23 +78,23 @@ export function InstallBanner() {
 
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 bg-indigo-600 text-white p-4 shadow-lg z-50"
+      className="fixed bottom-0 left-0 right-0 bg-indigo-600 text-white p-3 sm:p-4 shadow-lg z-50"
       style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
     >
-      <div className="flex justify-between items-center max-w-lg mx-auto">
+      <div className="flex justify-between items-center gap-2 max-w-lg mx-auto">
         {renderContent()}
         <div className="flex space-x-2 flex-shrink-0">
           {isInstallable && (
             <button
               onClick={handleInstallClick}
-              className="bg-white text-indigo-600 px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-indigo-50 transition-colors"
+              className="bg-white text-indigo-600 min-h-[40px] sm:min-h-0 px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-indigo-50 transition-colors"
             >
               {t.install.install}
             </button>
           )}
           <button
             onClick={handleDismiss}
-            className="text-white/80 hover:text-white px-2 py-1 rounded text-lg transition-colors"
+            className="relative text-white/80 hover:text-white flex items-center justify-center px-2 py-1 rounded text-lg transition-colors before:absolute before:content-[''] before:-inset-x-1.5 before:-inset-y-0.5"
             aria-label={t.common.close}
           >
             ✕

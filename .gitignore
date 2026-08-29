@@ -57,3 +57,16 @@ test_image/17/
 # Personal files
 영진.ts
 사진내용.md
+
+# Vite 의존성 사전번들 캐시(빌드 산출물, 커밋 대상 아님)
+.vite/
+
+# Playwright 실행 산출물(스크린샷·트레이스·비디오). 재생성되고, 트레이스에는 실제 계정의
+# 응답 텍스트와 세션 액세스 토큰이 그대로 담긴다 — 절대 커밋하지 말 것.
+test-results/
+playwright-report/
+**/test-results/
+.e2e-backup/
+
+# 로컬 테스트 이미지(정답지 스캔) — test_image/17/ 과 같은 이유로 커밋 제외
+test_image/정답지/

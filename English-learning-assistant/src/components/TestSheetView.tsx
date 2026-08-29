@@ -6,6 +6,7 @@ import { ProblemEditMode } from './ProblemEditMode';
 import { getCurrentUserId, saveGeneratedProblemResults } from '../services/db';
 import { supabase } from '../services/supabaseClient';
 import { gradeGeneratedProblem } from '../utils/grading';
+import { isAnswered, selectSavableResults } from '../utils/testSheetSave';
 
 type ProblemType = 'multiple_choice' | 'short_answer' | 'essay' | 'ox';
 type PrintMode = 'questions' | 'answers' | null;
@@ -169,8 +170,10 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     const finalElapsed = Date.now() - startTime;
     setElapsedTime(finalElapsed);
 
-    // 풀이 결과 DB 저장 — 문제별 소요시간은 총 시간을 균등 분배. 실패해도 결과 화면은 유지.
-    const savable = results.filter(r => r.problemId);
+    // 풀이 결과 DB 저장 — 응답한 문항만. 미응답을 넣으면 isCorrect=null이 upsert로
+    // 예전에 맞힌 기록을 덮어써 정답률이 근거 없이 떨어진다(selectSavableResults 주석 참고).
+    // 문제별 소요시간은 총 시간을 저장 대상 수로 균등 분배. 실패해도 결과 화면은 유지.
+    const savable = selectSavableResults(results);
     if (savable.length > 0) {
       const totalSec = Math.max(1, Math.floor(finalElapsed / 1000));
       const perProblemSec = Math.max(1, Math.round(totalSec / savable.length));
@@ -245,19 +248,19 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     return (
       <div
         key={problem.id || index}
-        className={`mb-6 p-4 border-2 rounded-lg ${problemBorderClass(result)}`}
+        className={`mb-3 p-3 border-2 rounded-lg sm:mb-6 sm:p-4 ${problemBorderClass(result)}`}
       >
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <span className="text-lg font-semibold text-slate-700 dark:text-slate-300">
+        <div className="flex items-start justify-between gap-2 mb-2 sm:mb-3">
+          <div className="flex-1 min-w-0">
+            <span className="text-lg font-semibold text-slate-700 dark:text-slate-300 break-words text-pretty">
               {index + 1}. {problem.stem}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {isTeacher && problem.is_editable && !isSubmitted && (
               <button
                 onClick={() => setEditingProblemId(problem.id)}
-                className="px-3 py-1 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors"
+                className="relative inline-flex items-center justify-center px-3 py-1 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors before:absolute before:content-[''] before:inset-x-0 before:-inset-y-1.5"
               >
                 {language === 'ko' ? '편집' : 'Edit'}
               </button>
@@ -268,11 +271,12 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
 
         {/* 지문(passage) 렌더링 */}
         {problem.passage && (
-          <div className="mb-4 p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
-            <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+          <div className="mb-3 p-3 sm:mb-4 sm:p-4 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 dark:border-indigo-600 rounded-r-lg">
+            <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 sm:mb-2 uppercase tracking-wide">
               {language === 'ko' ? '지문' : 'Passage'}
             </div>
-            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+            {/* 영어 지문: lang="en"이 있어야 hyphens-auto가 실제로 동작한다(문서 기본 lang은 ko) */}
+            <p lang="en" className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words hyphens-auto max-w-none">
               {problem.passage}
             </p>
           </div>
@@ -288,7 +292,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               return (
                 <label
                   key={cIdx}
-                  className={`flex items-center p-3 border-2 rounded cursor-pointer transition-colors ${isSubmitted
+                  className={`flex items-center px-3 py-2.5 sm:p-3 border-2 rounded cursor-pointer transition-colors ${isSubmitted
                     ? showAnswer
                       ? 'border-green-500 bg-green-100 dark:bg-green-900/30'
                       : isSelected && !isCorrect
@@ -306,14 +310,14 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
                     checked={isSelected}
                     onChange={(e) => handleAnswerChange(problem.id, parseInt(e.target.value))}
                     disabled={isSubmitted}
-                    className="mr-3 w-4 h-4 text-blue-600"
+                    className="mr-2 sm:mr-3 w-4 h-4 shrink-0 text-blue-600"
                   />
-                  <span className="font-medium text-slate-600 dark:text-slate-400 mr-2">
+                  <span className="font-medium text-slate-600 dark:text-slate-400 mr-1.5 sm:mr-2 shrink-0">
                     {String.fromCharCode(65 + cIdx)}.
                   </span>
-                  <span className="flex-1">{choice.text || choice}</span>
+                  <span className="flex-1 min-w-0 break-words">{choice.text || choice}</span>
                   {isSubmitted && showAnswer && (
-                    <span className="ml-2 text-green-600 dark:text-green-400 font-semibold">
+                    <span className="ml-2 shrink-0 text-green-600 dark:text-green-400 font-semibold">
                       ✓
                     </span>
                   )}
@@ -331,7 +335,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               onChange={(e) => handleAnswerChange(problem.id, e.target.value)}
               disabled={isSubmitted}
               placeholder={language === 'ko' ? '답을 입력하세요' : 'Enter your answer'}
-              className={`w-full px-4 py-2 border-2 rounded-lg ${isSubmitted
+              className={`w-full min-w-0 px-3 py-2.5 text-base sm:px-4 sm:py-2 border-2 rounded-lg ${isSubmitted
                 ? result?.isCorrect
                   ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                   : 'border-red-500 bg-red-50 dark:bg-red-900/20'
@@ -343,7 +347,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
                 <span className="font-semibold text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '정답: ' : 'Correct Answer: '}
                 </span>
-                <span className="text-green-600 dark:text-green-400">{problem.correct_answer}</span>
+                <span className="text-green-600 dark:text-green-400 whitespace-pre-wrap break-words">{problem.correct_answer}</span>
               </div>
             )}
           </div>
@@ -362,7 +366,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               disabled={isSubmitted}
               placeholder={language === 'ko' ? '답을 작성하세요' : 'Write your answer'}
               rows={6}
-              className={`w-full px-4 py-2 border-2 rounded-lg resize-none ${isSubmitted
+              className={`w-full min-w-0 px-3 py-2.5 text-base sm:px-4 sm:py-2 border-2 rounded-lg resize-none ${isSubmitted
                 ? 'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50'
                 : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
                 } ${isSubmitted ? 'cursor-default' : ''}`}
@@ -372,7 +376,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
                 <span className="font-semibold text-slate-700 dark:text-slate-300">
                   {language === 'ko' ? '모범 답안: ' : 'Model Answer: '}
                 </span>
-                <span className="text-green-600 dark:text-green-400 whitespace-pre-line">{problem.correct_answer}</span>
+                <span className="text-green-600 dark:text-green-400 whitespace-pre-line break-words">{problem.correct_answer}</span>
               </div>
             )}
           </div>
@@ -391,9 +395,9 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
             return 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600';
           };
           return (
-            <div className="mt-3 flex gap-4">
+            <div className="mt-3 flex gap-2 sm:gap-4">
               <label
-                className={`flex items-center gap-2 px-4 py-2 border-2 rounded cursor-pointer transition-colors ${getOxLabelStyle(true)} ${isSubmitted ? 'cursor-default' : ''}`}
+                className={`flex flex-1 items-center justify-center gap-2 px-3 py-2.5 sm:flex-none sm:justify-start sm:px-4 sm:py-2 border-2 rounded cursor-pointer transition-colors ${getOxLabelStyle(true)} ${isSubmitted ? 'cursor-default' : ''}`}
               >
                 <input
                   type="radio"
@@ -409,7 +413,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
                 )}
               </label>
               <label
-                className={`flex items-center gap-2 px-4 py-2 border-2 rounded cursor-pointer transition-colors ${getOxLabelStyle(false)} ${isSubmitted ? 'cursor-default' : ''}`}
+                className={`flex flex-1 items-center justify-center gap-2 px-3 py-2.5 sm:flex-none sm:justify-start sm:px-4 sm:py-2 border-2 rounded cursor-pointer transition-colors ${getOxLabelStyle(false)} ${isSubmitted ? 'cursor-default' : ''}`}
               >
                 <input
                   type="radio"
@@ -429,11 +433,11 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
         })()}
 
         {isSubmitted && problem.explanation && (
-          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded text-sm">
+          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded text-sm leading-relaxed">
             <span className="font-semibold text-blue-800 dark:text-blue-200">
               {language === 'ko' ? '해설: ' : 'Explanation: '}
             </span>
-            <span className="text-blue-700 dark:text-blue-300 whitespace-pre-line">{problem.explanation}</span>
+            <span className="text-blue-700 dark:text-blue-300 whitespace-pre-line break-words">{problem.explanation}</span>
           </div>
         )}
       </div>
@@ -487,8 +491,8 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     };
 
     return (
-      <div className="mt-8 p-6 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700">
-        <div className="flex items-center justify-between mb-6">
+      <div className="mt-6 sm:mt-8 p-4 sm:p-6 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between gap-2 mb-4 sm:mb-6">
           <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200">
             {language === 'ko' ? '시험 결과' : 'Test Results'}
           </h2>
@@ -513,8 +517,8 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
         )}
 
         {/* 기본 통계 */}
-        <div className={`grid grid-cols-1 ${ungradedCount > 0 ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 mb-6`}>
-          <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+        <div className={`grid grid-cols-2 ${ungradedCount > 0 ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-2 sm:gap-4 mb-4 sm:mb-6`}>
+          <div className="p-3 sm:p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
             <div className="text-sm text-blue-600 dark:text-blue-400 mb-1">
               {language === 'ko' ? '소요 시간' : 'Time Taken'}
             </div>
@@ -522,7 +526,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               {formatTime(elapsedTime)}
             </div>
           </div>
-          <div className="p-4 bg-green-50 dark:bg-green-900/30 rounded-lg">
+          <div className="p-3 sm:p-4 bg-green-50 dark:bg-green-900/30 rounded-lg">
             <div className="text-sm text-green-600 dark:text-green-400 mb-1">
               {language === 'ko' ? '정답' : 'Correct'}
             </div>
@@ -530,7 +534,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               {correctCount} / {gradedCount}
             </div>
           </div>
-          <div className="p-4 bg-red-50 dark:bg-red-900/30 rounded-lg">
+          <div className="p-3 sm:p-4 bg-red-50 dark:bg-red-900/30 rounded-lg">
             <div className="text-sm text-red-600 dark:text-red-400 mb-1">
               {language === 'ko' ? '오답' : 'Wrong'}
             </div>
@@ -539,7 +543,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
             </div>
           </div>
           {ungradedCount > 0 && (
-            <div className="p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg">
+            <div className="p-3 sm:p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg">
               <div className="text-sm text-yellow-600 dark:text-yellow-400 mb-1">
                 {t.testSheet.ungraded}
               </div>
@@ -548,7 +552,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
               </div>
             </div>
           )}
-          <div className="p-4 bg-purple-50 dark:bg-purple-900/30 rounded-lg">
+          <div className="p-3 sm:p-4 bg-purple-50 dark:bg-purple-900/30 rounded-lg">
             <div className="text-sm text-purple-600 dark:text-purple-400 mb-1">
               {language === 'ko' ? '정답률' : 'Accuracy'}
             </div>
@@ -565,8 +569,8 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
 
         {/* 맞춘/틀린 문제 그래프 */}
         {gradedCount > 0 && (
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-3">
+          <div className="mb-4 sm:mb-6">
+            <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-2 sm:mb-3">
               {language === 'ko' ? '정답/오답 현황' : 'Correct/Wrong Status'}
             </h3>
             <div className="flex items-center gap-2 h-12 bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
@@ -587,8 +591,8 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
         )}
 
         {/* 문제 유형별 통계 */}
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-3">
+        <div className="mb-4 sm:mb-6">
+          <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-2 sm:mb-3">
             {language === 'ko' ? '문제 유형별 통계' : 'Statistics by Problem Type'}
           </h3>
           <div className="space-y-2">
@@ -617,8 +621,8 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
         </div>
 
         {/* 카테고리별 통계 */}
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-3">
+        <div className="mb-4 sm:mb-6">
+          <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-2 sm:mb-3">
             {language === 'ko' ? '카테고리별 통계' : 'Statistics by Category'}
           </h3>
           <div className="space-y-2">
@@ -737,15 +741,14 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
     );
   };
 
-  const allAnswered = problemsList.every(problem => {
-    const answer = userAnswers[problem.id]?.answer;
-    return answer !== null && answer !== undefined && answer !== '';
-  });
+  // 제출 게이트와 저장 대상 판정을 같은 규칙(isAnswered)으로 맞춘다 —
+  // 공백만 입력한 답이 제출은 통과하고 저장에선 빠지면 학생 눈엔 결과가 사라진 것처럼 보인다.
+  const allAnswered = problemsList.every(problem => isAnswered(userAnswers[problem.id]?.answer));
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="mb-3 sm:mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <div className="text-sm text-slate-600 dark:text-slate-400">
             {language === 'ko'
               ? `총 ${problemsList.length}문제`
@@ -758,12 +761,14 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
             </div>
           )}
         </div>
-        <div className="flex gap-2">
+        {/* 모바일: 제출은 한 줄 독차지, 인쇄 2개가 다음 줄을 나눠 쓴다. 3개를 한 줄에 두면
+            라벨이 접히고 형제가 stretch로 같이 늘어나 버튼이 과하게 높아진다. */}
+        <div className="flex flex-wrap gap-2">
           {!isSubmitted && (
             <button
               onClick={handleSubmit}
               disabled={!allAnswered}
-              className={`px-6 py-2 rounded-lg font-semibold transition-colors ${allAnswered
+              className={`w-full px-4 py-2.5 sm:w-auto sm:flex-none sm:px-6 sm:py-2 rounded-lg font-semibold transition-colors ${allAnswered
                 ? 'bg-blue-600 text-white hover:bg-blue-700'
                 : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
                 }`}
@@ -773,13 +778,13 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
           )}
           <button
             onClick={() => setPrintMode('questions')}
-            className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+            className="flex-1 min-w-0 px-3 py-2.5 sm:flex-none sm:px-4 sm:py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
           >
             {t.testSheet.printQuestions}
           </button>
           <button
             onClick={() => setPrintMode('answers')}
-            className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+            className="flex-1 min-w-0 px-3 py-2.5 sm:flex-none sm:px-4 sm:py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
           >
             {t.testSheet.printAnswers}
           </button>
@@ -797,9 +802,9 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
       )}
 
       {/* 시험지 본문 */}
-      <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-lg">
-        <div className="mb-6 text-center border-b-2 border-slate-300 dark:border-slate-600 pb-4">
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">
+      <div className="bg-white dark:bg-slate-800 p-3 sm:p-6 rounded-lg shadow-lg">
+        <div className="mb-4 sm:mb-6 text-center border-b-2 border-slate-300 dark:border-slate-600 pb-3 sm:pb-4">
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-1 sm:mb-2">
             {t.testSheet.sheetTitle}
           </h1>
           <div className="text-sm text-slate-600 dark:text-slate-400">
@@ -809,7 +814,7 @@ export const TestSheetView: React.FC<TestSheetViewProps> = ({ problems, problemT
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {problemsList.map((problem, index) => renderProblem(problem, index))}
         </div>
       </div>
