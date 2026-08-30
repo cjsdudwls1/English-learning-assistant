@@ -4,7 +4,13 @@
 // 아예 없다. 프론트는 읽기만 한다(스텝 위조 차단).
 import { supabase } from '../supabaseClient';
 
-export type AgentType = 'consultant' | 'planner' | 'briefing' | 'inspector';
+/**
+ * **서버에 핸들러가 있는 것만** 적는다(GCF `AGENT_HANDLERS`). 여기 없는 값을 보내면
+ * 런은 생성조차 안 되고 400으로 떨어진다 — 타입이 서버보다 넓으면 그 실패를 컴파일이
+ * 놓친다. 'briefing' | 'inspector'는 마이그레이션 주석에만 있는 **예정** 타입이라 뺐다.
+ * 구현할 때 이 union과 `AGENT_HANDLERS`를 같이 늘려야 한다.
+ */
+export type AgentType = 'consultant' | 'planner';
 export type AgentRunStatus = 'running' | 'completed' | 'failed';
 
 /** 'final' 외의 값은 "답은 냈지만 정상 종료는 아니다" — UI가 경고를 띄우는 근거. */

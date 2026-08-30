@@ -22,8 +22,14 @@ import { consultantTools } from '../tools/consultantTools.js';
 export const CONSULTANT_MODEL = 'gemini-2.5-flash';
 // 6은 프롬프트가 시키는 조사(약점 1~3곳 드릴다운 → 표적 오답 → 추세 → profile)와 정확히
 // 같은 수라 final 몫이 남지 않았다. 실측 런은 조사 5회 후 final을 6번째에 쓰다가 밀렸다.
-// 8은 계획서가 허용한 4~8의 상한이고, 예산(240s)·강제 final 여유(45s) 안에 들어간다.
-export const CONSULTANT_MAX_STEPS = 8;
+//
+// 8도 같은 병이었다. 산술을 끝까지 세면 3영역×2(drilldown+samples.wrong) + timeseries +
+// profile.get = 8이고, **정상 final도 루프 한 칸을 쓴다**(runtime.js의 for 안에서 return).
+// 그래서 시키는 걸 다 하면 9가 필요한데 상한이 8이었다 — 항상 한 칸 모자란다.
+// 실측 런 ca08dbd1이 정확히 그 천장에 닿았다: 8/8 소진, timeseries를 **못 써서** 겨우 final.
+// 넘치면 에러가 아니라 강제 final로 반쪽 보고서가 조용히 나간다(로그는 초록).
+// 10 = 9 + 여유 1. 벽시계는 병목이 아니다: 실측 8스텝 52초 / 예산 240초.
+export const CONSULTANT_MAX_STEPS = 10;
 
 function buildSystemPrompt({ language }) {
   const isEnglish = language === 'en';
@@ -36,6 +42,9 @@ You work in steps: inspect the data with tools first, then write. Write the fina
 [How to investigate]
 The input already contains the authoritative aggregate numbers and per-category accuracy — do not recompute them.
 Your job is to find out WHY the weak categories are weak.
+You get ${CONSULTANT_MAX_STEPS} tool calls for the whole run, and each category costs 2 just to inspect
+(drilldown + samples.wrong). The final report itself consumes one of them. Pick fewer categories and go
+deeper rather than running out of calls mid-investigation.
 1. Pick the 1-3 weakest categories from the input (low accuracy AND enough items to be meaningful; a 0% on 2 items is noise).
 2. Use stats.drilldown to see which sub-type inside them actually fails.
 3. Use samples.wrong on the narrowed node to read the real incorrect items — the concrete grammatical/structural pattern is only visible there.
@@ -77,6 +86,8 @@ A concrete, actionable plan: prioritized focus areas, a specific study method pe
 [조사 방법]
 입력에는 이미 기준이 되는 종합 수치와 카테고리별 정답률이 들어 있습니다. 다시 계산하지 마세요.
 당신이 할 일은 **취약한 카테고리가 왜 취약한지**를 밝히는 것입니다.
+도구 호출은 런 전체에서 ${CONSULTANT_MAX_STEPS}회까지이고, 카테고리 하나를 조사하는 데만 2회(드릴다운·표적 오답)가 듭니다.
+보고서를 쓰는 마지막 호출도 이 예산에서 나갑니다. 예산이 모자랄 것 같으면 카테고리 수를 줄이고 대신 깊게 파세요.
 1. 입력에서 가장 취약한 카테고리를 1~3개 고릅니다. 정답률이 낮으면서 **문항 수가 의미 있을 만큼 있어야** 합니다(2문항 중 0문항 정답은 노이즈입니다).
 2. stats.drilldown으로 그 안의 어느 하위 유형이 실제로 무너졌는지 좁힙니다.
 3. 좁혀진 노드에 samples.wrong을 써서 실제 오답 문항을 읽습니다. 구체적 문법·구조 패턴은 원문을 봐야만 보입니다.
