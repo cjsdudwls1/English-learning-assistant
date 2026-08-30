@@ -454,6 +454,7 @@ const ko = {
     notFound: '문제를 찾을 수 없습니다.',
     backToStats: '통계로 돌아가기',
     title: '문제 수정',
+    saveError: '저장 중 오류가 발생했습니다.',
   },
 
   // 신고/리포트
@@ -1263,6 +1264,7 @@ const en: Translations = {
     notFound: 'Problem not found.',
     backToStats: 'Back to Statistics',
     title: 'Edit Problem',
+    saveError: "Couldn't save your changes.",
   },
   report: {
     submitted: 'Your report has been submitted.',

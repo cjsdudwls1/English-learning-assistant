@@ -70,9 +70,16 @@ export const TopBar: React.FC<TopBarProps> = ({ status = 'idle' }) => {
             <Link to="/parent/dashboard" data-discover="true" aria-current={cur('/parent/dashboard')}>{t.header.childStatus}</Link>
           </>
         )}
+        {/* 원장은 RoleGate가 허용한 경로가 여럿인데 링크가 대시보드 하나뿐이라
+            나머지는 주소창에 직접 쳐야만 도달할 수 있었다. 라벨은 목적지 화면의
+            제목을 그대로 쓴다 — '학원 관리'(대시보드)와 '내 학원'(/academies)은
+            서로 다른 화면이므로 t.header.academyManagement를 재사용하지 않는다. */}
         {role === 'director' && (
           <>
             <Link to="/director/dashboard" data-discover="true" aria-current={cur('/director/dashboard')}>{t.header.academyManagement}</Link>
+            <Link to="/academies" data-discover="true" aria-current={cur('/academies')}>{t.academy.myAcademies}</Link>
+            <Link to="/teacher/assignments/create" data-discover="true" aria-current={cur('/teacher/assignments/create')}>{t.header.createAssignment}</Link>
+            <Link to="/stats" data-discover="true" aria-current={cur('/stats')}>{t.header.stats}</Link>
           </>
         )}
         <Link to="/profile" data-discover="true" aria-current={cur('/profile')}>{t.header.profile}</Link>

@@ -99,7 +99,14 @@ export async function createAcademy(
   const { error: dirError } = await supabase
     .from('academy_directors')
     .insert({ academy_id: data.id, user_id: userId });
-  if (dirError) throw dirError;
+  if (dirError) {
+    // 두 INSERT는 원자적이지 않다. 뒤엣것이 실패하면 원장이 없는 학원 행이 남는데,
+    // 그런 행은 fetchMyAcademies에 잡히지 않아 목록에도 안 뜨고 지울 경로도 없다 —
+    // DB를 직접 만지지 않는 한 영영 치울 수 없다. 그래서 방금 만든 것을 되돌린다.
+    // 되돌리기 자체도 RLS에 막힐 수 있으나, 어느 쪽이든 사용자에게 알릴 것은 원래 실패다.
+    await supabase.from('academies').delete().eq('id', data.id);
+    throw dirError;
+  }
 
   return data.id;
 }
