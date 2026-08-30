@@ -580,21 +580,7 @@ async function generateProblemsInBackground(
     } catch (error: any) {
         console.error('[Background] Error in background task:', error);
         console.error('[Background] Error stack:', error instanceof Error ? error.stack : 'No stack');
-
-        // 에러 상태 저장
-        try {
-            await supabase
-                .from('problem_generation_status')
-                .upsert({
-                    user_id: request.userId,
-                    status: 'error',
-                    error_message: error.message || 'Unknown error',
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'user_id' });
-            console.log('[Background] Error marker saved to database for Realtime notification');
-        } catch (e) {
-            console.error('[Background] Failed to save error status:', e);
-        }
+        console.error(`[Background] 생성 실패: userId=${request.userId}`);
     }
 }
 

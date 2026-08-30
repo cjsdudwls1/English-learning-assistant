@@ -136,32 +136,6 @@ async function saveProblems(supabase, problems, request) {
 }
 
 /**
- * 진행 상태 마커 갱신 (Realtime 알림용)
- *
- * **현재 무동작이다.** problem_generation_status 테이블은 DB에 없고(REST가 PGRST205 404),
- * supabase/migrations에도 프론트 src/에도 참조가 0건이다. 즉 이 함수는 생성 1회당 3~4번
- * 404를 왕복하고 조용히 버려진다 — 실패가 두 겹으로 가려져 있어서다:
- *   1) postgrest-js는 던지지 않고 { error }를 돌려주는데 그 값을 아무도 안 본다
- *   2) 그래서 아래 catch는 애초에 걸리지 않는다
- * 살릴지 지울지는 제품 결정이라 여기서 바꾸지 않는다. 지운다면 호출부 3곳(generating·finalStatus·error)까지,
- * 살린다면 테이블 마이그레이션과 구독하는 쪽을 같이 만들어야 한다.
- */
-async function setStatus(supabase, userId, status, extra = {}) {
-  try {
-    await supabase
-      .from('problem_generation_status')
-      .upsert({
-        user_id: userId,
-        status,
-        updated_at: new Date().toISOString(),
-        ...extra,
-      }, { onConflict: 'user_id' });
-  } catch (e) {
-    console.warn('[generateProblems] 상태 저장 실패:', e?.message);
-  }
-}
-
-/**
  * 유형 배열을 병렬 생성 후 성공한 ID 반환
  */
 async function runParallelTypes(ai, supabase, types, buildReq, sessionId, allInsertedIds) {
@@ -197,7 +171,6 @@ export async function generateAllProblemTypes(supabase, ai, request, sessionId) 
   }
 
   console.log(`[generateProblems] 시작: userId=${userId}, types=${types.map(t => t.problemType).join(',')}, sessionId=${sessionId}`);
-  await setStatus(supabase, userId, 'generating', { error_message: null });
 
   const isPassageMode = aiOptions.includePassage === true && !aiOptions.sharedPassage;
   let sharedPassage = aiOptions.sharedPassage || null;
@@ -242,16 +215,16 @@ export async function generateAllProblemTypes(supabase, ai, request, sessionId) 
       await runParallelTypes(ai, supabase, types, t => buildReq(t, sharedPassage), sessionId, allInsertedIds);
     }
 
-    const finalStatus = allInsertedIds.length > 0 ? 'completed' : 'error';
-    await setStatus(supabase, userId, finalStatus, {
-      error_message: allInsertedIds.length === 0 ? '모든 문제 유형 생성 실패' : null,
-    });
+    // 전부 실패해도 던지지 않는다(Promise.allSettled라 부분 실패가 정상 경로다).
+    // 호출부는 fire-and-forget이라 count를 보지 않으므로, 이 경로가 남기는 흔적은 이 로그뿐이다.
+    if (allInsertedIds.length === 0) {
+      console.error(`[generateProblems] 모든 문제 유형 생성 실패: userId=${userId}, sessionId=${sessionId}`);
+    }
 
     console.log(`[generateProblems] 완료: ${allInsertedIds.length}개 문제 저장`);
     return { count: allInsertedIds.length, problemIds: allInsertedIds, passage: sharedPassage };
   } catch (err) {
     console.error('[generateProblems] 치명적 오류:', err?.message);
-    await setStatus(supabase, userId, 'error', { error_message: err?.message || 'Unknown error' });
     throw err;
   }
 }
