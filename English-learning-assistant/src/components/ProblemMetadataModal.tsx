@@ -95,7 +95,7 @@ export const ProblemMetadataModal: React.FC<ProblemMetadataModalProps> = ({
                   {/* 본문 — 좌측 indigo 보더 하이라이트 */}
                   {item.content?.stem && (
                     <div className="border-l-4 border-indigo-400 pl-3 mb-2">
-                      <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                      <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
                         {item.content.stem}
                       </p>
                       {item.content.choices && item.content.choices.length > 0 && (
@@ -231,7 +231,7 @@ export const ProblemMetadataModal: React.FC<ProblemMetadataModalProps> = ({
                         <span className="font-semibold text-slate-700 dark:text-slate-300">
                           {t.problemMetadata.analysis}:
                         </span>
-                        <p className="text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-wrap">
+                        <p className="text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-wrap break-words">
                           {item.metadata.analysis}
                         </p>
                       </div>

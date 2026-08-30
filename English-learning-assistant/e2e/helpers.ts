@@ -14,14 +14,119 @@ export const accounts = {
 
 export type Role = keyof typeof accounts;
 
-// 역할별 감사 대상: 파라미터 없는 정적 라우트 전수.
-// :id 라우트(세션 상세 등)는 데이터 의존이라 제외 — 공통 컴포넌트는 목록 페이지에서 커버된다.
-export const auditPages: Record<Role, readonly string[]> = {
-  student: ['/upload', '/stats', '/recent', '/problems', '/profile', '/assignments', '/retry'],
-  teacher: ['/teacher/dashboard', '/teacher/assignments/create'],
-  parent: ['/parent/dashboard'],
-  director: ['/director/dashboard', '/academies'],
+// ─── 감사 대상 라우트 ────────────────────────────────────────────────────────
+// App.tsx의 라우트 전수를 여기 한 곳에 모은다. a11y·mobile-viewport·mobile-ergonomics·
+// screen-health 네 스펙이 모두 이 목록을 읽으므로, 라우트를 추가하면 네 검사가 함께 붙는다.
+//
+// 예전에는 파라미터 없는 정적 라우트만 담았다. 그 결과 `/session/:id`, `/edit/:id` 같은
+// 실제로 가장 많이 보는 화면이 통째로 사각지대였고, 사용자가 폰에서 먼저 발견했다.
+// 그래서 파라미터 라우트도 **실데이터에서 id를 얻어** 감사한다(resolve).
+// 시드에 데이터가 없으면 resolve가 null을 돌려주고 해당 케이스는 실패가 아니라 skip 된다.
+
+export interface AuditRoute {
+  /** 테스트 제목에 쓰는 이름. 라우트 패턴 그대로 적는다. */
+  label: string;
+  /** 파라미터가 없는 라우트. resolve와 택일. */
+  path?: string;
+  /** 런타임에 실제 경로를 만든다. 데이터가 없으면 null(→ skip). resolve와 path는 택일. */
+  resolve?: (page: Page) => Promise<string | null>;
+}
+
+/** 목록 화면을 열어 첫 링크의 href를 읽는다. 파라미터 라우트 해석의 기본 수단. */
+async function hrefFromList(page: Page, listPath: string, selector: string): Promise<string | null> {
+  await page.goto(listPath);
+  await waitForRenderSettled(page);
+  // count()는 auto-wait을 하지 않는다. 위 대기가 로딩 종료를 보장한 뒤에만 세야 '0건'이 오독이 아니다.
+  const links = page.locator(selector);
+  if ((await links.count()) === 0) return null;
+  return links.first().getAttribute('href');
+}
+
+/**
+ * `/recent`에서 세션 하나를 골라 id를 얻는다.
+ * 이 앱의 세션 이동은 Link가 아니라 onClick navigate라서 href를 읽을 수 없다 —
+ * 실제로 눌러서 바뀐 URL에서 id를 뜯는다.
+ */
+async function firstSessionId(page: Page): Promise<string | null> {
+  await page.goto('/recent');
+  await waitForRenderSettled(page);
+  // 문제 0개인 세션은 버튼이 disabled다 — 눌리는 것만 고른다.
+  const btn = page.locator('button:not([disabled])').filter({ hasText: T.viewDetails }).first();
+  if ((await btn.count()) === 0) return null;
+  await btn.click();
+  await page.waitForURL('**/session/*', { timeout: 15_000 });
+  return page.url().split('/session/')[1]?.split(/[?#]/)[0] || null;
+}
+
+export const auditRoutes: Record<Role, readonly AuditRoute[]> = {
+  student: [
+    { label: '/upload', path: '/upload' },
+    { label: '/stats', path: '/stats' },
+    { label: '/recent', path: '/recent' },
+    { label: '/problems', path: '/problems' },
+    { label: '/profile', path: '/profile' },
+    { label: '/assignments', path: '/assignments' },
+    { label: '/retry', path: '/retry' },
+    {
+      label: '/assignments/:assignmentId (과제 풀이)',
+      resolve: (page) => hrefFromList(page, '/assignments', 'a[href^="/assignments/"]'),
+    },
+    {
+      label: '/session/:sessionId (세션 상세)',
+      resolve: async (page) => {
+        const id = await firstSessionId(page);
+        return id && `/session/${id}`;
+      },
+    },
+    {
+      // 이 라우트는 앱 안 어디에서도 링크되지 않는다(2026-08-30 확인) — URL 직접 입력으로만 도달한다.
+      // 그래도 살아 있는 라우트라 렌더는 감사한다.
+      label: '/edit/:sessionId (분석 결과 편집)',
+      resolve: async (page) => {
+        const id = await firstSessionId(page);
+        return id && `/edit/${id}`;
+      },
+    },
+    {
+      // 분석 진행 화면은 '분석 중인 세션'이 있어야 뜨는데 그건 몇 초짜리 과도 상태라 시드로 못 만든다.
+      // 존재하지 않는 id를 주면 AnalyzingPage가 completed/failed를 못 보고 진행 화면에 머무른다 —
+      // 그게 정확히 감사하려는 레이아웃이다(getSessionProgress 실패는 페이지가 이미 catch한다).
+      label: '/analyzing/:sessionId (분석 진행)',
+      path: '/analyzing/00000000-0000-4000-8000-000000000000',
+    },
+  ],
+  teacher: [
+    { label: '/teacher/dashboard', path: '/teacher/dashboard' },
+    { label: '/teacher/assignments/create', path: '/teacher/assignments/create' },
+    {
+      label: '/teacher/assignments/:assignmentId',
+      resolve: (page) => hrefFromList(page, '/teacher/dashboard', 'a[href^="/teacher/assignments/"]'),
+    },
+    {
+      label: '/teacher/classes/:classId',
+      resolve: (page) => hrefFromList(page, '/teacher/dashboard', 'a[href^="/teacher/classes/"]'),
+    },
+  ],
+  parent: [{ label: '/parent/dashboard', path: '/parent/dashboard' }],
+  director: [
+    { label: '/director/dashboard', path: '/director/dashboard' },
+    { label: '/academies', path: '/academies' },
+    { label: '/academies/new', path: '/academies/new' },
+    {
+      label: '/academies/:id/members',
+      resolve: (page) => hrefFromList(page, '/academies', 'a[href^="/academies/"][href$="/members"]'),
+    },
+  ],
 };
+
+/**
+ * 감사 대상 경로를 확정한다. 정적이면 그대로, 파라미터 라우트면 목록을 거쳐 해석한다.
+ * 반환이 null이면 시드에 데이터가 없다는 뜻 — 호출측에서 test.skip으로 드러낸다.
+ */
+export async function resolveAuditPath(page: Page, route: AuditRoute): Promise<string | null> {
+  if (route.path) return route.path;
+  return route.resolve ? route.resolve(page) : null;
+}
 
 // 화면 문자열 매처.
 // playwright.config.ts가 locale: 'ko-KR'이라 실제로는 ko로 뜨지만,
@@ -48,6 +153,8 @@ export const T = {
   notGraded: /^(미채점|Not graded)$/i,
   completed: /완료|Completed/,
   deleteAssignment: /^(삭제|Delete)$/,
+  // /recent 세션 카드의 상세 진입 버튼 (t.recent.viewDetails)
+  viewDetails: /^(상세보기|View Details)$/,
   // 학생 /stats 연간 카드
   statTotalProblems: /^(총 문제|Total Problems)$/,
   statCorrectIncorrect: /^(정답\/오답|Correct \/ Incorrect)$/,

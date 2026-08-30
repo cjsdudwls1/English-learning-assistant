@@ -190,11 +190,11 @@ export const RetryProblemsPage: React.FC = () => {
               </div>
 
               {item.instruction && item.문제내용?.text && item.문제내용.text !== item.instruction && (
-                <p className="mb-2 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{item.문제내용.text}</p>
+                <p className="mb-2 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">{item.문제내용.text}</p>
               )}
 
               {item.passage && (
-                <div className="mb-3 p-3 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 rounded-r-lg text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                <div className="mb-3 p-3 bg-slate-50 dark:bg-slate-900/40 border-l-4 border-indigo-400 rounded-r-lg text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
                   {item.passage}
                 </div>
               )}
@@ -235,7 +235,7 @@ export const RetryProblemsPage: React.FC = () => {
                   {item.correct_answer && (
                     <p>
                       <span className="font-semibold text-slate-700 dark:text-slate-300">{t.assignments.correctAnswer}: </span>
-                      <span className="text-green-600 dark:text-green-400 whitespace-pre-wrap">{item.correct_answer}</span>
+                      <span className="text-green-600 dark:text-green-400 whitespace-pre-wrap break-words">{item.correct_answer}</span>
                     </p>
                   )}
                   {result === null && answered && (

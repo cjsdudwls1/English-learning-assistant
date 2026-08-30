@@ -55,7 +55,7 @@ export const MemberList: React.FC<Props> = ({ classId, members, onUpdate, select
 
       <div className="flex flex-col gap-2 sm:flex-row">
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.teacher.addByEmailPlaceholder} className="flex-1 min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm" />
-        <select value={role} onChange={(e) => setRole(e.target.value as 'teacher' | 'student')} className="min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm">
+        <select aria-label={t.teacher.role} value={role} onChange={(e) => setRole(e.target.value as 'teacher' | 'student')} className="min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-base sm:text-sm">
           <option value="student">{t.teacher.student}</option>
           <option value="teacher">{t.teacher.teacher}</option>
         </select>
@@ -113,14 +113,14 @@ const MemberRow: React.FC<{
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <span title={member.name || member.email || member.user_id.slice(0, 8)} className="line-clamp-2 break-all text-sm text-slate-700 dark:text-slate-300">{member.name || member.email || member.user_id.slice(0, 8)}</span>
       {onSelect && (
-        <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
+        <span className="text-[10px] text-indigo-600 dark:text-indigo-400">
           {isSelected ? t.teacher.viewingStats : t.teacher.clickToViewStats}
         </span>
       )}
     </div>
     <button
       onClick={(e) => { e.stopPropagation(); onRemove(member.user_id); }}
-      className="shrink-0 -mx-2 -my-2 px-2 py-2 text-xs text-red-500 hover:underline"
+      className="shrink-0 -mx-2 -my-2 px-2 py-2 text-xs text-red-600 dark:text-red-400 hover:underline"
     >
       {t.common.delete}
     </button>

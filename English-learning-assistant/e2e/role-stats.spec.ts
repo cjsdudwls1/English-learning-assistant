@@ -48,6 +48,51 @@ test.describe('역할별 통계 정합성', () => {
     }
   });
 
+  // 통계는 무거운 질의 6개를 병렬로 던진다. 예전엔 /stats에 들어올 때마다 전체 화면이
+  // '불러오는 중...'으로 덮여서, 탭을 오갈 때마다 1~3초를 다시 기다려야 했다.
+  // useStatsData가 직전 스냅샷을 모듈 캐시에 들고 있다가 즉시 그리도록 바꿨다(stale-while-revalidate).
+  // 이 테스트는 그 캐시가 죽었는지를 본다 — 재방문 직후 로딩 문구가 보이면 회귀다.
+  //
+  // 반드시 **상단바 링크를 클릭**해서 이동한다. page.goto는 전체 리로드라 모듈 캐시가
+  // 통째로 날아가고, 그러면 캐시가 멀쩡해도 항상 로딩이 떠서 테스트가 무의미해진다.
+  test('student: /stats 재방문 시 로딩 화면이 다시 뜨지 않는다', async ({ page }) => {
+    await login(page, accounts.student);
+    const stats = page.locator('header.topbar a[href="/stats"]');
+    const problems = page.locator('header.topbar a[href="/problems"]');
+
+    await stats.click();
+    await page.waitForURL('**/stats');
+    await waitForRenderSettled(page, { quietMs: 1_500, maxMs: 25_000 });
+
+    await problems.click();
+    await page.waitForURL('**/problems');
+    await waitForRenderSettled(page);
+
+    await stats.click();
+    await page.waitForURL('**/stats');
+
+    // waitForRenderSettled를 쓰면 로딩이 끝날 때까지 기다려 버려 의미가 없다.
+    // 복귀 직후의 프레임들을 그대로 훑는다.
+    const seen: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      seen.push(await page.evaluate(() => document.body.innerText));
+      await page.waitForTimeout(100);
+    }
+    // 이 화면엔 '불러오는 중' 문구가 여러 개다(전체 화면 로딩, 컨설팅 이력, 택사노미 통계…).
+    // 어느 것이 떴는지 모르면 캐시 회귀인지 무관한 부분 로딩인지 구분할 수 없으므로
+    // 매칭된 줄을 그대로 남긴다.
+    const hits = new Set<string>();
+    for (const frame of seen) {
+      for (const line of frame.split('\n')) {
+        if (/불러오는 중|Loading/.test(line)) hits.add(line.trim());
+      }
+    }
+    expect(
+      [...hits],
+      `재방문인데 로딩 문구가 다시 떴다 — 잡힌 문구: ${JSON.stringify([...hits])}`
+    ).toEqual([]);
+  });
+
   test('parent: 자녀 과제의 정답+오답+미채점이 완료 문항 수와 같다', async ({ page }) => {
     await login(page, accounts.parent);
     await page.goto('/parent/dashboard');

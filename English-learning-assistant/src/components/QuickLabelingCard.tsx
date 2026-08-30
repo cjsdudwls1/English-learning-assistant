@@ -391,7 +391,10 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
           {headerContent}
         </div>
       ) : (
-        <div className={`flex items-start gap-3 sm:gap-6 mb-4 sm:mb-6 ${onDelete ? 'pr-9 sm:pr-0' : ''}`}>
+        // 모바일은 세로로 쌓는다. 360px에서 가로 배치하면 썸네일 3장(64px×3 + 여백)이
+        // 220px 넘게 먹고 카드 패딩·삭제버튼 여백까지 빼면 텍스트 칼럼에 90px도 안 남는다.
+        // 실제로 'AI 분석 완 / 료'로 제목이 쪼개지고 모델 배지가 세로로 늘어졌다.
+        <div className={`flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-6 mb-4 sm:mb-6 ${onDelete ? 'pr-9 sm:pr-0' : ''}`}>
           {thumbnails}
           {headerContent}
         </div>
@@ -475,7 +478,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400 mb-1">
                           {language === 'ko' ? '지문' : 'Passage'}
                         </div>
-                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{problem.passage}</p>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words leading-relaxed">{problem.passage}</p>
                       </div>
                     )}
                     {problem.visual_context && (problem.visual_context.title || problem.visual_context.content) && (
@@ -485,7 +488,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                           {problem.visual_context.title ? ` — ${problem.visual_context.title}` : ''}
                         </div>
                         {problem.visual_context.content && (
-                          <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{problem.visual_context.content}</p>
+                          <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">{problem.visual_context.content}</p>
                         )}
                       </div>
                     )}
@@ -502,12 +505,12 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400 mb-1">
                           {language === 'ko' ? '문제 본문' : 'Question'}
                         </div>
-                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{problem.question_body}</p>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">{problem.question_body}</p>
                       </div>
                     )}
                     {/* 분리 필드가 하나도 없을 때만 stem 폴백 표시 */}
                     {!problem.passage && !problem.instruction && !problem.question_body && !problem.visual_context && (
-                      <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 font-medium whitespace-pre-wrap">{problem.문제내용.text}</p>
+                      <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 font-medium whitespace-pre-wrap break-words">{problem.문제내용.text}</p>
                     )}
                     {qType === 'multiple_choice' && problem.문제_보기 && problem.문제_보기.length > 0 && (
                       <div>

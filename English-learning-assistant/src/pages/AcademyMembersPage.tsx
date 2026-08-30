@@ -239,7 +239,7 @@ export const AcademyMembersPage: React.FC = () => {
       {(['director', 'teacher', 'student'] as MemberRole[]).map(role => (
         <div key={role} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 sm:p-6">
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-3">
-            {roleLabel(t, role)} <span className="text-sm text-slate-400 ml-1">({t.academy.peopleCount.replace('{count}', String(grouped[role].length))})</span>
+            {roleLabel(t, role)} <span className="text-sm text-slate-500 dark:text-slate-400 ml-1">({t.academy.peopleCount.replace('{count}', String(grouped[role].length))})</span>
           </h2>
           {grouped[role].length === 0 ? (
             <p className="text-sm text-slate-400 py-2 text-center">{t.academy.none}</p>
@@ -250,7 +250,7 @@ export const AcademyMembersPage: React.FC = () => {
                   <span title={m.email || m.user_id.slice(0, 8)} className="line-clamp-2 break-all text-sm text-slate-800 dark:text-slate-200">{m.email || m.user_id.slice(0, 8)}</span>
                   <button
                     onClick={() => handleRemove(m.user_id, m.role, m.email)}
-                    className="shrink-0 -mx-1 -my-2 px-3 py-3 text-xs text-red-500 hover:text-red-700"
+                    className="shrink-0 -mx-1 -my-2 px-3 py-3 text-xs text-red-600 dark:text-red-400 hover:text-red-700"
                   >
                     {t.academy.remove}
                   </button>
@@ -300,6 +300,7 @@ export const AcademyMembersPage: React.FC = () => {
                     className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-slate-200"
                   />
                   <select
+                    aria-label={t.academy.role}
                     value={classMemberAddRole}
                     onChange={e => setClassMemberAddRole(e.target.value as 'teacher' | 'student')}
                     className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-slate-200"
@@ -339,7 +340,7 @@ export const AcademyMembersPage: React.FC = () => {
                         </div>
                         <button
                           onClick={() => handleRemoveClassMember(cm.user_id, cm.email || '')}
-                          className="shrink-0 -mx-1 -my-2 px-3 py-3 text-xs text-red-500 hover:text-red-700"
+                          className="shrink-0 -mx-1 -my-2 px-3 py-3 text-xs text-red-600 dark:text-red-400 hover:text-red-700"
                         >
                           {t.academy.remove}
                         </button>

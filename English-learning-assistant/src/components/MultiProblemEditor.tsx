@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useId } from 'react';
 import type { AnalysisResults, ProblemItem, ProblemClassification } from '../types';
 import { ReportModal } from './ReportModal';
 import { TaxonomyDetailPopup } from './TaxonomyDetailPopup';
@@ -42,6 +42,9 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
   const [items, setItems] = useState<ProblemItem[]>(initial.items);
   const { language } = useLanguage();
   const t = getTranslation(language);
+  // 라벨-입력 연결용 id 접두사. 한 화면에 이 에디터가 둘 이상 떠도 id가 겹치지 않아야
+  // duplicate-id-active 위반이 새로 생기지 않는다.
+  const uid = useId();
 
   // 사용자 답안 및 정답 편집 상태 (QuickLabelingCard 패턴)
   const [editableAnswers, setEditableAnswers] = useState<Record<string, string>>({});
@@ -356,8 +359,16 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           </div>
 
           <div className="mt-3">
-            <label className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">{t.labeling.questionBody}</label>
-            <div className="w-full border dark:border-slate-600 rounded px-2 py-1.5 sm:px-3 sm:py-2 mt-1 text-sm sm:text-base break-words sm:min-h-[100px] sm:max-h-[300px] sm:overflow-auto bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300">
+            <label id={`${uid}-${i}-body`} className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">{t.labeling.questionBody}</label>
+            {/* sm 이상에서 max-h-[300px]로 스크롤되는 영역이다. 안에 포커스 가능한 요소가
+                하나도 없어서 키보드만 쓰는 사용자는 잘린 지문을 끝까지 볼 방법이 없었다
+                (axe scrollable-region-focusable, serious). tabIndex로 스크롤 컨테이너
+                자체를 포커스 대상으로 올리고, 위 라벨을 이름으로 연결한다. */}
+            <div
+              tabIndex={0}
+              role="group"
+              aria-labelledby={`${uid}-${i}-body`}
+              className="w-full border dark:border-slate-600 rounded px-2 py-1.5 sm:px-3 sm:py-2 mt-1 text-sm sm:text-base break-words sm:min-h-[100px] sm:max-h-[300px] sm:overflow-auto bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300">
               {it.문제내용.text}
               {it.문제_보기 && it.문제_보기.length > 0 && (
                 <div className="mt-2 space-y-1">
@@ -516,22 +527,22 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
           {!hideClassification && (
             <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
               <div>
-                <label className="block text-xs sm:text-sm text-slate-600 dark:text-slate-400">depth1</label>
-                <input className="w-full border dark:border-slate-600 rounded px-2 py-2 sm:py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth1 || ''}
+                <label htmlFor={`${uid}-${i}-depth1`} className="block text-xs sm:text-sm text-slate-600 dark:text-slate-400">depth1</label>
+                <input id={`${uid}-${i}-depth1`} className="w-full border dark:border-slate-600 rounded px-2 py-2 sm:py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth1 || ''}
                   onChange={(e) => updateClassification(i, { depth1: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs sm:text-sm text-slate-600 dark:text-slate-400">depth2</label>
-                <input className="w-full border dark:border-slate-600 rounded px-2 py-2 sm:py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth2 || ''}
+                <label htmlFor={`${uid}-${i}-depth2`} className="block text-xs sm:text-sm text-slate-600 dark:text-slate-400">depth2</label>
+                <input id={`${uid}-${i}-depth2`} className="w-full border dark:border-slate-600 rounded px-2 py-2 sm:py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth2 || ''}
                   onChange={(e) => updateClassification(i, { depth2: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs sm:text-sm text-slate-600 dark:text-slate-400">depth3</label>
-                <input className="w-full border dark:border-slate-600 rounded px-2 py-2 sm:py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth3 || ''}
+                <label htmlFor={`${uid}-${i}-depth3`} className="block text-xs sm:text-sm text-slate-600 dark:text-slate-400">depth3</label>
+                <input id={`${uid}-${i}-depth3`} className="w-full border dark:border-slate-600 rounded px-2 py-2 sm:py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth3 || ''}
                   onChange={(e) => updateClassification(i, { depth3: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs sm:text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                <label htmlFor={`${uid}-${i}-depth4`} className="block text-xs sm:text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2">
                   depth4
                   {/* 라벨이 20px뿐이라 40px 탭 박스가 위아래로 샌다. 음수 마진을 비대칭으로 두는 이유:
                       위로 10px 새면 모바일 2열 그리드에서 윗칸(depth2) 입력창을 2px 덮고, 버튼이 뒤
@@ -541,7 +552,11 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
                   {it.문제_유형_분류.depth4 && it.문제_유형_분류.code && (
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        // 이 버튼은 <label> 안에 있다. htmlFor로 라벨을 입력에 묶은 뒤로는
+                        // 라벨 클릭이 입력으로 전달되므로, 막지 않으면 팝업이 열리는 동시에
+                        // 포커스가 뒤 입력창으로 끌려간다.
+                        e.preventDefault();
                         setSelectedTaxonomyCode(it.문제_유형_분류.code || null);
                         setTaxonomyPopupOpen(true);
                       }}
@@ -552,7 +567,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
                     </button>
                   )}
                 </label>
-                <input className="w-full border dark:border-slate-600 rounded px-2 py-2 sm:py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth4 || ''}
+                <input id={`${uid}-${i}-depth4`} className="w-full border dark:border-slate-600 rounded px-2 py-2 sm:py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={it.문제_유형_분류.depth4 || ''}
                   onChange={(e) => updateClassification(i, { depth4: e.target.value })} />
               </div>
             </div>
