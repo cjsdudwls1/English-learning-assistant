@@ -26,7 +26,11 @@ export const CONSULTANT_MODEL = 'gemini-2.5-flash';
 // 8도 같은 병이었다. 산술을 끝까지 세면 3영역×2(drilldown+samples.wrong) + timeseries +
 // profile.get = 8이고, **정상 final도 루프 한 칸을 쓴다**(runtime.js의 for 안에서 return).
 // 그래서 시키는 걸 다 하면 9가 필요한데 상한이 8이었다 — 항상 한 칸 모자란다.
-// 실측 런 ca08dbd1이 정확히 그 천장에 닿았다: 8/8 소진, timeseries를 **못 써서** 겨우 final.
+// 실측 런 ca08dbd1이 정확히 그 천장에 닿았다. 스텝 순서는
+//   profile.get / (drilldown+samples.wrong)×3영역 / final = 8
+// 으로 8/8을 소진했고 timeseries는 한 번도 쓰지 않았다. 4번이 조건부('처방을 바꾸는 경우에만')라
+// 모델이 안 골랐는지 자리가 없었는지는 트레이스로 구분되지 않는다 — 구분이 안 된다는 게 문제다.
+// 확실한 쪽만 말하면: 7스텝을 쓴 시점에 timeseries를 원했다면 그게 8번째라 final 몫이 0이었다.
 // 넘치면 에러가 아니라 강제 final로 반쪽 보고서가 조용히 나간다(로그는 초록).
 // 10 = 9 + 여유 1. 벽시계는 병목이 아니다: 실측 8스텝 52초 / 예산 240초.
 export const CONSULTANT_MAX_STEPS = 10;
