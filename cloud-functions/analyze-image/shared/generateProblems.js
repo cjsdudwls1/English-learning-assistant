@@ -137,6 +137,14 @@ async function saveProblems(supabase, problems, request) {
 
 /**
  * 진행 상태 마커 갱신 (Realtime 알림용)
+ *
+ * **현재 무동작이다.** problem_generation_status 테이블은 DB에 없고(REST가 PGRST205 404),
+ * supabase/migrations에도 프론트 src/에도 참조가 0건이다. 즉 이 함수는 생성 1회당 3~4번
+ * 404를 왕복하고 조용히 버려진다 — 실패가 두 겹으로 가려져 있어서다:
+ *   1) postgrest-js는 던지지 않고 { error }를 돌려주는데 그 값을 아무도 안 본다
+ *   2) 그래서 아래 catch는 애초에 걸리지 않는다
+ * 살릴지 지울지는 제품 결정이라 여기서 바꾸지 않는다. 지운다면 호출부 3곳(generating·finalStatus·error)까지,
+ * 살린다면 테이블 마이그레이션과 구독하는 쪽을 같이 만들어야 한다.
  */
 async function setStatus(supabase, userId, status, extra = {}) {
   try {

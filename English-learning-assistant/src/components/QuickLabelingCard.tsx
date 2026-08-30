@@ -53,6 +53,85 @@ function inferQuestionType(problem: ProblemItem): QuestionType {
   return 'short_answer';
 }
 
+/** 서버에서 받은 문제 배열로부터 편집 UI의 초기 상태를 만든다 (순수 함수 — 캐시 시드와 재검증이 같은 코드를 쓴다) */
+interface EditorSeed {
+  labels: Record<string, 'O' | 'X'>;
+  answers: Record<string, string>;
+  correctAnswers: Record<string, string>;
+  multiUser: Record<string, number[]>;
+  multiCorrect: Record<string, number[]>;
+  blankUser: Record<string, string[]>;
+  blankCorrect: Record<string, string[]>;
+}
+
+function deriveEditorSeed(data: ProblemItem[]): EditorSeed {
+  const seed: EditorSeed = {
+    labels: {}, answers: {}, correctAnswers: {},
+    multiUser: {}, multiCorrect: {}, blankUser: {}, blankCorrect: {},
+  };
+  data.forEach(p => {
+    const mark = p.사용자가_직접_채점한_정오답;
+    // 복수답안·형식불일치는 저장된 구(舊) AI 판정을 신뢰하지 않음 — O/X 시드 안 함(수동 확인 유도)
+    // 단, 백엔드가 번호 집합을 확신 추출한 multi(correctAnswers/userAnswers)는 자동판정 신뢰
+    const reviewReason = getManualReviewReason({
+      instruction: p.instruction,
+      correctAnswer: p.correct_answer,
+      userAnswer: p.사용자가_기술한_정답?.text,
+      hasChoices: (p.문제_보기?.length ?? 0) > 0,
+      answerFormat: p.answerFormat,
+      correctAnswers: p.correctAnswers,
+      userAnswers: p.userAnswers,
+    });
+    if (mark === 'O' || mark === 'X') {
+      seed.labels[`${p.index}`] = mark; // 사용자 수동 채점은 항상 우선
+    } else if (!reviewReason && p.AI가_판단한_정오답 === '정답') {
+      seed.labels[`${p.index}`] = 'O';
+    } else if (!reviewReason && p.AI가_판단한_정오답 === '오답') {
+      seed.labels[`${p.index}`] = 'X';
+    }
+    seed.answers[`${p.index}`] = p.사용자가_기술한_정답?.text || '';
+    seed.correctAnswers[`${p.index}`] = p.correct_answer || '';
+    if (p.answerFormat === 'multi') {
+      seed.multiUser[`${p.index}`] = p.userAnswers ?? [];
+      seed.multiCorrect[`${p.index}`] = p.correctAnswers ?? [];
+    }
+    if (toCardinality(p.answerFormat) === 'list') {
+      const bu = p.blankUserAnswers ?? [];
+      const bc = p.blankCorrectAnswers ?? [];
+      const n = Math.max(bu.length, bc.length);
+      seed.blankUser[`${p.index}`] = Array.from({ length: n }, (_, i) => bu[i] == null ? '' : String(bu[i]));
+      seed.blankCorrect[`${p.index}`] = Array.from({ length: n }, (_, i) => bc[i] == null ? '' : String(bc[i]));
+    }
+  });
+  return seed;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 세션 문제 캐시 (stale-while-revalidate)
+//
+// 부모(useStatsData)는 세션 목록을 캐시하는데 이 카드는 자기 문제 목록을 따로 가져온다.
+// 그래서 /stats → 다른 화면 → /stats 로 돌아오면 목록은 즉시 뜨는데 카드만 다시
+// "문제 불러오는 중..."으로 덮였다 — e2e/role-stats.spec.ts가 잡은 게 정확히 이 증상이다.
+// 부모와 같은 전략을 쓴다: 직전 응답을 즉시 그리고 같은 질의를 백그라운드로 돌린다.
+//
+// 수명: 부모 캐시와 같은 모듈 스코프. 로그아웃은 window.location.reload()를 부르므로
+// (LoginButton.tsx) 계정 경계에서 통째로 사라진다 — 별도 무효화가 필요 없다.
+// 무효화: 서버 상태를 바꾸는 지점(저장·문제 삭제)에서만 지운다.
+// ─────────────────────────────────────────────────────────────────────────────
+const problemsCache = new Map<string, ProblemItem[]>();
+// 세션을 여럿 오가면 엔트리가 쌓이므로 상한을 둔다(Map은 삽입 순서 보존 → 오래된 것부터).
+const PROBLEMS_CACHE_MAX_ENTRIES = 12;
+
+function writeProblemsCache(sessionId: string, data: ProblemItem[]): void {
+  problemsCache.delete(sessionId); // 재삽입해서 최근 사용 순서를 유지
+  problemsCache.set(sessionId, data);
+  while (problemsCache.size > PROBLEMS_CACHE_MAX_ENTRIES) {
+    const oldest = problemsCache.keys().next();
+    if (oldest.done) break;
+    problemsCache.delete(oldest.value);
+  }
+}
+
 export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   sessionId,
   imageUrl,
@@ -65,81 +144,56 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   const { language } = useLanguage();
   const t = getTranslation(language);
   const navigate = useNavigate();
-  const [problems, setProblems] = useState<ProblemItem[]>([]);
-  const [labels, setLabels] = useState<Record<string, 'O' | 'X'>>({});
-  const [editableAnswers, setEditableAnswers] = useState<Record<string, string>>({});
-  const [editableCorrectAnswers, setEditableCorrectAnswers] = useState<Record<string, string>>({});
+  // 렌더 중에 캐시를 읽는다. effect에서 읽으면 페인트가 한 번 지나간 뒤라 스피너가 깜빡인다.
+  // 두 마운트 지점 모두 key={session.id}라 인스턴스당 sessionId가 고정된다 —
+  // 아래 지연 초기화가 첫 렌더에서만 돌아도 세션이 뒤바뀔 일이 없다.
+  const cachedOnMount = problemsCache.get(sessionId);
+  const [seed] = useState<EditorSeed>(() => deriveEditorSeed(cachedOnMount ?? []));
+
+  const [problems, setProblems] = useState<ProblemItem[]>(() => cachedOnMount ?? []);
+  const [labels, setLabels] = useState<Record<string, 'O' | 'X'>>(() => seed.labels);
+  const [editableAnswers, setEditableAnswers] = useState<Record<string, string>>(() => seed.answers);
+  const [editableCorrectAnswers, setEditableCorrectAnswers] = useState<Record<string, string>>(() => seed.correctAnswers);
   // 다중정답 객관식(multi_answer_contract v1) — 정답/사용자답을 번호 집합으로 편집
-  const [multiUserAnswers, setMultiUserAnswers] = useState<Record<string, number[]>>({});
-  const [multiCorrectAnswers, setMultiCorrectAnswers] = useState<Record<string, number[]>>({});
+  const [multiUserAnswers, setMultiUserAnswers] = useState<Record<string, number[]>>(() => seed.multiUser);
+  const [multiCorrectAnswers, setMultiCorrectAnswers] = useState<Record<string, number[]>>(() => seed.multiCorrect);
   // 다중빈칸 서술형(multi_blank) — 빈칸별 사용자답/정답을 문자열 배열로 편집(빈 문자열='')
-  const [editableBlankUser, setEditableBlankUser] = useState<Record<string, string[]>>({});
-  const [editableBlankCorrect, setEditableBlankCorrect] = useState<Record<string, string[]>>({});
+  const [editableBlankUser, setEditableBlankUser] = useState<Record<string, string[]>>(() => seed.blankUser);
+  const [editableBlankCorrect, setEditableBlankCorrect] = useState<Record<string, string[]>>(() => seed.blankCorrect);
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cachedOnMount);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
   // 실제 표시할 이미지 목록 결정
   const displayImageUrls = (imageUrls && imageUrls.length > 0) ? imageUrls : (imageUrl ? [imageUrl] : []);
 
   useEffect(() => {
-    loadProblems();
+    // 캐시가 있으면 스피너 없이 조용히 재검증한다(stale-while-revalidate).
+    loadProblems(!problemsCache.has(sessionId));
   }, [sessionId]);
 
-  const loadProblems = async () => {
+  const loadProblems = async (showLoading: boolean) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
+      const cached = problemsCache.get(sessionId);
       const data = await fetchSessionProblems(sessionId);
-      setProblems(data);
+      writeProblemsCache(sessionId, data);
 
-      const initialLabels: Record<string, 'O' | 'X'> = {};
-      const initialAnswers: Record<string, string> = {};
-      const initialCorrectAnswers: Record<string, string> = {};
-      const initialMultiUser: Record<string, number[]> = {};
-      const initialMultiCorrect: Record<string, number[]> = {};
-      const initialBlankUser: Record<string, string[]> = {};
-      const initialBlankCorrect: Record<string, string[]> = {};
-      data.forEach(p => {
-        const mark = p.사용자가_직접_채점한_정오답;
-        // 복수답안·형식불일치는 저장된 구(舊) AI 판정을 신뢰하지 않음 — O/X 시드 안 함(수동 확인 유도)
-        // 단, 백엔드가 번호 집합을 확신 추출한 multi(correctAnswers/userAnswers)는 자동판정 신뢰
-        const reviewReason = getManualReviewReason({
-          instruction: p.instruction,
-          correctAnswer: p.correct_answer,
-          userAnswer: p.사용자가_기술한_정답?.text,
-          hasChoices: (p.문제_보기?.length ?? 0) > 0,
-          answerFormat: p.answerFormat,
-          correctAnswers: p.correctAnswers,
-          userAnswers: p.userAnswers,
-        });
-        if (mark === 'O' || mark === 'X') {
-          initialLabels[`${p.index}`] = mark; // 사용자 수동 채점은 항상 우선
-        } else if (!reviewReason && p.AI가_판단한_정오답 === '정답') {
-          initialLabels[`${p.index}`] = 'O';
-        } else if (!reviewReason && p.AI가_판단한_정오답 === '오답') {
-          initialLabels[`${p.index}`] = 'X';
-        }
-        initialAnswers[`${p.index}`] = p.사용자가_기술한_정답?.text || '';
-        initialCorrectAnswers[`${p.index}`] = p.correct_answer || '';
-        if (p.answerFormat === 'multi') {
-          initialMultiUser[`${p.index}`] = p.userAnswers ?? [];
-          initialMultiCorrect[`${p.index}`] = p.correctAnswers ?? [];
-        }
-        if (toCardinality(p.answerFormat) === 'list') {
-          const bu = p.blankUserAnswers ?? [];
-          const bc = p.blankCorrectAnswers ?? [];
-          const n = Math.max(bu.length, bc.length);
-          initialBlankUser[`${p.index}`] = Array.from({ length: n }, (_, i) => bu[i] == null ? '' : String(bu[i]));
-          initialBlankCorrect[`${p.index}`] = Array.from({ length: n }, (_, i) => bc[i] == null ? '' : String(bc[i]));
-        }
-      });
-      setLabels(initialLabels);
-      setEditableAnswers(initialAnswers);
-      setEditableCorrectAnswers(initialCorrectAnswers);
-      setMultiUserAnswers(initialMultiUser);
-      setMultiCorrectAnswers(initialMultiCorrect);
-      setEditableBlankUser(initialBlankUser);
-      setEditableBlankCorrect(initialBlankCorrect);
+      // 캐시 히트로 조용히 재검증한 경우, 화면은 이미 상호작용 가능한 상태다.
+      // 서버 응답이 캐시와 같으면 파생 상태를 다시 시드하지 않는다 — 사용자가 방금 누른
+      // O/X나 고쳐 쓴 답을 응답 도착 시점에 되돌려 버리는 사고를 막는다.
+      // 실제로 달라졌다면 서버가 정답이므로 그때는 다시 시드한다.
+      if (cached && JSON.stringify(cached) === JSON.stringify(data)) return;
+
+      setProblems(data);
+      const next = deriveEditorSeed(data);
+      setLabels(next.labels);
+      setEditableAnswers(next.answers);
+      setEditableCorrectAnswers(next.correctAnswers);
+      setMultiUserAnswers(next.multiUser);
+      setMultiCorrectAnswers(next.multiCorrect);
+      setEditableBlankUser(next.blankUser);
+      setEditableBlankCorrect(next.blankCorrect);
     } catch (error) {
       console.error('Failed to load problems:', error);
     } finally {
@@ -222,6 +276,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
     if (!problem.id) return;
     try {
       await deleteProblems([problem.id]);
+      problemsCache.delete(sessionId); // 서버가 바뀌었다 — 다음 마운트는 새로 받는다
       const key = `${problem.index}`;
       setProblems(prev => prev.filter(p => p.index !== problem.index));
       setLabels(prev => { const next = { ...prev }; delete next[key]; return next; });
@@ -285,6 +340,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
     try {
       setSaving(true);
       await updateProblemLabels(sessionId, itemsToSave);
+      problemsCache.delete(sessionId); // 채점이 저장됐다 — 캐시된 미채점 스냅샷은 이제 거짓이다
       alert(language === 'ko' ? '저장 완료! 통계에 반영되었습니다.' : 'Saved! Stats updated.');
       onSave?.();
     } catch (error) {
@@ -483,7 +539,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                     )}
                     {problem.visual_context && (problem.visual_context.title || problem.visual_context.content) && (
                       <div className="rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-2">
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-1">
                           {problem.visual_context.type || (language === 'ko' ? '자료' : 'Visual')}
                           {problem.visual_context.title ? ` — ${problem.visual_context.title}` : ''}
                         </div>
@@ -576,7 +632,7 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
                           </div>
                         ))}
                       </div>
-                      <div className="text-xs text-amber-600 dark:text-amber-400">
+                      <div className="text-xs text-amber-700 dark:text-amber-400">
                         {language === 'ko' ? '※ 빈칸별 서술형 — 자동 채점 대신 수동 확인' : '※ Per-blank essay — manual review (no auto-grading)'}
                       </div>
                     </div>

@@ -148,7 +148,7 @@ export function AgentTrace({ language, steps, state, stopReason, error }: AgentT
                     {stepLabel(step, t)}
                   </span>
                   {!step.ok && (
-                    <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                    <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
                       {t.stats.agentStepRetried}
                     </span>
                   )}
@@ -158,7 +158,7 @@ export function AgentTrace({ language, steps, state, stopReason, error }: AgentT
                 )}
                 {observation && (
                   <p className={`mt-0.5 break-words text-[11px] ${
-                    step.ok ? 'text-slate-500 dark:text-slate-400' : 'text-amber-600 dark:text-amber-400'
+                    step.ok ? 'text-slate-500 dark:text-slate-400' : 'text-amber-700 dark:text-amber-400'
                   }`}>
                     {observation}
                   </p>

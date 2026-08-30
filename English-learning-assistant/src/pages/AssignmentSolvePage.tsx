@@ -127,7 +127,7 @@ export const AssignmentSolvePage: React.FC = () => {
             <p className="text-2xl font-bold text-green-600 mb-2">{t.assignments.allSolved}</p>
             <p className="text-slate-500">{t.assignments.correctCount.replace('{correct}', String(responses.filter((r) => r.is_correct === true).length)).replace('{total}', String(problems.length))}</p>
             {responses.some((r) => r.is_correct === null) && (
-              <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
                 {t.assignments.ungradedCount.replace('{count}', String(responses.filter((r) => r.is_correct === null).length))}
               </p>
             )}

@@ -147,9 +147,14 @@ export async function runPlannerAgent({ ai, supabase, userClient, runId, userId,
 
   /**
    * 도구에 넘기는 유일한 쓰기 통로.
-   * 부수효과 주의: generateAllProblemTypes는 problem_generation_status를 upsert하므로,
-   * 플래너가 도는 동안 프론트의 기존 "문제 생성 중" 표시(useProblemGeneration)가 함께 켜진다.
-   * 실제로 생성 중이라 틀린 표시는 아니지만, 그 UI를 건드릴 때 여기가 호출원임을 알아야 한다.
+   *
+   * 부수효과: generated_problems에 **실제 행이 남는다.** 플래너가 allowWrites인 이유이자,
+   * 이 도구를 함부로 늘리면 안 되는 이유다(호출 수는 plannerTools의 상한이 잡는다).
+   *
+   * generateAllProblemTypes가 upsert하는 problem_generation_status는 **세지 말 것** —
+   * 그 테이블은 DB에 없고(PGRST205), 마이그레이션에도 프론트에도 참조가 0건이다.
+   * 그래서 "플래너가 도는 동안 프론트의 생성 중 표시가 켜진다"는 부수효과는 일어나지 않는다.
+   * (그 표시를 정말 켜려면 테이블부터 만들어야 한다 — generateProblems.js의 setStatus 주석 참고.)
    */
   const generateProblems = generateOverride ?? (async ({ classification, problemType, count }) => generateAllProblemTypes(
     supabase,
