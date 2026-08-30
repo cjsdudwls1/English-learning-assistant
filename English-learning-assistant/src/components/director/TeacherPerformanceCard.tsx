@@ -46,7 +46,7 @@ export const TeacherPerformanceCard: React.FC<Props> = ({ teachers }) => {
                 <td className="hidden py-2 text-center text-slate-600 dark:text-slate-400 sm:table-cell">{tc.assignmentCount}</td>
                 <td className="py-2 text-center text-slate-600 dark:text-slate-400">{tc.responseCount}</td>
                 <td className="py-2 text-center text-slate-600 dark:text-slate-400">{tc.responseCount - tc.ungradedCount > 0 ? `${tc.gradedCorrectRate}%` : '-'}</td>
-                <td className={`py-2 text-center ${tc.ungradedCount > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-slate-600 dark:text-slate-400'}`}>{tc.ungradedCount}</td>
+                <td className={`py-2 text-center ${tc.ungradedCount > 0 ? 'text-amber-700 dark:text-amber-400 font-medium' : 'text-slate-600 dark:text-slate-400'}`}>{tc.ungradedCount}</td>
               </tr>
             ))}
           </tbody>

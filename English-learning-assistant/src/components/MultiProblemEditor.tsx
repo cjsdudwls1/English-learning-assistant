@@ -420,7 +420,7 @@ export const MultiProblemEditor: React.FC<MultiProblemEditorProps> = ({ initial,
                   </div>
                 ))}
               </div>
-              <div className="text-xs text-amber-600 dark:text-amber-400">
+              <div className="text-xs text-amber-700 dark:text-amber-400">
                 {language === 'ko' ? '※ 빈칸별 서술형 — 자동 채점 대신 수동 확인' : '※ Per-blank essay — manual review (no auto-grading)'}
               </div>
             </div>
