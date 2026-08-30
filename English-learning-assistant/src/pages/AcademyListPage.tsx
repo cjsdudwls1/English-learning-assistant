@@ -5,28 +5,35 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 
 export const AcademyListPage: React.FC = () => {
-  const { availableAcademies, activeAcademyId, setActiveAcademy } = useUserRole();
+  const { availableAcademies, activeAcademyId, setActiveAcademy, role } = useUserRole();
   const { language } = useLanguage();
   const t = getTranslation(language);
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6">
+      {/* 목록 열람은 전 역할에 열어 둔다(내가 속한 학원만 보이고, /profile의 학원 탭이
+          이미 같은 목록을 보여준다). 권한이 걸리는 행위는 생성뿐이므로 진입점을 원장에게만
+          노출하고, 라우트 자체도 App.tsx에서 RoleGate로 막는다. */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">{t.academy.myAcademies}</h1>
-        <Link
-          to="/academies/new"
-          className="inline-flex min-h-[40px] sm:min-h-0 items-center whitespace-nowrap px-3 sm:px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          {t.academy.create}
-        </Link>
+        {role === 'director' && (
+          <Link
+            to="/academies/new"
+            className="inline-flex min-h-[40px] sm:min-h-0 items-center whitespace-nowrap px-3 sm:px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            {t.academy.create}
+          </Link>
+        )}
       </div>
 
       {availableAcademies.length === 0 ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-8 text-center">
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">{t.academy.emptyTitle}</p>
-          <Link to="/academies/new" className="text-indigo-600 dark:text-indigo-400 underline text-sm">
-            {t.academy.createNew}
-          </Link>
+          {role === 'director' && (
+            <Link to="/academies/new" className="text-indigo-600 dark:text-indigo-400 underline text-sm">
+              {t.academy.createNew}
+            </Link>
+          )}
         </div>
       ) : (
         <div className="space-y-3">

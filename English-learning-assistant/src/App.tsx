@@ -385,7 +385,7 @@ const App: React.FC = () => {
 
         {/* 학원 관리 */}
         <Route path="/academies" element={<AuthGate><PageLayout><AcademyListPage /></PageLayout></AuthGate>} />
-        <Route path="/academies/new" element={<AuthGate><PageLayout><AcademyCreatePage /></PageLayout></AuthGate>} />
+        <Route path="/academies/new" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><AcademyCreatePage /></RoleGate></PageLayout></AuthGate>} />
         <Route path="/academies/:id/members" element={<AuthGate><PageLayout><RoleGate allowedRoles={['director']}><AcademyMembersPage /></RoleGate></PageLayout></AuthGate>} />
 
         <Route path="*" element={

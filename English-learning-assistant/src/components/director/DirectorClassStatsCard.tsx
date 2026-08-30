@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { MonthlyStatsSelector } from '../stats/MonthlyStatsSelector';
 import { AssignmentStatsDisplay } from '../stats/AssignmentStatsDisplay';
 import type { ClassInfo, MonthlyStats } from '../../types';
@@ -53,7 +54,17 @@ export const DirectorClassStatsCard: React.FC<Props> = ({ classes, selectedClass
 
       {selectedClassId && (
         <>
-          <div className="flex justify-end mb-2">
+          {/* 위쪽 학급 칩은 '통계 대상 선택'이라 링크로 바꿀 수 없다(선택 기능이 사라진다).
+              선택된 학급의 상세로 가는 길을 여기서 연다 — 원장은 이 경로가 RoleGate상
+              허용돼 있는데도 주소창에 직접 치는 것 말고는 도달할 방법이 없었다.
+              삭제 버튼과는 반대쪽 끝에 둔다(오조작 방지). */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <Link
+              to={`/teacher/classes/${selectedClassId}`}
+              className="inline-flex min-h-[40px] sm:min-h-0 items-center px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors"
+            >
+              {t.teacher.classDetail}
+            </Link>
             {onDeleteClass && (
               <button
                 onClick={() => {

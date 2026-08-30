@@ -26,6 +26,9 @@ const ROLE_HOME: Record<Role, string> = {
 /**
  * 역할별로 **들어가면 안 되는** 라우트 — App.tsx RoleGate allowedRoles의 여집합이다.
  * (allowedRoles를 좁히거나 넓히면 여기도 같이 고쳐야 한다. 안 고치면 이 스펙이 먼저 깨진다.)
+ *
+ * /academies(목록)는 일부러 빠져 있다. 전 역할에 열린 화면이고 — 내가 속한 학원만 보이며
+ * /profile의 학원 탭이 이미 같은 목록을 보여준다 — 권한이 걸리는 행위는 /academies/new뿐이다.
  */
 const DENIED: Record<Role, readonly string[]> = {
   student: [
@@ -34,6 +37,7 @@ const DENIED: Record<Role, readonly string[]> = {
     `/teacher/classes/${FAKE_ID}`,
     '/parent/dashboard',
     '/director/dashboard',
+    '/academies/new',
     `/academies/${FAKE_ID}/members`,
   ],
   teacher: [
@@ -41,6 +45,7 @@ const DENIED: Record<Role, readonly string[]> = {
     `/assignments/${FAKE_ID}`,
     '/parent/dashboard',
     '/director/dashboard',
+    '/academies/new',
     `/academies/${FAKE_ID}/members`,
   ],
   parent: [
@@ -49,6 +54,7 @@ const DENIED: Record<Role, readonly string[]> = {
     '/teacher/dashboard',
     '/teacher/assignments/create',
     '/director/dashboard',
+    '/academies/new',
     `/academies/${FAKE_ID}/members`,
   ],
   director: [
