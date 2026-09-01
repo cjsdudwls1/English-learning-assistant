@@ -32,10 +32,22 @@ import { useLanguage } from './contexts/LanguageContext';
 import { getTranslation } from './utils/translations';
 import { InstallBanner } from './components/InstallBanner';
 import { MainPage, type ImageFile } from './pages/MainPage';
+import { toThumbPath } from './utils/imageUrl';
 import './styles/app.css';
 
 const MAX_IMAGES = 10;
 const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * 목록 화면용 썸네일 규격.
+ *
+ * 목록에서 가장 큰 이미지 박스가 96 CSS px(`sm:w-24`)이라 DPR 3에서도 288px면 덮는다.
+ * 320px·0.7이면 장당 20KB 안팎으로, 2048px·0.92 원본의 1/70 수준이다.
+ * 원본을 목록에 그대로 그리다 2026-09-01 송신 한도(5GB)를 넘겨 프로젝트가 402로 차단됐다.
+ * 판독용 원본 규격은 그대로 둔다 — 정확도가 걸려 있다(compressImage 주석 참고).
+ */
+const THUMB_MAX_DIMENSION = 320;
+const THUMB_QUALITY = 0.7;
 
 /**
  * Canvas API로 이미지를 리사이즈·JPEG 압축한다.
@@ -98,18 +110,37 @@ function compressImage(
  * Supabase Storage `analyze-uploads` bucket에 직접 업로드.
  * RLS: `{userId}/...` 폴더 prefix가 auth.uid()와 일치해야 한다.
  */
-async function uploadImageDirect(
-  blob: Blob,
-  userId: string,
-  index: number,
-  originalName: string,
-): Promise<string> {
-  const safeName = originalName.replace(/[^\w.-]+/g, '_').slice(0, 60);
-  const path = `${userId}/${Date.now()}_${index}_${safeName}.jpg`;
+async function putObject(path: string, blob: Blob): Promise<void> {
   const { error } = await supabase.storage
     .from('analyze-uploads')
     .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
   if (error) throw new Error(`Upload failed (${path}): ${error.message}`);
+}
+
+/**
+ * 판독용 원본과 목록용 썸네일을 함께 올리고, **원본 path**를 반환한다.
+ * 반환값이 원본인 이유: 분석 파이프라인과 라이트박스는 원본을 받아야 한다.
+ *
+ * 썸네일 실패는 삼킨다. 목록은 썸네일이 없으면 원본으로 폴백하므로 화면이 깨지지 않는데,
+ * 여기서 던지면 썸네일 하나 때문에 분석 자체가 시작도 못 한다.
+ */
+async function uploadImageDirect(file: File, userId: string, index: number): Promise<string> {
+  const safeName = file.name.replace(/[^\w.-]+/g, '_').slice(0, 60);
+  const path = `${userId}/${Date.now()}_${index}_${safeName}.jpg`;
+
+  const { blob } = await compressImage(file);
+  await putObject(path, blob);
+
+  const thumbPath = toThumbPath(path);
+  if (thumbPath) {
+    try {
+      const { blob: thumbBlob } = await compressImage(file, THUMB_MAX_DIMENSION, THUMB_QUALITY);
+      await putObject(thumbPath, thumbBlob);
+    } catch (e) {
+      console.warn(`[upload] 썸네일 실패, 목록은 원본으로 폴백한다 (${thumbPath}):`, e);
+    }
+  }
+
   return path;
 }
 
@@ -181,10 +212,9 @@ const App: React.FC = () => {
 
       // 압축 + Supabase Storage Direct Upload (base64 inline payload 회피)
       const imagePaths = await Promise.all(
-        imageFiles.map(async (imageFile, index) => {
-          const { blob } = await compressImage(imageFile.file);
-          return uploadImageDirect(blob, userData.user!.id, index, imageFile.file.name);
-        }),
+        imageFiles.map((imageFile, index) =>
+          uploadImageDirect(imageFile.file, userData.user!.id, index),
+        ),
       );
 
       const { data: sessionData } = await supabase.auth.getSession();

@@ -16,6 +16,15 @@ const ANALYZE_BUCKET = 'analyze-uploads';
 const DEFAULT_TTL_SEC = 60 * 60; // 1h
 const MAX_CACHE_ENTRIES = 500;
 
+/** 썸네일이 들어가는 폴더 이름. `{userId}/thumb/{파일}` — 업로드(App.tsx)와 공유한다. */
+export const THUMB_SEGMENT = 'thumb';
+
+/** 썸네일이 없다고 확인된 path. `resolveThumbUrl` 주석 참고. */
+const missingThumbs = new Set<string>();
+
+/** storage path의 첫 세그먼트는 항상 auth.uid()다 (RLS 계약). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface CacheEntry {
   url: string;
   expiresAt: number;
@@ -198,4 +207,45 @@ export function parseStoragePath(pathOrUrl: string): { bucket: string; path: str
   }
   // path만: default bucket
   return { bucket: ANALYZE_BUCKET, path: pathOrUrl };
+}
+
+/**
+ * 원본 storage path → 썸네일 path.
+ *
+ * `{userId}/{파일}` → `{userId}/thumb/{파일}`.
+ * userId를 맨 앞에 그대로 두는 게 중요하다 — `analyze-uploads`의 RLS가
+ * 폴더 prefix와 `auth.uid()` 일치를 요구하므로, 여기를 바꾸면 업로드도 조회도 막힌다.
+ *
+ * null을 주는 경우(= 썸네일 없음, 원본으로 폴백):
+ * - path를 못 읽는 입력
+ * - `analyze-uploads`가 아닌 legacy bucket(`uploaded-images`, `problem-images`)
+ * - 첫 세그먼트가 userId(UUID)가 아닌 것 — 업로드 전 로컬 미리보기(`blob:`/`data:`)가 여기 걸린다.
+ *   이걸 막지 않으면 미리보기마다 있지도 않은 path로 서명 요청이 나갔다 실패한다.
+ */
+export function toThumbPath(pathOrUrl: string | null | undefined): string | null {
+  if (!pathOrUrl) return null;
+  const parsed = parseStoragePath(pathOrUrl);
+  if (!parsed || parsed.bucket !== ANALYZE_BUCKET) return null;
+
+  const segments = parsed.path.split('/');
+  if (segments.length < 2 || !UUID_RE.test(segments[0])) return null;
+  if (segments[1] === THUMB_SEGMENT) return parsed.path; // 이미 썸네일
+
+  return [segments[0], THUMB_SEGMENT, ...segments.slice(1)].join('/');
+}
+
+/**
+ * 원본 signed URL(또는 path) → 썸네일 signed URL.
+ * 썸네일이 없으면 빈 문자열 — 호출부가 원본으로 폴백한다.
+ */
+export async function resolveThumbUrl(pathOrUrl: string | null | undefined): Promise<string> {
+  const thumbPath = toThumbPath(pathOrUrl);
+  if (!thumbPath || missingThumbs.has(thumbPath)) return '';
+
+  const url = await resolveImageUrl(thumbPath);
+  // 썸네일 도입(2026-09-01) 이전 세션에는 썸네일 파일이 없다. `createSignedUrl`은 객체를
+  // 조회하므로 없으면 실패하는데, 실패는 캐시되지 않아 목록을 다시 그릴 때마다 같은 path로
+  // 서명 요청이 또 나간다. 없다는 사실만 기억해 그 반복을 끊는다.
+  if (!url) missingThumbs.add(thumbPath);
+  return url;
 }

@@ -38,7 +38,7 @@ vi.mock('../services/supabaseClient', () => ({
   },
 }));
 
-import { resolveImageUrl, resolveImageUrls, invalidateImageUrl } from './imageUrl';
+import { resolveImageUrl, resolveImageUrls, invalidateImageUrl, toThumbPath } from './imageUrl';
 
 /**
  * 대기 중인 응답을 전부 흘려보낸다.
@@ -179,5 +179,53 @@ describe('resolveImageUrl 입력 처리', () => {
     expect(await resolveImageUrl(undefined)).toBe('');
     expect(await resolveImageUrls(null)).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+});
+
+/**
+ * 썸네일 path 규칙.
+ *
+ * 여기가 틀어지면 조용히 망가진다: userId를 맨 앞에서 밀어내면 `analyze-uploads`의 RLS
+ * (`{userId}/` prefix = auth.uid())에 걸려 업로드도 조회도 죽고, 반대로 null만 돌려주면
+ * 아무도 눈치 못 챈 채 목록이 계속 2048px 원본을 받는다 — 송신 한도를 태운 그 경로 그대로다.
+ */
+describe('toThumbPath', () => {
+  const UID = '3f7c1a2e-9b04-4d51-8e6a-1c2d3e4f5a6b';
+
+  it('userId prefix를 유지한 채 thumb 폴더를 끼운다', () => {
+    expect(toThumbPath(`${UID}/1756000000000_0_sheet.jpg`)).toBe(
+      `${UID}/thumb/1756000000000_0_sheet.jpg`,
+    );
+  });
+
+  it('이미 썸네일 path면 그대로 둔다 (중첩 방지)', () => {
+    expect(toThumbPath(`${UID}/thumb/a.jpg`)).toBe(`${UID}/thumb/a.jpg`);
+  });
+
+  it('발급된 signed URL에서도 path를 되짚어 썸네일을 만든다', () => {
+    expect(
+      toThumbPath(
+        `https://x.supabase.co/storage/v1/object/sign/analyze-uploads/${UID}/a.jpg?token=zz`,
+      ),
+    ).toBe(`${UID}/thumb/a.jpg`);
+  });
+
+  it('legacy bucket은 대상이 아니다 — 썸네일을 만든 적이 없다', () => {
+    expect(
+      toThumbPath(`https://x.supabase.co/storage/v1/object/public/uploaded-images/${UID}/a.jpg`),
+    ).toBeNull();
+  });
+
+  it('업로드 전 로컬 미리보기는 null이다 — 헛된 서명 요청을 막는다', () => {
+    expect(toThumbPath('blob:http://localhost:3001/9c8b-77')).toBeNull();
+    expect(toThumbPath('data:image/jpeg;base64,/9j/4AAQSkZJRg==')).toBeNull();
+  });
+
+  it('userId prefix가 없는 옛 형태와 빈 값은 null이다', () => {
+    expect(toThumbPath('a.jpg')).toBeNull();
+    expect(toThumbPath('legacy-folder/a.jpg')).toBeNull();
+    expect(toThumbPath('')).toBeNull();
+    expect(toThumbPath(null)).toBeNull();
+    expect(toThumbPath(undefined)).toBeNull();
   });
 });

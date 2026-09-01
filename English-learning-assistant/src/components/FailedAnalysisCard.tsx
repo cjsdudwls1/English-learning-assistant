@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ImageLightbox } from './ImageLightbox';
+import { StorageThumb } from './StorageThumb';
 import type { SessionWithProblems } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -57,9 +58,9 @@ export const FailedAnalysisCard: React.FC<FailedAnalysisCardProps> = ({ session,
   const thumbnails = (
     <div className={`flex flex-wrap gap-2 ${isMany ? 'w-full mb-3 sm:mb-4' : 'flex-shrink-0'}`}>
       {displayImageUrls.map((url, idx) => (
-        <img
+        <StorageThumb
           key={`${idx}-${url}`}
-          src={url}
+          fullUrl={url}
           alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
           className={`${isMany ? 'w-14 h-14 sm:w-16 sm:h-16' : 'w-16 h-16 sm:w-24 sm:h-24'} object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
           onClick={() => setLightboxImageUrl(url)}

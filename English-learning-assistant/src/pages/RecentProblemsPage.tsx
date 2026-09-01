@@ -9,6 +9,7 @@ import type { SessionWithProblems } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { translateError } from '../utils/errorI18n';
+import { StorageThumb } from '../components/StorageThumb';
 
 export const RecentProblemsPage: React.FC = () => {
   const { language } = useLanguage();
@@ -234,9 +235,9 @@ export const RecentProblemsPage: React.FC = () => {
                   {/* 다중 이미지 썸네일 */}
                   <div className="flex flex-wrap gap-1 sm:gap-1.5 flex-shrink-0 max-w-[30%] sm:max-w-[50%]">
                     {sessionImageUrls.map((url, idx) => (
-                      <img
+                      <StorageThumb
                         key={`${idx}-${url}`}
-                        src={url}
+                        fullUrl={url}
                         alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
                         className={`${sessionImageUrls.length > 4 ? 'w-10 h-10 sm:w-14 sm:h-14' : 'w-12 h-12 sm:w-20 sm:h-20'} object-cover rounded border cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
                         onClick={() => setLightboxImageUrl(url)}
