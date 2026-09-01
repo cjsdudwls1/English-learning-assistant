@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 import { accounts, auditRoutes, login, password, resolveAuditPath, waitForRenderSettled, type AuditRoute, type Role } from './helpers';
 
 // 모바일 인체공학 점검 — "화면에 담기는 정보량"과 "읽고 누르기 편한가"를 실측한다.

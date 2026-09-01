@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 import { accounts, login, password, waitForRenderSettled } from './helpers';
 
 // 역할별 통계 화면의 내부 정합성.

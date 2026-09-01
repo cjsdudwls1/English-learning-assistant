@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { accounts, login, password } from './helpers';
 
 // 역할별 랜딩 페이지 — 로그인 후 역할 라우팅(RoleGate)이 살아있는지 확인

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 import { accounts, login, password, waitForRenderSettled, type Role } from './helpers';
 
 // 권한 경계와 '없는 리소스' 처리 감사.

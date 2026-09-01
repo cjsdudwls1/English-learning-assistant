@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 import { accounts, auditRoutes, login, password, resolveAuditPath, waitForRenderSettled, type AuditRoute, type Role } from './helpers';
 
 // 모바일 뷰포트 레이아웃 점검 — 가로 오버플로(콘텐츠 잘림/가로 스크롤) 검출.
