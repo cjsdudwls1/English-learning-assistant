@@ -7,6 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../utils/translations';
 import { getManualReviewReason, eqSet } from '../utils/gradingSafety';
 import { toCardinality } from '../utils/answerShape';
+import { StorageThumb } from './StorageThumb';
 
 interface QuickLabelingCardProps {
   sessionId: string;
@@ -380,9 +381,9 @@ export const QuickLabelingCard: React.FC<QuickLabelingCardProps> = ({
   const thumbnails = (
     <div className={`flex flex-wrap gap-1.5 sm:gap-2 ${isMany ? 'w-full mb-3 sm:mb-4' : 'flex-shrink-0'}`}>
       {displayImageUrls.map((url, idx) => (
-        <img
+        <StorageThumb
           key={`${idx}-${url}`}
-          src={url}
+          fullUrl={url}
           alt={language === 'ko' ? `문제 이미지 ${idx + 1}` : `Problem Image ${idx + 1}`}
           className={`${isMany ? 'w-12 h-12 sm:w-16 sm:h-16' : 'w-16 h-16 sm:w-24 sm:h-24'} object-cover rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-indigo-400 transition-all`}
           onClick={() => setLightboxImageUrl(url)}
