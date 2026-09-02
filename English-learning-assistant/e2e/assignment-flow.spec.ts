@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 import { T, accounts, login, password, readYearSolvingTotals, waitForRenderSettled } from './helpers';
 
 // 교사가 과제를 만들고 → 학생이 풀고 → 자동채점·통계에 반영되고 → 교사 화면에서 같은 결과가 보이는지,

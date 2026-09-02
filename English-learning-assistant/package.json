@@ -10,7 +10,7 @@
     "pwa": "vite build",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.e2e.json --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",

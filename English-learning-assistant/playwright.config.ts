@@ -5,6 +5,9 @@ const baseURL = process.env.E2E_BASE_URL || 'http://localhost:3001';
 
 export default defineConfig({
   testDir: 'e2e',
+  // 기본 testMatch는 *.test.ts도 잡는다. e2e/ 안에는 vitest로 도는 순수 유닛 테스트
+  // (storage-stub.test.ts)가 있으므로 Playwright가 집어가지 않게 *.spec.ts로 좁힌다.
+  testMatch: '**/*.spec.ts',
   timeout: 60_000,
   // 직렬 실행. 스펙 전체가 역할당 QA 시드 계정 하나(@test.com)를 공유하기 때문이다.
   // 병렬(fullyParallel + 워커 4개)로 돌리면 같은 계정으로 2분 새 60여 회 로그인이 몰려

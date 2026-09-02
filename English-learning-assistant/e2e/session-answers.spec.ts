@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { accounts, login, password, waitForRenderSettled } from './helpers';
 
 // 이미지 분석 세션의 답·정오답이 실제로 화면에 뜨는지 본다.
