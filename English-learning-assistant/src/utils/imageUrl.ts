@@ -249,3 +249,14 @@ export async function resolveThumbUrl(pathOrUrl: string | null | undefined): Pro
   if (!url) missingThumbs.add(thumbPath);
   return url;
 }
+
+/**
+ * "썸네일 없음" 기억을 지운다 — 지연 백필이 방금 만들어 올렸을 때 부른다.
+ *
+ * 이게 없으면 백필이 성공해도 이 세션 내내 없는 것으로 취급해 계속 원본으로 폴백한다.
+ * 캐시가 아니라 **부재 기록**만 지우므로, 다음 `resolveThumbUrl`이 정상적으로 서명을 발급한다.
+ */
+export function clearMissingThumb(pathOrUrl: string | null | undefined): void {
+  const thumbPath = toThumbPath(pathOrUrl);
+  if (thumbPath) missingThumbs.delete(thumbPath);
+}

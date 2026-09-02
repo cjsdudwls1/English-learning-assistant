@@ -33,21 +33,14 @@ import { getTranslation } from './utils/translations';
 import { InstallBanner } from './components/InstallBanner';
 import { MainPage, type ImageFile } from './pages/MainPage';
 import { toThumbPath } from './utils/imageUrl';
+// 썸네일 규격과 캔버스 인코더는 thumbnail.ts가 단일 출처다.
+// 지연 백필(과거 이미지를 폴백 시점에 고치는 경로)이 같은 규격으로 만들어야
+// 업로드 때 만든 썸네일과 섞여도 목록이 일관된다.
+import { drawScaledJpeg, THUMB_MAX_DIMENSION, THUMB_QUALITY } from './utils/thumbnail';
 import './styles/app.css';
 
 const MAX_IMAGES = 10;
 const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
-
-/**
- * 목록 화면용 썸네일 규격.
- *
- * 목록에서 가장 큰 이미지 박스가 96 CSS px(`sm:w-24`)이라 DPR 3에서도 288px면 덮는다.
- * 320px·0.7이면 장당 20KB 안팎으로, 2048px·0.92 원본의 1/70 수준이다.
- * 원본을 목록에 그대로 그리다 2026-09-01 송신 한도(5GB)를 넘겨 프로젝트가 402로 차단됐다.
- * 판독용 원본 규격은 그대로 둔다 — 정확도가 걸려 있다(compressImage 주석 참고).
- */
-const THUMB_MAX_DIMENSION = 320;
-const THUMB_QUALITY = 0.7;
 
 /**
  * Canvas API로 이미지를 리사이즈·JPEG 압축한다.
@@ -68,35 +61,15 @@ function compressImage(
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      try {
-        let { width, height } = img;
-        if (width > maxDimension || height > maxDimension) {
-          const ratio = Math.min(maxDimension / width, maxDimension / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          URL.revokeObjectURL(url);
-          reject(new Error('Canvas 2D context not available'));
-          return;
-        }
-        ctx.drawImage(img, 0, 0, width, height);
-        canvas.toBlob((blob) => {
-          URL.revokeObjectURL(url);
-          if (!blob) {
-            reject(new Error(`canvas.toBlob returned null: ${file.name}`));
-            return;
-          }
-          resolve({ blob, mimeType: 'image/jpeg' });
-        }, 'image/jpeg', quality);
-      } catch (e) {
-        URL.revokeObjectURL(url);
-        reject(e);
-      }
+      // naturalWidth/Height를 명시한다. `img.width`는 레이아웃 폭이라 DOM에 붙은 <img>에서는
+      // 표시 크기(수십 px)를 준다 — 여기 img는 detached라 같은 값이지만, 인코더는
+      // 지연 백필(DOM 안의 <img>)과 공유하므로 규칙을 한쪽으로 통일해 둔다.
+      drawScaledJpeg(img, img.naturalWidth, img.naturalHeight, maxDimension, quality)
+        .then((blob) => resolve({ blob, mimeType: 'image/jpeg' }))
+        .catch((e: unknown) =>
+          reject(e instanceof Error ? new Error(`${e.message}: ${file.name}`) : e),
+        )
+        .finally(() => URL.revokeObjectURL(url));
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
